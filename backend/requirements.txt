@@ -1,12 +1,6 @@
 # =====================================================
 # CoastGuard — Supply Chain Monitor
 # Backend Dependencies
-#
-# Quick start:
-#   python -m venv .venv
-#   .venv\Scripts\activate      (Windows)
-#   source .venv/bin/activate   (macOS/Linux)
-#   pip install -r requirements.txt
 # =====================================================
 
 # --- Core Web Framework ---
@@ -22,10 +16,12 @@ pydantic==2.11.10
 pydantic-settings==2.10.1
 pydantic_core==2.33.2
 
-# --- Database ---
-# SQLite works out of the box (default). For Aurora PostgreSQL + pgvector + IAM auth:
+# --- Database (SQLite for Phase 1; Aurora PostgreSQL + pgvector for Phase 3) ---
+# SQLite works out of the box — no extra driver needed.
 SQLAlchemy>=2.0.36
 alembic>=1.13.0
+
+# PostgreSQL / Aurora + IAM auth
 psycopg2-binary>=2.9.9
 pgvector>=0.3.0
 boto3>=1.34.0
@@ -44,13 +40,10 @@ requests>=2.32.0
 # --- Platform-specific async event loop ---
 uvloop>=0.22.0; platform_system != "Windows"
 
-# --- AI / Agent Pipeline (5-agent CrewAI pipeline) ---
-# Required to run with USE_MOCK_LLM=false (set GEMINI_API_KEY in .env).
-# With USE_MOCK_LLM=true (default) these are unused but safe to install.
-crewai>=1.7.0
-google-generativeai>=0.8.0
-
-# --- Optional: RAG / Vector search (Phase 3, not required for current pipeline) ---
+# --- AI / Agent Pipeline (Phase 2+) ---
+# Uncomment when implementing the 5-agent pipeline with real Gemini calls:
+# crewai>=1.7.0
+# google-generativeai>=0.8.0
 # langchain-google-genai>=2.0.0
 # langchain>=0.3.0
 # langchain-chroma>=0.2.0

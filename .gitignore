@@ -56,10 +56,11 @@ dmypy.json
 .pytype/
 
 # Virtual Environment
-.venv/
+RoSP/
 venv/
 ENV/
 env/
+.venv
 venv.bak/
 venv_backup/
 
@@ -99,8 +100,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Package manager lock files
-# Note: package-lock.json is ignored per original config.
-# If you need to keep it, comment out the line below.
+# Note: per original config, package-lock.json is ignored.
+# Comment out the next line to keep it.
 package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
@@ -119,7 +120,7 @@ package-lock.json
 # ============================================
 # Databases & Vector Store
 # ============================================
-# Note: pre-built knowledge-base vector DB files should be committed to git:
+# Note: pre-built knowledge base vector DB files should be committed to git
 # - backend/data/vectordb/ (pre-built knowledge base, kept in git)
 # - backend/scripts/data/vectordb/ (pre-built knowledge base, kept in git)
 
@@ -128,7 +129,7 @@ package-lock.json
 *.sqlite
 *.sqlite3
 
-# But keep pre-built knowledge base files (required project data)
+# But keep the pre-built knowledge base files (required project data)
 !backend/data/vectordb/**
 !backend/scripts/data/vectordb/**
 
@@ -290,7 +291,7 @@ site/
 # Alembic
 # Uncomment to ignore auto-generated migration files:
 # backend/alembic/versions/*.py
-# (generally recommended to keep migration files in git)
+# (generally recommended to keep migration files)
 
 # Ignore all markdown files except README.md
 *.md
