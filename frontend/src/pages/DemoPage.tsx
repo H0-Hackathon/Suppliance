@@ -1,117 +1,137 @@
 import React from 'react';
-import { Play, Clock } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, ArrowRight } from 'lucide-react';
+import { TradeGlobe } from '../components/TradeGlobe';
 
-/**
- * DemoPage — Coming Soon placeholder.
- *
- * Phase 3: This page will stream the 5-agent tariff alert autoplay
- * scenario via WebSocket, showing Chain-of-Thought reasoning and
- * the adversarial debate in real time.
- *
- * The backend demo WebSocket endpoint (/api/v2/demo/ws) is already
- * scaffolded and ready to connect.
- */
+const TIMELINE = [
+  { t: 'T+0s',  label: 'Normal monitoring — supply chain clear',                    done: true  },
+  { t: 'T+5s',  label: 'TariffMonitor: 25% tariff on HS 6109.10 from Vietnam',      done: true  },
+  { t: 'T+8s',  label: 'ImpactCalculator: $10,000 extra cost on $40k order',        done: true  },
+  { t: 'T+20s', label: 'AlternativesFinder: 2 backup suppliers identified',          done: false },
+  { t: 'T+32s', label: 'ImportCompliance: USMCA saves $14,025 via Mexico pivot',     done: false },
+  { t: 'T+40s', label: 'Adversarial: red-teaming recommendations…',                  done: false },
+  { t: 'T+52s', label: 'Final recommendation — awaiting your decision',              done: false },
+];
+
 export const DemoPage: React.FC = () => {
   return (
-    <main className="page-with-sidebar">
-      <div
-        style={{
-          maxWidth: 560,
-          margin: '80px auto',
-          textAlign: 'center',
-          fontFamily: 'Inter, sans-serif',
-        }}
-      >
-        {/* Icon */}
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: '50%',
-            background: '#EFF6FF',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 24px',
-          }}
-        >
-          <Play size={32} style={{ color: '#1E3A5F' }} />
+    <main className="page-with-sidebar" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ padding: '24px 32px 0', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <AlertTriangle size={18} color="#ef4444" />
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>
+            Live Demo — Vietnamese Textile Tariff Crisis
+          </h1>
+        </div>
+        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+          US adds 25% tariff to HS 6109.10 · $40,000 order at risk · 5-agent pipeline firing
+        </p>
+      </div>
+
+      {/* Body: globe + timeline */}
+      <div style={{
+        flex: 1, display: 'grid',
+        gridTemplateColumns: '1fr 340px',
+        gap: 20, padding: 24,
+        minHeight: 0,
+      }}>
+        {/* Globe */}
+        <div style={{ borderRadius: 12, overflow: 'hidden', minHeight: 420 }}>
+          <TradeGlobe />
         </div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1E3A5F', marginBottom: 12 }}>
-          Demo Coming in Phase 3
-        </h1>
-        <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.7, marginBottom: 32 }}>
-          The live demo will stream a real-time tariff alert scenario over WebSocket,
-          showing all 5 agents reasoning step-by-step: TariffMonitor → ImpactCalculator →
-          AlternativesFinder → ImportCompliance → Adversarial.
-        </p>
-
-        {/* Timeline teaser */}
-        <div
-          style={{
-            background: '#F8FAFC',
-            border: '1px solid #E2E8F0',
-            borderRadius: 10,
-            padding: '20px 24px',
-            textAlign: 'left',
-          }}
-        >
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: '#64748B',
-              marginBottom: 14,
-            }}
-          >
-            Demo Scenario — Vietnamese Textile Tariff Crisis
-          </p>
-
-          {[
-            { t: 'T+0s',  label: 'Normal monitoring — supply chain clear' },
-            { t: 'T+5s',  label: 'TariffMonitor: 25% tariff detected on HS 6109.10 from Vietnam' },
-            { t: 'T+8s',  label: 'ImpactCalculator: $10,000 extra cost on $40k order' },
-            { t: 'T+20s', label: 'AlternativesFinder: 2 backup suppliers identified' },
-            { t: 'T+32s', label: 'ImportCompliance: docs required per alternative' },
-            { t: 'T+40s', label: 'Adversarial: challenges both recommendations' },
-            { t: 'T+52s', label: 'Final recommendation — awaiting your decision' },
-          ].map(({ t, label }) => (
-            <div
-              key={t}
-              style={{
-                display: 'flex',
-                gap: 12,
-                marginBottom: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontSize: 11,
-                  color: '#F59E0B',
-                  fontWeight: 700,
-                  minWidth: 44,
-                  marginTop: 1,
-                }}
-              >
-                {t}
-              </span>
-              <span style={{ fontSize: 12, color: '#1A202C' }}>{label}</span>
+        {/* Right panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Impact card */}
+          <div style={{
+            background: 'rgba(239,68,68,0.05)',
+            border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: 10, padding: '14px 16px',
+            fontFamily: 'system-ui, sans-serif',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#ef4444', textTransform: 'uppercase', marginBottom: 10 }}>
+              Financial Exposure
             </div>
-          ))}
-        </div>
+            {[
+              { label: 'Order Value',        value: '$40,000' },
+              { label: 'Tariff Increase',    value: '+$10,000' },
+              { label: 'USMCA Savings',      value: '-$14,025', positive: true },
+              { label: 'Net Exposure',       value: '$85,000',  bold: true },
+            ].map(({ label, value, positive, bold }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12 }}>
+                <span style={{ color: '#64748b' }}>{label}</span>
+                <span style={{
+                  fontWeight: bold ? 700 : 500,
+                  color: positive ? '#22c55e' : bold ? '#ef4444' : '#1e293b',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
 
-        <p style={{ marginTop: 20, fontSize: 12, color: '#94A3B8' }}>
-          <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-          Backend WebSocket endpoint scaffolded and ready at{' '}
-          <code style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-            /api/v2/demo/ws
-          </code>
-        </p>
+          {/* Agent timeline */}
+          <div style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0',
+            borderRadius: 10, padding: '14px 16px', flex: 1,
+            fontFamily: 'system-ui, sans-serif',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#64748b', textTransform: 'uppercase', marginBottom: 12 }}>
+              Agent Pipeline
+            </div>
+            {TIMELINE.map(({ t, label, done }) => (
+              <div key={t} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
+                <span style={{
+                  fontFamily: 'monospace', fontSize: 10,
+                  color: done ? '#f59e0b' : '#94a3b8',
+                  fontWeight: 700, minWidth: 40, marginTop: 1,
+                }}>
+                  {t}
+                </span>
+                {done
+                  ? <CheckCircle size={13} color="#22c55e" style={{ marginTop: 1, flexShrink: 0 }} />
+                  : <Clock size={13} color="#94a3b8" style={{ marginTop: 1, flexShrink: 0 }} />
+                }
+                <span style={{ fontSize: 11, color: done ? '#1a202c' : '#94a3b8', lineHeight: 1.4 }}>
+                  {label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Recommendation */}
+          <div style={{
+            background: 'rgba(34,197,94,0.05)',
+            border: '1px solid rgba(34,197,94,0.25)',
+            borderRadius: 10, padding: '14px 16px',
+            fontFamily: 'system-ui, sans-serif',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 6 }}>
+              Recommended Action
+            </div>
+            <p style={{ fontSize: 11, color: '#1a202c', lineHeight: 1.5, margin: '0 0 12px' }}>
+              Pivot production to MexiThread (Guadalajara). USMCA 0% tariff saves $14,025 vs Vietnam route.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{
+                flex: 1, padding: '8px 0', borderRadius: 6,
+                background: '#1e3a5f', color: '#fff',
+                border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                Approve <ArrowRight size={12} />
+              </button>
+              <button style={{
+                flex: 1, padding: '8px 0', borderRadius: 6,
+                background: 'transparent', color: '#64748b',
+                border: '1px solid #e2e8f0', fontSize: 12, cursor: 'pointer',
+              }}>
+                Override
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
