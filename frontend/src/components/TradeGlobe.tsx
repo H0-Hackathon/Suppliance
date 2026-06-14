@@ -28,17 +28,41 @@ const ARC_DATA = [
 
 const INITIAL_VIEW = { longitude: -20, latitude: 25, zoom: 1.8, pitch: 0, bearing: 0 };
 
-export const TradeGlobe: React.FC = () => {
+// Severity -> marker color, used for the live disruption_events overlay.
+const SEVERITY_COLOR: Record<string, [number, number, number]> = {
+    critical: [239, 68, 68],
+    high: [249, 115, 22],
+    medium: [245, 158, 11],
+    low: [107, 114, 128],
+};
+
+export interface DisruptionPoint {
+    incident_id: string;
+    title: string;
+    location_name: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    severity: string | null;
+}
+
+export interface TradeGlobeProps {
+    /** Live disruption events from GET /api/v2/disruptions. Optional —
+     * falls back to the hardcoded demo SUPPLIERS/ARC layers when empty. */
+    disruptions?: DisruptionPoint[];
+}
+
+export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     const [viewState, setViewState] = useState(INITIAL_VIEW);
     const [hoveredSupplier, setHoveredSupplier] = useState<string | null>(null);
+    const [hoveredDisruption, setHoveredDisruption] = useState<string | null>(null);
     const [animOffset, setAnimOffset] = useState(0);
 
-    // useEffect(() => {
-    //     const id = setInterval(() => {
-    //         setViewState(v => ({ ...v, bearing: (v.bearing + 0.1) % 360 }));
-    //     }, 50);
-    //     return () => clearInterval(id);
-    // }, []);
+    // Only plot events that have real coordinates (hardcoded lookup in
+    // backend/services/coordinates.py — see DisruptionEvent model).
+    const points = disruptions.filter(
+        (d): d is DisruptionPoint & { latitude: number; longitude: number } =>
+            d.latitude != null && d.longitude != null
+    );
 
     useEffect(() => {
         const id = setInterval(() => setAnimOffset(t => (t + 1) % 100), 50);
@@ -79,6 +103,24 @@ export const TradeGlobe: React.FC = () => {
             onHover: ({ object }: any) => setHoveredSupplier(object ? object.name : null),
             updateTriggers: { getFillColor: hoveredSupplier, getRadius: hoveredSupplier },
             transitions: { getRadius: 120 },
+        }),
+        // Live disruption events from GET /api/v2/disruptions — one pulsing
+        // marker per detected risk event, colored by severity.
+        new ScatterplotLayer({
+            id: 'disruption-events',
+            data: points,
+            getPosition: (d: typeof points[0]) => [d.longitude, d.latitude],
+            getFillColor: (d: typeof points[0]) =>
+                [...(SEVERITY_COLOR[d.severity ?? 'medium'] ?? SEVERITY_COLOR.medium), 220] as [number, number, number, number],
+            getLineColor: (d: typeof points[0]) =>
+                SEVERITY_COLOR[d.severity ?? 'medium'] ?? SEVERITY_COLOR.medium,
+            getLineWidth: 4,
+            stroked: true,
+            filled: true,
+            getRadius: 180000 + Math.sin(animOffset / 8) * 60000,
+            pickable: true,
+            onHover: ({ object }: any) => setHoveredDisruption(object ? object.title : null),
+            updateTriggers: { getRadius: animOffset },
         }),
     ];
 
@@ -151,6 +193,17 @@ export const TradeGlobe: React.FC = () => {
                     fontFamily: 'system-ui, sans-serif', zIndex: 10, pointerEvents: 'none',
                 }}>
                     {hoveredSupplier}
+                </div>
+            )}
+            {hoveredDisruption && (
+                <div style={{
+                    position: 'absolute', top: 50, left: '50%', transform: 'translateX(-50%)',
+                    background: 'rgba(6,13,31,0.95)', border: '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: 8, padding: '7px 14px', fontSize: 12, color: '#f1f5f9',
+                    fontFamily: 'system-ui, sans-serif', zIndex: 10, pointerEvents: 'none',
+                    maxWidth: 280, textAlign: 'center',
+                }}>
+                    {hoveredDisruption}
                 </div>
             )}
         </div>

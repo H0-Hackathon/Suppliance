@@ -2,21 +2,35 @@
 CoastGuard — SQLAlchemy Models
 
 Tables:
-  customers     — SMB business accounts (linked to Clerk auth)
-  suppliers     — each customer's import suppliers
-  products      — products tracked per customer (with HS code)
-  import_orders — pending/in-transit orders
-  tariff_alerts — AI-generated risk alerts per customer
+  customers         — SMB business accounts (linked to Clerk auth)
+  suppliers         — each customer's import suppliers
+  products          — products tracked per customer (with HS code)
+  import_orders     — pending/in-transit orders
+  tariff_alerts     — AI-generated risk alerts per customer
+  disruption_events — structured/queryable record of every risk event the
+                       Monitor agent detects (powers the globe visualization)
 """
 
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text
+    Integer, JSON, String, Text
 )
 from sqlalchemy.orm import relationship
 from database import Base
+
+# pgvector gives us a Postgres column type that stores an embedding (a list of
+# floats). We add the column so the schema matches our "we use vector search"
+# story, but per team decision we do NOT run any similarity search with it —
+# that would mean calling the Gemini embeddings API on every single monitor
+# run just to dedupe, which costs money for very little demo value. The column
+# is simply left NULL for now and can be backfilled later if dedup is needed.
+try:
+    from pgvector.sqlalchemy import Vector
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
 
 
 class Customer(Base):
@@ -94,6 +108,9 @@ class TariffAlert(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("import_orders.id"), nullable=True)
+    # Links to the structured event row (lat/long, etc.) that this alert was
+    # generated from. Nullable because older alerts won't have one.
+    disruption_event_id = Column(Integer, ForeignKey("disruption_events.id"), nullable=True)
     # alert_type: tariff_change | port_disruption | geopolitical | shipping_delay
     alert_type = Column(String(100), nullable=False)
     # severity: low | medium | high | critical
@@ -108,3 +125,63 @@ class TariffAlert(Base):
 
     customer = relationship("Customer", back_populates="alerts")
     order = relationship("ImportOrder", back_populates="alerts")
+    disruption_event = relationship("DisruptionEvent", back_populates="alerts")
+
+
+class DisruptionEvent(Base):
+    """
+    A structured, queryable record of a single risk event (tariff change,
+    port disruption, geopolitical incident, etc.) detected by the Monitor
+    agent.
+
+    Why this table exists alongside `tariff_alerts`:
+      `TariffAlert.agent_output` is a big JSON blob meant for the alert feed
+      UI (AlertCard). It's great for showing "what did each agent say?" but
+      terrible for querying "show me every event near Vietnam" or "plot all
+      active events on a map". This table holds just the fields the globe
+      and any future analytics need, in normal queryable columns.
+
+    Coordinates are looked up from a small hardcoded country -> (lat, lon)
+    table (see services/coordinates.py) rather than asked from the LLM —
+    far more reliable for a live demo than hoping Gemini returns valid
+    coordinates in its JSON.
+    """
+    __tablename__ = "disruption_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Short unique id (uuid4 hex) used to correlate this event with a
+    # TariffAlert / agent run without exposing the internal integer PK.
+    incident_id = Column(String(64), unique=True, index=True)
+
+    # event_type: tariff_change | port_disruption | geopolitical | weather
+    event_type = Column(String(50), nullable=False)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # ── Globe visualization fields (hardcoded lookup, see services/coordinates.py) ──
+    location_name = Column(String(255), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+
+    # hs_codes: ["6109.10"]   countries_affected: ["VN"]
+    hs_codes = Column(JSON, nullable=True)
+    countries_affected = Column(JSON, nullable=True)
+
+    # severity: low | medium | high | critical
+    severity = Column(String(50), nullable=True)
+    confidence = Column(Float, nullable=True)
+    # source: gdelt | usitc | mock | sentinelhub
+    source = Column(String(100), nullable=True)
+
+    # Raw payload snippet from the data source, kept for debugging only.
+    raw_data = Column(JSON, nullable=True)
+
+    # Embedding column — present for the schema/talking-point, intentionally
+    # unused. See the HAS_PGVECTOR note at the top of this file.
+    if HAS_PGVECTOR:
+        embedding = Column(Vector(768), nullable=True)
+
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    alerts = relationship("TariffAlert", back_populates="disruption_event")

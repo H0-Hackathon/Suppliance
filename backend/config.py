@@ -44,11 +44,28 @@ class Settings(BaseSettings):
     # ── AI / LLM ──────────────────────────────────────────────────────────────
     llm_provider: str = "gemini"
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini/gemini-1.5-flash"
+    # gemini-flash-latest is a Google-maintained alias that always points at
+    # the current flash-tier model — avoids breakage when Google retires
+    # specific dated model names (e.g. gemini-1.5-flash, gemini-2.0-flash).
+    gemini_model: str = "gemini/gemini-flash-latest"
 
     # ── Mock mode ─────────────────────────────────────────────────────────────
     use_mock_llm: bool = True
     use_mock_data: bool = True
+
+    # When true, the TariffMonitor agent is given a real GDELT news-search
+    # tool (services/gdelt.py — free, no API key needed). This is independent
+    # of USE_MOCK_LLM: you can run real tools with a mocked LLM (free/instant)
+    # or mocked tools with a real LLM. Default false so a fresh checkout makes
+    # zero outbound network calls.
+    use_real_tools: bool = False
+
+    # When true, a background job (APScheduler) periodically re-runs the
+    # monitor pipeline for all customers. Default false — for a hackathon
+    # demo you want deterministic, judge-triggered runs via the "Run Monitor"
+    # button, not a background job firing at an unpredictable moment.
+    enable_scheduler: bool = False
+    scheduler_interval_hours: int = 6
 
     # ── External data sources (Phase 2+) ──────────────────────────────────────
     usitc_api_key: Optional[str] = None

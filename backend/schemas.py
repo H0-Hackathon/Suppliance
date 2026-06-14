@@ -130,6 +130,29 @@ class TariffAlertResponse(BaseModel):
     resolved_at: Optional[datetime]
 
 
+# ── DisruptionEvent ───────────────────────────────────────────────────────────
+
+class DisruptionEventResponse(BaseModel):
+    """Structured event used to plot points on the supplier globe."""
+
+    model_config = {"from_attributes": True}
+
+    id: int
+    incident_id: str
+    event_type: str
+    title: str
+    description: Optional[str]
+    location_name: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
+    hs_codes: Optional[List[str]]
+    countries_affected: Optional[List[str]]
+    severity: Optional[str]
+    confidence: Optional[float]
+    source: Optional[str]
+    detected_at: datetime
+
+
 # ── Monitor pipeline ──────────────────────────────────────────────────────────
 
 class MonitorRunRequest(BaseModel):

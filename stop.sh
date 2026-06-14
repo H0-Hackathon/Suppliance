@@ -15,4 +15,8 @@ lsof -ti:8000 | xargs kill -9 2>/dev/null
 lsof -ti:5173 | xargs kill -9 2>/dev/null
 
 sleep 1
+<<<<<<< HEAD
 echo "✓ 服务已停止"
+=======
+echo "Services stopped."
+>>>>>>> main

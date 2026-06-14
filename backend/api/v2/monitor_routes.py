@@ -6,12 +6,10 @@ Endpoints:
   GET  /api/v2/monitor/health  pipeline health and mock mode status
 """
 
-import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import TariffAlert
 from schemas import MonitorRunRequest, MonitorRunResponse
 from core.crew_orchestrator import CrewAIOrchestrator
 from config import get_settings
@@ -24,7 +22,11 @@ settings = get_settings()
 def run_monitor(payload: MonitorRunRequest, db: Session = Depends(get_db)):
     """
     Trigger the 5-agent tariff monitoring pipeline.
-    In mock mode (USE_MOCK_LLM=true) returns hardcoded demo output and saves a TariffAlert.
+
+    The pipeline (MonitorPipeline._save_results) already saves both the
+    TariffAlert and its linked DisruptionEvent — this route just forwards
+    the request and returns the agent outputs. (Do NOT also create a
+    TariffAlert here — that used to double-save every alert.)
     """
     orchestrator = CrewAIOrchestrator()
     result = orchestrator.run_monitor(
@@ -34,27 +36,11 @@ def run_monitor(payload: MonitorRunRequest, db: Session = Depends(get_db)):
         db=db,
     )
 
-    agent_outputs = result.get("agent_outputs", {})
-    impact = agent_outputs.get("impact_calculator", {})
-    adversarial = agent_outputs.get("adversarial", {})
-
-    alert = TariffAlert(
-        customer_id=payload.customer_id,
-        alert_type="tariff_change",
-        severity=impact.get("severity", "medium"),
-        summary=adversarial.get("recommendation", "Tariff risk detected."),
-        agent_output=json.dumps(agent_outputs),
-        data_source="mock" if settings.use_mock_llm else "live",
-        status="active",
-    )
-    db.add(alert)
-    db.commit()
-
     return MonitorRunResponse(
         run_id=result["run_id"],
         customer_id=payload.customer_id,
         alerts_generated=result["alerts_generated"],
-        agent_outputs=agent_outputs,
+        agent_outputs=result.get("agent_outputs", {}),
     )
 
 

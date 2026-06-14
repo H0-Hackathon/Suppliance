@@ -13,6 +13,7 @@ from api.v2.demo_routes import router as demo_router
 from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
+from api.v2.disruption_routes import router as disruption_router
 
 settings = get_settings()
 
@@ -46,6 +47,19 @@ app.include_router(demo_router)
 app.include_router(supplier_router)
 app.include_router(alert_router)
 app.include_router(monitor_router)
+app.include_router(disruption_router)
+
+
+@app.on_event("startup")
+def _on_startup():
+    from core.scheduler import start_scheduler
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def _on_shutdown():
+    from core.scheduler import stop_scheduler
+    stop_scheduler()
 
 
 @app.get("/", tags=["Health"])
