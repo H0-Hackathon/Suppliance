@@ -1,111 +1,108 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AlertCard, AlertSeverity, AlertType } from '../components/AlertCard';
+import { TradeGlobe, DisruptionPoint } from '../components/TradeGlobe';
+import api from '../services/api';
 
 /**
  * AlertsDashboard — Main CoastGuard dashboard page.
  *
- * Phase 1: Displays hardcoded mock alerts with empty-state fallback.
- *          No API calls yet (backend models added in Phase 2).
+ * Wired to the real backend:
+ *   - GET  /api/v2/alerts?customer_id=1       initial alert feed
+ *   - POST /api/v2/monitor/run                "Run Monitor" button
+ *   - PUT  /api/v2/alerts/{id}/dismiss|resolve  alert actions
+ *   - GET  /api/v2/disruptions?customer_id=1  globe markers
  *
- * Phase 2: Replace MOCK_ALERTS with real API calls to
- *          GET /api/v2/alerts?customer_id=1
+ * There's no auth/customer-switcher yet, so CUSTOMER_ID is hardcoded to the
+ * single seeded demo customer (backend/scripts/seed_data.py creates id=1).
  */
 
-// ── Hardcoded mock alerts for Phase 1 demo ──────────────────
-const MOCK_ALERTS = [
-  {
-    id: 1,
-    alert_type: 'tariff_change' as AlertType,
-    severity: 'high' as AlertSeverity,
-    summary:
-      'Your pending $40,000 order from Mekong Textiles Co (Vietnam, HS 6109.10) will cost $10,000 more due to a new 25% US tariff effective July 1, 2026.',
-    agent_output: JSON.stringify({
-      tariff_monitor: {
-        risk_detected: true,
-        event: '25% tariff added on HS 6109.10 from VN',
-        confidence: 0.92,
-        source: 'mock_usitc',
-      },
-      impact_calculator: {
-        extra_cost_usd: 10000,
-        severity: 'high',
-        affected_orders: 1,
-      },
-      alternatives_finder: {
-        options: [
-          { supplier: 'Dhaka Garments Ltd', country: 'BD', lead_time_weeks: 8 },
-          { supplier: 'Mumbai Exports', country: 'IN', lead_time_weeks: 5 },
-        ],
-      },
-      import_compliance: {
-        BD: ['Certificate of Origin', 'Commercial Invoice update'],
-        IN: ['BIS certification check', 'Certificate of Origin'],
-      },
-      adversarial: {
-        verdict: 'CAUTION',
-        flags: ['Bangladesh misses Aug 1 deadline by ~1 week'],
-        recommendation:
-          'Use Mumbai Exports (IN). Negotiate 1-week extension with buyer.',
-      },
-    }),
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
-  },
-  {
-    id: 2,
-    alert_type: 'geopolitical' as AlertType,
-    severity: 'medium' as AlertSeverity,
-    summary:
-      'Political unrest reported in the Mekong Delta region near your supplier\'s manufacturing hub. No current shipping impact, but monitor closely.',
-    agent_output: null,
-    created_at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), // 1d ago
-  },
-];
+const CUSTOMER_ID = 1;
+
+// Default HS code / supplier country used when the "Run Monitor" button is
+// clicked. Matches the seeded demo product (Cotton T-Shirts from Vietnam).
+const DEMO_HS_CODE = '6109.10';
+const DEMO_SUPPLIER_COUNTRY = 'VN';
+
+interface ApiAlert {
+  id: number;
+  alert_type: AlertType;
+  severity: AlertSeverity;
+  summary: string | null;
+  agent_output: string | null;
+  status: string;
+  created_at: string;
+}
 
 type FilterSeverity = 'all' | AlertSeverity;
 
 const FILTER_OPTIONS: FilterSeverity[] = ['all', 'critical', 'high', 'medium', 'low'];
 
 export const AlertsDashboard: React.FC = () => {
-  const [alerts, setAlerts] = React.useState(MOCK_ALERTS);
+  const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
+  const [disruptions, setDisruptions] = React.useState<DisruptionPoint[]>([]);
   const [filter, setFilter] = React.useState<FilterSeverity>('all');
   const [isRunning, setIsRunning] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  const filtered = filter === 'all'
-    ? alerts
-    : alerts.filter((a) => a.severity === filter);
-
-  function handleDismiss(id: number) {
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  async function fetchAlerts() {
+    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
+    setAlerts(res.data);
   }
 
-  function handleResolve(id: number) {
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  async function fetchDisruptions() {
+    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: CUSTOMER_ID } });
+    setDisruptions(res.data);
+  }
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        await Promise.all([fetchAlerts(), fetchDisruptions()]);
+      } catch (err) {
+        console.error('Failed to load dashboard data', err);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, []);
+
+  // Dismissed/resolved alerts stay in the DB but drop off the active feed.
+  const activeAlerts = alerts.filter((a) => a.status === 'active');
+  const filtered = filter === 'all'
+    ? activeAlerts
+    : activeAlerts.filter((a) => a.severity === filter);
+
+  async function handleDismiss(id: number) {
+    await api.put(`/v2/alerts/${id}/dismiss`);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'dismissed' } : a)));
+  }
+
+  async function handleResolve(id: number) {
+    await api.put(`/v2/alerts/${id}/resolve`);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
   }
 
   async function handleRunMonitor() {
     setIsRunning(true);
-    // Phase 1: simulate a 2s delay then show a new mock alert
-    await new Promise((r) => setTimeout(r, 2000));
-    setAlerts((prev) => [
-      {
-        id: Date.now(),
-        alert_type: 'port_disruption' as AlertType,
-        severity: 'medium' as AlertSeverity,
-        summary:
-          'Storm warning issued for the South China Sea shipping lanes. Your shipment from Ho Chi Minh City may experience a 3–5 day delay.',
-        agent_output: null,
-        created_at: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-    setIsRunning(false);
+    try {
+      await api.post('/v2/monitor/run', {
+        customer_id: CUSTOMER_ID,
+        hs_code: DEMO_HS_CODE,
+        supplier_country: DEMO_SUPPLIER_COUNTRY,
+      });
+      await Promise.all([fetchAlerts(), fetchDisruptions()]);
+    } catch (err) {
+      console.error('Run Monitor failed', err);
+    } finally {
+      setIsRunning(false);
+    }
   }
 
   const stats = {
-    active: alerts.length,
-    critical: alerts.filter((a) => a.severity === 'critical').length,
-    high: alerts.filter((a) => a.severity === 'high').length,
+    active: activeAlerts.length,
+    critical: activeAlerts.filter((a) => a.severity === 'critical').length,
+    high: activeAlerts.filter((a) => a.severity === 'high').length,
   };
 
   return (
@@ -132,7 +129,7 @@ export const AlertsDashboard: React.FC = () => {
             Supply Chain Alerts
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            business_id = 1 · mock mode · Phase 1
+            business_id = {CUSTOMER_ID}
           </p>
         </div>
 
@@ -193,7 +190,11 @@ export const AlertsDashboard: React.FC = () => {
           </div>
 
           {/* Alert cards */}
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="empty-state">
+              <h3>Loading...</h3>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="empty-state">
               <h3>No alerts</h3>
               <p>Your supply chain looks healthy. Click "Run Monitor" to scan for new risks.</p>
@@ -202,8 +203,12 @@ export const AlertsDashboard: React.FC = () => {
             filtered.map((alert) => (
               <AlertCard
                 key={alert.id}
-                {...alert}
+                id={alert.id}
+                alert_type={alert.alert_type}
+                severity={alert.severity}
+                summary={alert.summary ?? 'Tariff risk detected.'}
                 agent_output={alert.agent_output ?? undefined}
+                created_at={alert.created_at}
                 onDismiss={handleDismiss}
                 onResolve={handleResolve}
               />
@@ -211,7 +216,7 @@ export const AlertsDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Right: Map placeholder + mini stats */}
+        {/* Right: Globe + mini stats */}
         <div>
           <h2
             style={{
@@ -225,25 +230,8 @@ export const AlertsDashboard: React.FC = () => {
             Supplier Map
           </h2>
 
-          {/* Globe placeholder — Phase 2 wires in SupplierMap (deck.gl) */}
-          <div
-            style={{
-              height: 320,
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              background: '#EFF6FF',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-              marginBottom: 16,
-              fontSize: 13,
-            }}
-          >
-            <span style={{ fontSize: 32, marginBottom: 8 }}>🌏</span>
-            <p style={{ fontWeight: 600 }}>Supplier Map</p>
-            <p style={{ fontSize: 11, marginTop: 4 }}>Globe visualization — Phase 2</p>
+          <div style={{ height: 320, marginBottom: 16 }}>
+            <TradeGlobe disruptions={disruptions} />
           </div>
 
           {/* Supplier list preview */}

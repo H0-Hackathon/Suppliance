@@ -40,10 +40,16 @@ requests>=2.32.0
 # --- Platform-specific async event loop ---
 uvloop>=0.22.0; platform_system != "Windows"
 
+# --- Scheduler (background monitor runs, ENABLE_SCHEDULER=true) ---
+apscheduler>=3.10.0
+
 # --- AI / Agent Pipeline (Phase 2+) ---
-# Uncomment when implementing the 5-agent pipeline with real Gemini calls:
-# crewai>=1.7.0
-# google-generativeai>=0.8.0
+# Required for USE_MOCK_LLM=false (real 5-agent pipeline backed by Gemini):
+crewai>=1.7.0
+google-generativeai>=0.8.0
+# CrewAI's native Gemini provider (crewai.llms.providers.gemini) imports this
+# at runtime — without it, LLM(model="gemini/...") raises ImportError.
+google-genai>=1.0.0
 # langchain-google-genai>=2.0.0
 # langchain>=0.3.0
 # langchain-chroma>=0.2.0

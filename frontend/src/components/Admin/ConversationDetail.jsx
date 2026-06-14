@@ -94,14 +94,14 @@ const ConversationDetail = () => {
                   {formatUTCDateTimeCN(conversation.created_at)}
                 </span>
               </h4>
-              
+
               <Timeline>
                 {conversation.messages && conversation.messages.map((message) => (
                   <Timeline.Item
                     key={message.id}
                     dot={
-                      message.sender === 'CUSTOMER' ? 
-                      <UserOutlined style={{ fontSize: 16 }} /> : 
+                      message.sender === 'CUSTOMER' ?
+                      <UserOutlined style={{ fontSize: 16 }} /> :
                       <RobotOutlined style={{ fontSize: 16 }} />
                     }
                     color={message.sender === 'CUSTOMER' ? 'blue' : 'green'}
