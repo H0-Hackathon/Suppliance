@@ -1,4 +1,3 @@
-import { Map } from 'react-map-gl/maplibre';
 import React, { useState, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { ArcLayer, ScatterplotLayer } from '@deck.gl/layers';
@@ -92,9 +91,7 @@ export const TradeGlobe: React.FC = () => {
                 layers={layers}
                 style={{ position: 'absolute', inset: 0 }}
                 parameters={{ clearColor: [0.02, 0.05, 0.12, 1] }}
-            >
-                <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
-            </DeckGL>
+            />
 
             {/* Alert banner */}
             <div style={{
