@@ -206,7 +206,8 @@ body {
   gap: 8px;
   font-family: inherit;
   text-align: left;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .alert-item:hover {
@@ -260,7 +261,22 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+}
+
+.alert-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   justify-content: space-between;
+  width: 100%;
+}
+
+.alert-title-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .severity-dot {
@@ -277,10 +293,6 @@ body {
 .alert-item.medium .severity-dot { color: #d97706; }
 .alert-item.low .severity-dot { color: #6b7280; }
 
-.alert-title-block {
-  flex: 1;
-  min-width: 0;
-}
 
 .alert-title {
   font-size: 12px;
@@ -294,7 +306,6 @@ body {
 .alert-meta-top {
   display: flex;
   gap: 6px;
-  margin-top: 4px;
   flex-wrap: wrap;
 }
 
@@ -308,18 +319,21 @@ body {
   font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
 }
 
 .alert-flag {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
+  margin-top: -2px;
 }
 
 .alert-card-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 10px;
+  flex-wrap: wrap;
 }
 
 .confidence-badge {
@@ -329,11 +343,13 @@ body {
   border-radius: 3px;
   color: var(--accent-gold);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .time-badge {
   color: rgba(255, 255, 255, 0.35);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 /* ─────────────────────────────────────────────────────────────────

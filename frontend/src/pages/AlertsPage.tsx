@@ -187,16 +187,16 @@ export const AlertsPage: React.FC = () => {
                 className={`alert-item ${alert.severity} ${selectedAlert?.id === alert.id ? 'selected' : ''}`}
                 onClick={() => handleSelectAlert(alert)}
               >
-                <div className="alert-card-header">
-                  <div className="severity-dot" data-severity={alert.severity} title={alert.severity} />
-                  <div className="alert-title-block">
+                <div className="alert-card-top">
+                  <div className="alert-title-section">
+                    <div className="severity-dot" data-severity={alert.severity} title={alert.severity} />
                     <h4 className="alert-title">{alert.title}</h4>
-                    <div className="alert-meta-top">
-                      <span className="location-tag">{alert.country}</span>
-                      <span className="product-tag">{alert.product}</span>
-                    </div>
                   </div>
                   <div className="alert-flag">🚩</div>
+                </div>
+                <div className="alert-meta-top">
+                  <span className="location-tag">{alert.country}</span>
+                  <span className="product-tag">{alert.product}</span>
                 </div>
                 <div className="alert-card-footer">
                   <span className="confidence-badge">{alert.confidence}% confident</span>
