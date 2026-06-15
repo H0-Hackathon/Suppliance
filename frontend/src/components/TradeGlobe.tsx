@@ -1,158 +1,65 @@
-import { Map } from 'react-map-gl/maplibre';
-import React, { useState, useEffect, useMemo } from 'react';
-import DeckGL from '@deck.gl/react';
-import { ArcLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
-import { MapView } from '@deck.gl/core';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Globe from 'react-globe.gl';
 
-// ─── Supplier Risk Network Data ───────────────────────────────────────────────
+// ─── Data ────────────────────────────────────────────────────────────────────
 
 interface Supplier {
   name: string;
   country: string;
-  coords: [number, number];
+  lat: number;
+  lng: number;
   status: 'impacted' | 'healthy' | 'alternative' | 'customer';
   riskScore: number;
   exposure: string;
-  // exposure ring size: 1=low, 2=moderate, 3=high
   exposureTier: 1 | 2 | 3;
 }
 
 const SUPPLIERS: Supplier[] = [
-  {
-    name: 'Vietnam Textiles Ltd',
-    country: 'Vietnam',
-    coords: [106.6838, 20.8651],
-    status: 'impacted',
-    riskScore: 82,
-    exposure: '$40,000',
-    exposureTier: 3,
-  },
-  {
-    name: 'Dhaka Apparel Co',
-    country: 'Bangladesh',
-    coords: [90.4125, 23.8103],
-    status: 'healthy',
-    riskScore: 21,
-    exposure: '$18,500',
-    exposureTier: 1,
-  },
-  {
-    name: 'Shenzhen Components',
-    country: 'China',
-    coords: [114.0579, 22.5431],
-    status: 'impacted',
-    riskScore: 74,
-    exposure: '$95,000',
-    exposureTier: 3,
-  },
-  {
-    name: 'MexiThread Mfg',
-    country: 'Mexico',
-    coords: [-103.3496, 20.6597],
-    status: 'alternative',
-    riskScore: 18,
-    exposure: '$22,000',
-    exposureTier: 2,
-  },
-  {
-    name: 'Colombo Fabrics',
-    country: 'Sri Lanka',
-    coords: [79.8612, 6.9271],
-    status: 'alternative',
-    riskScore: 29,
-    exposure: '$14,000',
-    exposureTier: 1,
-  },
-  {
-    name: 'US Distribution Hub',
-    country: 'United States',
-    coords: [-118.2437, 34.0522],
-    status: 'customer',
-    riskScore: 0,
-    exposure: '$0',
-    exposureTier: 1,
-  },
+  { name: 'Vietnam Textiles Ltd', country: 'Vietnam',      lat: 20.8651,  lng: 106.6838,  status: 'impacted',    riskScore: 82, exposure: '$40,000', exposureTier: 3 },
+  { name: 'Dhaka Apparel Co',     country: 'Bangladesh',   lat: 23.8103,  lng: 90.4125,   status: 'healthy',     riskScore: 21, exposure: '$18,500', exposureTier: 1 },
+  { name: 'Shenzhen Components',  country: 'China',        lat: 22.5431,  lng: 114.0579,  status: 'impacted',    riskScore: 74, exposure: '$95,000', exposureTier: 3 },
+  { name: 'MexiThread Mfg',       country: 'Mexico',       lat: 20.6597,  lng: -103.3496, status: 'alternative', riskScore: 18, exposure: '$22,000', exposureTier: 2 },
+  { name: 'Colombo Fabrics',      country: 'Sri Lanka',    lat: 6.9271,   lng: 79.8612,   status: 'alternative', riskScore: 29, exposure: '$14,000', exposureTier: 1 },
+  { name: 'US Distribution Hub',  country: 'United States',lat: 34.0522,  lng: -118.2437, status: 'customer',    riskScore: 0,  exposure: '$0',      exposureTier: 1 },
 ];
 
-interface Route {
-  source: [number, number];
-  target: [number, number];
+interface Arc {
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
   routeStatus: 'impacted' | 'healthy' | 'alternative';
+  exposureTier: 1 | 2 | 3;
 }
 
-const ROUTES: Route[] = [
-  { source: [106.6838, 20.8651], target: [-118.2437, 34.0522], routeStatus: 'impacted' },
-  { source: [114.0579, 22.5431], target: [-118.2437, 34.0522], routeStatus: 'impacted' },
-  { source: [90.4125, 23.8103],  target: [-118.2437, 34.0522], routeStatus: 'healthy' },
-  { source: [-103.3496, 20.6597], target: [-118.2437, 34.0522], routeStatus: 'alternative' },
-  { source: [79.8612, 6.9271],   target: [-118.2437, 34.0522], routeStatus: 'alternative' },
+const ARCS: Arc[] = [
+  { startLat: 20.8651, startLng: 106.6838, endLat: 34.0522, endLng: -118.2437, routeStatus: 'impacted',    exposureTier: 3 },
+  { startLat: 22.5431, startLng: 114.0579, endLat: 34.0522, endLng: -118.2437, routeStatus: 'impacted',    exposureTier: 3 },
+  { startLat: 23.8103, startLng: 90.4125,  endLat: 34.0522, endLng: -118.2437, routeStatus: 'healthy',     exposureTier: 1 },
+  { startLat: 20.6597, startLng: -103.3496,endLat: 34.0522, endLng: -118.2437, routeStatus: 'alternative', exposureTier: 2 },
+  { startLat: 6.9271,  startLng: 79.8612,  endLat: 34.0522, endLng: -118.2437, routeStatus: 'alternative', exposureTier: 1 },
 ];
 
 // ─── Color maps ───────────────────────────────────────────────────────────────
 
-// Warm trade-risk palette: crimson · emerald · amber · teal
-const NODE_COLOR: Record<Supplier['status'], [number, number, number]> = {
-  impacted:    [220, 38, 38],    // crimson
-  healthy:     [16, 185, 129],   // emerald
-  alternative: [13, 148, 136],   // teal
-  customer:    [217, 119, 6],    // amber
+const NODE_HEX: Record<Supplier['status'], string> = {
+  impacted:    '#dc2626',
+  healthy:     '#10b981',
+  alternative: '#0d9488',
+  customer:    '#d97706',
 };
 
-const ROUTE_COLOR: Record<Route['routeStatus'], { src: [number,number,number,number]; tgt: [number,number,number,number] }> = {
-  impacted:    { src: [220, 38, 38, 230],  tgt: [220, 38, 38, 35]  },
-  healthy:     { src: [16, 185, 129, 220], tgt: [16, 185, 129, 35] },
-  alternative: { src: [13, 148, 136, 220], tgt: [13, 148, 136, 35] },
+const ARC_COLOR: Record<Arc['routeStatus'], string> = {
+  impacted:    '#dc2626',
+  healthy:     '#10b981',
+  alternative: '#f59e0b',
 };
 
-// Ring radius per tier (in meters)
-const RING_RADIUS: Record<1|2|3, number> = {
-  1: 180000,
-  2: 310000,
-  3: 480000,
-};
+// Ring sizes per tier (globe altitude, 0–1 range)
+const RING_MAX_R: Record<1|2|3, number> = { 1: 1.5, 2: 2.8, 3: 4.2 };
 
-const INITIAL_VIEW = { longitude: -10, latitude: 22, zoom: 1.7, pitch: 0, bearing: 0 };
-
-// ─── Particle helpers ─────────────────────────────────────────────────────────
-
-// Particles per route tier — more particles = higher exposure
-const PARTICLES_PER_TIER: Record<1 | 2 | 3, number> = { 1: 3, 2: 5, 3: 9 };
-
-// Great-circle interpolation between two lon/lat points at fraction t
-function lerpGreatCircle(
-  src: [number, number],
-  tgt: [number, number],
-  t: number,
-  arcHeight = 0.35
-): [number, number, number] {
-  // Simple spherical linear interpolation (good enough for short-to-mid arcs)
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const lat1 = toRad(src[1]);
-  const lon1 = toRad(src[0]);
-  const lat2 = toRad(tgt[1]);
-  const lon2 = toRad(tgt[0]);
-  const d = 2 * Math.asin(Math.sqrt(
-    Math.sin((lat2 - lat1) / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
-  ));
-  if (d === 0) return [src[0], src[1], 0];
-  const A = Math.sin((1 - t) * d) / Math.sin(d);
-  const B = Math.sin(t * d) / Math.sin(d);
-  const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
-  const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
-  const z = A * Math.sin(lat1) + B * Math.sin(lat2);
-  const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
-  const lon = Math.atan2(y, x);
-  // Bell-curve altitude lift
-  const alt = Math.sin(t * Math.PI) * arcHeight * 1e6;
-  return [(lon * 180) / Math.PI, (lat * 180) / Math.PI, alt];
-}
-
-interface Particle {
-  position: [number, number, number];
-  color: [number, number, number, number];
-  radius: number;
-}
+// Particles per arc
+const PULSES: Record<1|2|3, number> = { 1: 1, 2: 2, 3: 3 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,224 +79,143 @@ export interface TradeGlobeProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
-  const [viewState, setViewState] = useState(INITIAL_VIEW);
+  const globeRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState({ w: 800, h: 600 });
   const [hoveredNode, setHoveredNode] = useState<Supplier | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const [animTick, setAnimTick] = useState(0);
 
+  // Size tracking
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(() => {
+      setDims({ w: el.offsetWidth, h: el.offsetHeight });
+    });
+    obs.observe(el);
+    setDims({ w: el.offsetWidth || 800, h: el.offsetHeight || 600 });
+    return () => obs.disconnect();
+  }, []);
+
+  // Auto-rotate
+  useEffect(() => {
+    if (!globeRef.current) return;
+    const ctrl = globeRef.current.controls();
+    ctrl.autoRotate = true;
+    ctrl.autoRotateSpeed = 0.4;
+    ctrl.enableZoom = true;
+    ctrl.enablePan = false;
+    globeRef.current.pointOfView({ lat: 22, lng: 18, altitude: 2.2 }, 1200);
+  }, []);
+
+  // Pulse ticker for rings
   useEffect(() => {
     const id = setInterval(() => setAnimTick(t => (t + 1) % 360), 40);
     return () => clearInterval(id);
   }, []);
 
-  // Pulse factor: 0→1→0
-  const pulse = (Math.sin((animTick / 360) * Math.PI * 2) + 1) / 2;
-
-  // ── Exposure packet particles (recomputed every tick) ──────────────────────
-  const particles = useMemo<Particle[]>(() => {
-    const out: Particle[] = [];
-    ROUTES.forEach((route) => {
-      // Determine exposure tier from the source supplier
-      const supplier = SUPPLIERS.find(
-        (s) => s.coords[0] === route.source[0] && s.coords[1] === route.source[1]
-      );
-      const tier = (supplier?.exposureTier ?? 1) as 1 | 2 | 3;
-      const count = PARTICLES_PER_TIER[tier];
-      const color = ROUTE_COLOR[route.routeStatus].src;
-
-      for (let i = 0; i < count; i++) {
-        // Each particle has a base offset spread evenly, animated by tick
-        const baseT = i / count;
-        const t = ((baseT + animTick / 360) % 1 + 1) % 1; // 0→1 looping
-        const position = lerpGreatCircle(route.source, route.target, t);
-        // Fade out near endpoints for smooth appearance/disappearance
-        const alpha = t < 0.08
-          ? Math.round((t / 0.08) * 230)
-          : t > 0.92
-          ? Math.round(((1 - t) / 0.08) * 230)
-          : 230;
-        // Larger, brighter packets on high-exposure routes
-        const radius = tier === 3 ? 55000 : tier === 2 ? 40000 : 28000;
-        out.push({ position, color: [color[0], color[1], color[2], alpha], radius });
-      }
-    });
-    return out;
-  }, [animTick]);
-
-  // ── Layers ──────────────────────────────────────────────────────────────────
-
-  // Heat zone glow under high-risk nodes (soft filled halo)
-  const heatLayer = new ScatterplotLayer<Supplier>({
-    id: 'heat-zones',
-    data: SUPPLIERS.filter((s) => s.exposureTier === 3 && s.status !== 'customer'),
-    getPosition: (d) => d.coords,
-    getFillColor: (d) => [...NODE_COLOR[d.status], Math.round(18 + pulse * 22)] as [number,number,number,number],
-    getRadius: 620000 + pulse * 80000,
-    stroked: false,
-    radiusUnits: 'meters',
-    updateTriggers: { getFillColor: animTick, getRadius: animTick },
+  // ── Ring data (pulsing per node) ───────────────────────────────────────────
+  const ringData = SUPPLIERS.flatMap((s) => {
+    if (s.status === 'customer') return [];
+    return [{ lat: s.lat, lng: s.lng, maxR: RING_MAX_R[s.exposureTier], color: NODE_HEX[s.status], speed: s.exposureTier }];
   });
 
-  // Outer exposure rings (pulsing, per tier)
-  const riskRingLayers = ([1, 2, 3] as const).map((tier) => {
-    const data = SUPPLIERS.filter(
-      (s) => s.exposureTier === tier && s.status !== 'customer'
-    );
-    const baseRadius = RING_RADIUS[tier];
-    const pulseAmt = tier === 3 ? 60000 : tier === 2 ? 35000 : 15000;
-    return new ScatterplotLayer<Supplier>({
-      id: `risk-ring-${tier}`,
-      data,
-      getPosition: (d) => d.coords,
-      getFillColor: [0, 0, 0, 0],
-      getLineColor: (d) => [...NODE_COLOR[d.status], tier === 3 ? 190 : tier === 2 ? 130 : 75] as [number,number,number,number],
-      getLineWidth: tier === 3 ? 3 : tier === 2 ? 2 : 1,
-      stroked: true,
-      filled: false,
-      getRadius: baseRadius + pulse * pulseAmt,
-      updateTriggers: { getRadius: animTick },
-      radiusUnits: 'meters',
-    });
-  });
+  // ── Arc stroke width per tier ──────────────────────────────────────────────
+  const arcStroke = (d: Arc) => d.exposureTier === 3 ? 1.2 : d.exposureTier === 2 ? 0.9 : 0.6;
 
-  // Base route arcs — dim underlayer
-  const arcBaseLayer = new ArcLayer<Route>({
-    id: 'routes-base',
-    data: ROUTES,
-    getSourcePosition: (d) => d.source,
-    getTargetPosition: (d) => d.target,
-    getSourceColor: (d) => {
-      const c = ROUTE_COLOR[d.routeStatus].src;
-      return [c[0], c[1], c[2], 40] as [number,number,number,number];
-    },
-    getTargetColor: (d) => {
-      const c = ROUTE_COLOR[d.routeStatus].tgt;
-      return [c[0], c[1], c[2], 10] as [number,number,number,number];
-    },
-    getWidth: (d) => d.routeStatus === 'impacted' ? 1 : 0.8,
-    greatCircle: true,
-    getHeight: 0.5,
-  });
+  // ── Arc dash for animated pulses ───────────────────────────────────────────
+  // dashLength + dashGap + animateTime drive the flowing pulse effect
+  const arcDashLength = (d: Arc) => d.exposureTier === 3 ? 0.4 : 0.25;
+  const arcDashGap    = (d: Arc) => 1 - arcDashLength(d);
+  const arcAnimTime   = (d: Arc) => d.routeStatus === 'impacted' ? 1800 : 2800;
 
-  // Bright glow arcs on top (impacted routes glow harder)
-  const arcGlowLayer = new ArcLayer<Route>({
-    id: 'routes-glow',
-    data: ROUTES,
-    getSourcePosition: (d) => d.source,
-    getTargetPosition: (d) => d.target,
-    getSourceColor: (d) => ROUTE_COLOR[d.routeStatus].src,
-    getTargetColor: (d) => ROUTE_COLOR[d.routeStatus].tgt,
-    getWidth: (d) => d.routeStatus === 'impacted' ? 2.5 : d.routeStatus === 'alternative' ? 1.8 : 1.5,
-    greatCircle: true,
-    getHeight: 0.5,
-  });
+  // ── Node point color / size ────────────────────────────────────────────────
+  const pointColor  = (d: Supplier) => NODE_HEX[d.status];
+  const pointRadius = (d: Supplier) => d.status === 'customer' ? 0.45 : d.exposureTier === 3 ? 0.55 : 0.4;
+  const pointAlt    = (d: Supplier) => d.status === 'customer' ? 0.005 : 0.01;
 
-  // Exposure packet particles
-  const particleLayer = new ScatterplotLayer<Particle>({
-    id: 'particles',
-    data: particles,
-    getPosition: (d) => d.position,
-    getFillColor: (d) => d.color,
-    getRadius: (d) => d.radius,
-    stroked: false,
-    radiusUnits: 'meters',
-    updateTriggers: { getPosition: animTick, getFillColor: animTick, getRadius: animTick },
-  });
-
-  // Node core dots
-  const nodeLayer = new ScatterplotLayer<Supplier>({
-    id: 'nodes',
-    data: SUPPLIERS,
-    getPosition: (d) => d.coords,
-    getFillColor: (d) =>
-      hoveredNode?.name === d.name
-        ? [255, 255, 255, 255]
-        : [...NODE_COLOR[d.status], 240] as [number,number,number,number],
-    getLineColor: (d) => [...NODE_COLOR[d.status], 255] as [number,number,number,number],
-    getLineWidth: 2,
-    stroked: true,
-    filled: true,
-    getRadius: (d) => hoveredNode?.name === d.name ? 110000 : 75000,
-    pickable: true,
-    onHover: ({ object, x, y }: any) => {
-      setHoveredNode(object ?? null);
-      setTooltipPos(object ? { x, y } : null);
-    },
-    updateTriggers: { getFillColor: hoveredNode, getRadius: hoveredNode },
-    transitions: { getRadius: 100 },
-    radiusUnits: 'meters',
-  });
-
-  // Floating labels (name)
-  const labelLayer = new TextLayer<Supplier>({
-    id: 'labels',
-    data: SUPPLIERS.filter((s) => s.status !== 'customer'),
-    getPosition: (d) => d.coords,
-    getText: (d) => d.name,
-    getSize: 11,
-    getColor: (d) => [...NODE_COLOR[d.status], 210] as [number,number,number,number],
-    getPixelOffset: [0, -22],
-    fontFamily: 'Inter, system-ui, sans-serif',
-    fontWeight: 600,
-    background: true,
-    getBackgroundColor: [14, 11, 7, 185],
-    getBorderColor: (d) => [...NODE_COLOR[d.status], 80] as [number,number,number,number],
-    getBorderWidth: 1,
-    backgroundPadding: [4, 2, 4, 2],
-    pickable: false,
-  });
-
-  // Risk score sub-labels
-  const scoreLayer = new TextLayer<Supplier>({
-    id: 'scores',
-    data: SUPPLIERS.filter((s) => s.status !== 'customer'),
-    getPosition: (d) => d.coords,
-    getText: (d) => `Risk ${d.riskScore}  ·  Exp ${d.exposure}`,
-    getSize: 9,
-    getColor: [160, 148, 130, 180],
-    getPixelOffset: [0, -8],
-    fontFamily: 'JetBrains Mono, monospace',
-    fontWeight: 400,
-    background: true,
-    getBackgroundColor: [14, 11, 7, 165],
-    getBorderColor: [50, 38, 22, 60],
-    getBorderWidth: 1,
-    backgroundPadding: [4, 2, 4, 2],
-    pickable: false,
-  });
-
-  const layers = [
-    heatLayer,
-    ...riskRingLayers,
-    arcBaseLayer,
-    arcGlowLayer,
-    particleLayer,
-    nodeLayer,
-    labelLayer,
-    scoreLayer,
-  ];
+  // ── Hover handlers ─────────────────────────────────────────────────────────
+  const onPointHover = useCallback((point: object | null, _prev: object | null, event?: MouseEvent) => {
+    const s = point as Supplier | null;
+    setHoveredNode(s);
+    if (s && event) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) setTooltipPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    } else {
+      setTooltipPos(null);
+    }
+  }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#060d1f', overflow: 'hidden' }}>
-      <DeckGL
-        views={new MapView({ id: 'map', repeat: true })}
-        viewState={viewState}
-        onViewStateChange={({ viewState: vs }: any) => setViewState(vs)}
-        controller={true}
-        layers={layers}
-        style={{ position: 'absolute', inset: 0 }}
-        parameters={{ clearColor: [0.04, 0.03, 0.02, 1] }}
-      >
-        <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
-      </DeckGL>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#020b18', overflow: 'hidden' }}
+    >
+      <Globe
+        ref={globeRef}
+        width={dims.w}
+        height={dims.h}
+
+        // ── Earth textures ──────────────────────────────────────────────────
+        globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+
+        // ── Atmosphere ─────────────────────────────────────────────────────
+        showAtmosphere={true}
+        atmosphereColor="#1a4a7a"
+        atmosphereAltitude={0.18}
+
+        // ── Supplier nodes ─────────────────────────────────────────────────
+        pointsData={SUPPLIERS}
+        pointLat="lat"
+        pointLng="lng"
+        pointColor={pointColor as any}
+        pointRadius={pointRadius as any}
+        pointAltitude={pointAlt as any}
+        pointResolution={16}
+        onPointHover={onPointHover as any}
+        pointLabel={() => ''}
+
+        // ── Exposure arcs ──────────────────────────────────────────────────
+        arcsData={ARCS}
+        arcStartLat="startLat"
+        arcStartLng="startLng"
+        arcEndLat="endLat"
+        arcEndLng="endLng"
+        arcColor={(d: any) => {
+          const hex = ARC_COLOR[(d as Arc).routeStatus];
+          // base→faded gradient: [source color, transparent]
+          return [hex, `${hex}22`];
+        }}
+        arcAltitude={(d: any) => (d as Arc).exposureTier === 3 ? 0.5 : 0.35}
+        arcStroke={arcStroke as any}
+        arcDashLength={arcDashLength as any}
+        arcDashGap={arcDashGap as any}
+        arcDashAnimateTime={arcAnimTime as any}
+
+        // ── Exposure rings ─────────────────────────────────────────────────
+        ringsData={ringData}
+        ringLat="lat"
+        ringLng="lng"
+        ringMaxRadius="maxR"
+        ringColor={(d: any) => (t: number) => `${d.color}${Math.round((1 - t) * 200).toString(16).padStart(2, '0')}`}
+        ringRepeatPeriod={(d: any) => (4 - d.speed) * 900}
+        ringPropagationSpeed={(d: any) => d.speed * 1.2}
+        ringAltitude={0.005}
+
+        // ── Misc ───────────────────────────────────────────────────────────
+        rendererConfig={{ antialias: true, alpha: true }}
+      />
 
       {/* ── Critical alert banner ── */}
       <div style={{
         position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
         background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.32)',
-        borderRadius: 6, padding: '5px 16px', fontSize: 11, fontWeight: 700,
-        color: '#fca5a5', letterSpacing: '0.05em', fontFamily: 'Inter, system-ui, sans-serif',
-        zIndex: 10, whiteSpace: 'nowrap', backdropFilter: 'blur(8px)',
+        borderRadius: 6, padding: '5px 18px', fontSize: 11, fontWeight: 700,
+        color: '#fca5a5', letterSpacing: '0.06em', fontFamily: 'Inter, system-ui, sans-serif',
+        zIndex: 10, whiteSpace: 'nowrap', backdropFilter: 'blur(10px)',
       }}>
         CRITICAL — Vietnam tariff +34% · Shenzhen factory suspension
       </div>
@@ -397,16 +223,16 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
       {/* ── Legend ── */}
       <div style={{
         position: 'absolute', bottom: 16, left: 16,
-        background: 'rgba(14,11,7,0.9)', backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(245,158,11,0.12)', borderRadius: 10,
+        background: 'rgba(2,11,24,0.88)', backdropFilter: 'blur(14px)',
+        border: '1px solid rgba(245,158,11,0.14)', borderRadius: 10,
         padding: '12px 16px', fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: 11, color: '#cbd5e1', minWidth: 220, zIndex: 10,
+        fontSize: 11, color: '#cbd5e1', minWidth: 210, zIndex: 10,
       }}>
         <div style={{
-          fontWeight: 700, fontSize: 9, letterSpacing: '0.1em',
-          color: 'rgba(120,113,108,0.7)', textTransform: 'uppercase', marginBottom: 10,
+          fontWeight: 700, fontSize: 9, letterSpacing: '0.12em',
+          color: 'rgba(120,113,108,0.65)', textTransform: 'uppercase', marginBottom: 10,
         }}>
-          Supplier Risk Network
+          Trade Exposure Network
         </div>
 
         {/* Node types */}
@@ -418,22 +244,20 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         ] as const).map(({ color, label }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <div style={{
-              width: 9, height: 9, borderRadius: '50%',
-              background: color,
-              boxShadow: `0 0 6px ${color}80`,
-              flexShrink: 0,
+              width: 9, height: 9, borderRadius: '50%', background: color,
+              boxShadow: `0 0 6px ${color}90`, flexShrink: 0,
             }} />
             <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
           </div>
         ))}
 
-        <div style={{ borderTop: '1px solid rgba(56,189,248,0.1)', margin: '10px 0' }} />
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', margin: '9px 0' }} />
 
         {/* Route types */}
         {([
-          { color: '#dc2626', label: 'Impacted route' },
+          { color: '#dc2626', label: 'Disrupted route — exposure risk' },
           { color: '#10b981', label: 'Healthy route' },
-          { color: '#0d9488', label: 'Alternative route' },
+          { color: '#f59e0b', label: 'Alternative route — gold' },
         ] as const).map(({ color, label }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <div style={{ width: 20, height: 2, background: color, borderRadius: 2, flexShrink: 0 }} />
@@ -441,24 +265,19 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
           </div>
         ))}
 
-        <div style={{ borderTop: '1px solid rgba(56,189,248,0.1)', margin: '10px 0' }} />
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', margin: '9px 0' }} />
 
-        {/* Risk rings */}
-        <div style={{ fontSize: 9, color: 'rgba(100,116,139,0.7)', marginBottom: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          Exposure Rings
+        <div style={{ fontSize: 9, color: 'rgba(100,116,139,0.6)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Pulsing rings = exposure tier
         </div>
-        {([
-          { label: 'Low exposure', dash: '1px' },
-          { label: 'Moderate exposure', dash: '2px' },
-          { label: 'High exposure (pulsing)', dash: '3px' },
-        ]).map(({ label, dash }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+        {(['Low', 'Moderate', 'High'] as const).map((tier, i) => (
+          <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <div style={{
-              width: 16, height: 16, borderRadius: '50%',
-              border: `${dash} solid rgba(148,163,184,0.5)`,
+              width: 14 + i * 4, height: 14 + i * 4, borderRadius: '50%',
+              border: `${1 + i}px solid rgba(148,163,184,${0.3 + i * 0.15})`,
               flexShrink: 0,
             }} />
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
+            <span style={{ fontSize: 10, color: '#94a3b8' }}>{tier} exposure</span>
           </div>
         ))}
       </div>
@@ -467,15 +286,15 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
       {hoveredNode && tooltipPos && (
         <div style={{
           position: 'absolute',
-          left: tooltipPos.x + 14,
-          top: tooltipPos.y - 10,
-          background: 'rgba(14,11,7,0.97)',
-          border: `1px solid ${NODE_COLOR[hoveredNode.status] ? `rgba(${NODE_COLOR[hoveredNode.status].join(',')},0.4)` : 'rgba(56,189,248,0.3)'}`,
+          left: tooltipPos.x + 16,
+          top: tooltipPos.y - 12,
+          background: 'rgba(2,11,24,0.97)',
+          border: `1px solid ${NODE_HEX[hoveredNode.status]}55`,
           borderRadius: 8, padding: '10px 14px',
           fontFamily: 'Inter, system-ui, sans-serif',
-          zIndex: 30, pointerEvents: 'none',
-          minWidth: 170,
-          backdropFilter: 'blur(12px)',
+          zIndex: 30, pointerEvents: 'none', minWidth: 176,
+          backdropFilter: 'blur(14px)',
+          boxShadow: `0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px ${NODE_HEX[hoveredNode.status]}22`,
         }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 }}>
             {hoveredNode.name}
@@ -488,16 +307,15 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 4 }}>
                 <span style={{ fontSize: 10, color: '#64748b' }}>Risk Score</span>
                 <span style={{
-                  fontSize: 11, fontWeight: 700,
+                  fontSize: 11, fontWeight: 700, fontFamily: 'monospace',
                   color: hoveredNode.riskScore > 60 ? '#ef4444' : hoveredNode.riskScore > 35 ? '#fbbf24' : '#22c55e',
-                  fontFamily: 'JetBrains Mono, monospace',
                 }}>
                   {hoveredNode.riskScore}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                 <span style={{ fontSize: 10, color: '#64748b' }}>Exposure</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', fontFamily: 'monospace' }}>
                   {hoveredNode.exposure}
                 </span>
               </div>
@@ -505,18 +323,15 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
           )}
           <div style={{
             marginTop: 8, paddingTop: 8,
-            borderTop: '1px solid rgba(56,189,248,0.1)',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
             fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
-            color: hoveredNode.status === 'impacted' ? '#ef4444'
-              : hoveredNode.status === 'alternative' ? '#fbbf24'
-              : hoveredNode.status === 'customer' ? '#38bdf8'
-              : '#22c55e',
+            color: NODE_HEX[hoveredNode.status],
             textTransform: 'uppercase',
           }}>
-            {hoveredNode.status === 'impacted' ? 'AT RISK — Trade exposure elevated'
-              : hoveredNode.status === 'alternative' ? 'ALTERNATIVE — Rerouting available'
-              : hoveredNode.status === 'customer' ? 'DESTINATION'
-              : 'HEALTHY — No active disruptions'}
+            {hoveredNode.status === 'impacted'    ? 'AT RISK — Trade exposure elevated'
+            : hoveredNode.status === 'alternative' ? 'ALTERNATIVE — Rerouting available'
+            : hoveredNode.status === 'customer'    ? 'DESTINATION'
+            :                                        'HEALTHY — No active disruptions'}
           </div>
         </div>
       )}
