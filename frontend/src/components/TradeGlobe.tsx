@@ -110,16 +110,16 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     const controls = globe.controls() as any;
     if (controls) {
       controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.4;
+      controls.autoRotateSpeed = 0.3;
       controls.enableZoom = true;
       controls.enablePan = true;
-      controls.minDistance = 150;
-      controls.maxDistance = 700;
+      controls.minDistance = 200;
+      controls.maxDistance = 800;
     }
 
-    // Center on Atlantic, tilt slightly for 3D effect
+    // Center on Atlantic, zoomed out to show all three major trade regions simultaneously
     setTimeout(() => {
-      globe.pointOfView({ lat: 15, lng: 0, altitude: 2.2 }, 1500);
+      globe.pointOfView({ lat: 20, lng: -20, altitude: 2.8 }, 1500);
     }, 100);
   }, []);
 
@@ -160,13 +160,14 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         height={dims.height}
         
         // ── Globe appearance ──────────────────────────────────────────────
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+        // Use day-side Earth texture for better geographic readability
+        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        backgroundImageUrl=""
         
         showAtmosphere
-        atmosphereColor="#1a3a5c"
-        atmosphereAltitude={0.18}
+        atmosphereColor="#4da6ff"
+        atmosphereAltitude={0.16}
         
         // ── Supplier nodes ────────────────────────────────────────────────
         pointsData={pointsData}
