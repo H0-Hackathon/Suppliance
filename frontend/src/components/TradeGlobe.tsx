@@ -51,12 +51,12 @@ const STATUS_COLOR: Record<Supplier['status'], string> = {
 };
 
 const ARC_COLOR: Record<Arc['routeStatus'], [number, number, number, number]> = {
-  impacted:    [220, 38,  38,  230],
-  healthy:     [16,  185, 129, 200],
-  alternative: [245, 158, 11,  220],
+  impacted:    [220, 38,  38,  255],
+  healthy:     [16,  185, 129, 230],
+  alternative: [245, 158, 11,  255],
 };
 
-const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.4, 2: 0.7, 3: 1.1 };
+const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.6, 2: 1.0, 3: 1.55 };
 const ARC_DASH_SPEED: Record<1|2|3, number> = { 1: 4000, 2: 2800, 3: 1800 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
   const [dims, setDims] = useState({ width: 1200, height: 800 });
   const [hoveredSupplier, setHoveredSupplier] = useState<Supplier | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [animTick, setAnimTick] = useState(0);
 
   // Responsive sizing via ResizeObserver
   useEffect(() => {
@@ -100,11 +101,63 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     return () => ro.disconnect();
   }, []);
 
-  // Globe initialization
+  // Animate exposure pulses along routes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnimTick((t) => (t + 1) % 360);
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Globe initialization with starfield background
   useEffect(() => {
     if (!globeRef.current) return;
 
     const globe = globeRef.current;
+    
+    // Add starfield background to Three.js scene
+    const scene = globe.scene() as THREE.Scene;
+    if (scene && !scene.background) {
+      // Create realistic deep space background
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Deep space gradient: almost black to very dark blue
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, '#0a0e1a');
+        gradient.addColorStop(0.5, '#050812');
+        gradient.addColorStop(1, '#0a0e1a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Add subtle stars
+        for (let i = 0; i < 2000; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const size = Math.random() * 1.5;
+          const brightness = Math.random() * 0.8 + 0.2; // 0.2-1.0
+          ctx.fillStyle = `rgba(255, 255, 255, ${brightness * 0.6})`;
+          ctx.fillRect(x, y, size, size);
+        }
+
+        // Add very faint distant galaxies (small soft circles)
+        for (let i = 0; i < 50; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const radius = Math.random() * 8 + 3;
+          const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+          gradient.addColorStop(0, 'rgba(200, 200, 220, 0.08)');
+          gradient.addColorStop(1, 'rgba(200, 200, 220, 0)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        }
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      scene.background = texture;
+    }
     
     // Enable controls
     const controls = globe.controls() as any;
@@ -129,10 +182,35 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
   // Memoized arc data
   const arcsData = useMemo(() => ARCS, []);
 
-  // Get point size based on exposure tier
+  // Generate animated exposure pulse points along arcs
+  const pulseData = useMemo(() => {
+    const pulses = [];
+    ARCS.forEach((arc, arcIdx) => {
+      const pulsesPerRoute = arc.exposureTier === 3 ? 4 : arc.exposureTier === 2 ? 3 : 2;
+      for (let i = 0; i < pulsesPerRoute; i++) {
+        // Each pulse has a base offset, then moves along the arc based on animTick
+        const baseT = i / pulsesPerRoute;
+        const progress = (animTick / 360 + baseT) % 1;
+        
+        // Linear interpolation for pulse position
+        const lat = arc.startLat + (arc.endLat - arc.startLat) * progress;
+        const lng = arc.startLng + (arc.endLng - arc.startLng) * progress;
+        
+        pulses.push({
+          lat,
+          lng,
+          routeStatus: arc.routeStatus,
+          exposureTier: arc.exposureTier,
+        });
+      }
+    });
+    return pulses;
+  }, [animTick]);
+
+  // Get point size based on exposure tier (+30% increase)
   const getPointRadius = useCallback((d: any) => {
-    if (d.status === 'customer') return 0.65;
-    return 0.5;
+    if (d.status === 'customer') return 0.85;
+    return 0.65;
   }, []);
 
   // Get point color
@@ -167,7 +245,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         
         showAtmosphere
         atmosphereColor="#4da6ff"
-        atmosphereAltitude={0.16}
+        atmosphereAltitude={0.11}
         
         // ── Supplier nodes ────────────────────────────────────────────────
         pointsData={pointsData}
@@ -196,12 +274,23 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         arcDashAnimateTime={(d: any) => ARC_DASH_SPEED[d.exposureTier]}
         arcCurveResolution={64}
         
+        // ── Animated exposure pulses (representing financial exposure flow) ─
+        pointsData={pulseData}
+        pointLat={(d: any) => d.lat}
+        pointLng={(d: any) => d.lng}
+        pointAltitude={(d: any) => 0.008}
+        pointRadius={(d: any) => d.exposureTier === 3 ? 0.35 : d.exposureTier === 2 ? 0.28 : 0.22}
+        pointColor={(d: any) => ARC_COLOR[d.routeStatus]}
+        pointResolution={6}
+        pointMerge={false}
+        onPointHover={undefined}
+        
         // ── Labels ────────────────────────────────────────────────────────
         labelsData={SUPPLIERS.filter((s) => s.status !== 'customer')}
         labelLat={(d: any) => d.lat}
         labelLng={(d: any) => d.lng}
         labelText={(d: any) => d.name}
-        labelSize={0.5}
+        labelSize={0.65}
         labelDotRadius={0}
         labelColor={(d: any) => STATUS_COLOR[d.status]}
         labelAltitude={0.022}
