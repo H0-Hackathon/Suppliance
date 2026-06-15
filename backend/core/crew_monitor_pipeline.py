@@ -2,18 +2,17 @@
 CoastGuard — 5-Agent Tariff Monitoring Pipeline
 
 Mock mode  (USE_MOCK_LLM=true):  hardcoded realistic output, no LLM call.
-Real mode  (USE_MOCK_LLM=false): 5 CrewAI agents backed by Gemini.
+Real mode  (USE_MOCK_LLM=false): deterministic Agent1/Agent2 + 3 CrewAI agents backed by Gemini.
 
-Real tools (USE_REAL_TOOLS=true): the TariffMonitor agent additionally gets a
-GDELT news-search tool (see services/gdelt.py) so its "risk_detected" output
-is grounded in real headlines instead of pure LLM guesswork. This is a
-separate flag from USE_MOCK_LLM so the two can be mixed during a demo, e.g.
-real GDELT headlines + mocked LLM reasoning (free/instant), or real LLM +
-mocked tools.
+Agent1 (TariffMonitor) and Agent2 (ImpactCalculator) are deterministic — no LLM
+call, no GDELT. They read real collector data (core/monitor_agent.py,
+services/impact_service.py) instead of GDELT or an LLM guess. AlternativesFinder,
+ImportCompliance, and Adversarial remain Gemini-backed CrewAI agents that reason
+over Agent1+Agent2's structured JSON.
 
 Agents:
-  1. TariffMonitor       — detects risk events from GDELT news (+ optionally USITC / Sentinel Hub later)
-  2. ImpactCalculator    — calculates dollar impact on pending orders in the DB
+  1. TariffMonitor       — (deterministic) normalizes tariff/supply-chain events from collectors/*.py JSONL data
+  2. ImpactCalculator    — (deterministic) calculates dollar impact on pending orders via ImpactEngine
   3. AlternativesFinder  — finds backup suppliers and alternate sourcing routes
   4. ImportCompliance    — lists required customs documents per alternative
   5. Adversarial         — challenges every recommendation before it reaches the human
@@ -26,6 +25,7 @@ import uuid
 from typing import Optional
 
 from config import get_settings
+from core.agent_rules import ALTERNATIVES_RULES, COMPLIANCE_RULES, ADVERSARIAL_RULES
 from services.coordinates import get_country_coordinates
 from sqlalchemy.orm import Session
 
@@ -35,26 +35,9 @@ settings = get_settings()
 # CrewAI is an optional dependency — only required in real mode
 try:
     from crewai import Agent, Task, Crew, LLM
-    from crewai.tools import tool
     HAS_CREWAI = True
 except ImportError:
     HAS_CREWAI = False
-
-
-# ── GDELT tool ──────────────────────────────────────────────────────────────
-# Wrapped as a CrewAI @tool so the TariffMonitor agent can call it directly.
-# Only registered on the agent when USE_REAL_TOOLS=true (see _real_run below) —
-# wrapping it here unconditionally is fine because @tool just builds a
-# CrewAI Tool object, it doesn't make a network call until the agent uses it.
-if HAS_CREWAI:
-    @tool("GDELT Disruption Search")
-    def gdelt_search_tool(country: str) -> str:
-        """Search GDELT for recent news about tariffs, port disruptions, strikes,
-        sanctions, or other supply-chain risks affecting a country. Pass a
-        2-letter ISO country code (e.g. 'VN' for Vietnam). Returns a JSON list
-        of recent news articles with title, url, seendate, and source_country."""
-        from services.gdelt import search_disruption_events
-        return json.dumps(search_disruption_events(country))
 
 
 # ── LLM initializer ───────────────────────────────────────────────────────────
@@ -162,41 +145,126 @@ class MonitorPipeline:
             "tariff_monitor": {
                 "risk_detected": True,
                 "event": f"25% tariff added on HS {hs_code} from {supplier_country}",
+                "event_type": "TARIFF",
+                "country": supplier_country,
+                "product": "Textiles",
+                "tariff_rate": 25.0,
+                "severity": "HIGH",
                 "confidence": 0.92,
-                "source": "mock_usitc",
+                "source": "mock",
+                "source_url": None,
+                "summary": f"A 25% tariff was announced on HS {hs_code} imports from {supplier_country}.",
             },
             "impact_calculator": {
+                "affected": True,
+                "direct_cost": extra_cost_usd,
                 "extra_cost_usd": extra_cost_usd,
+                "exposure_score": 100.0,
+                "risk_score": round(min(extra_cost_usd / 1000.0, 100.0), 2),
                 "severity": "high",
                 "affected_orders": affected_orders,
+                "eta_risk": "high",
+                "supplier_dependency": 0.8,
+                "reasons": [
+                    f"Event detected affecting {supplier_country} (Textiles)",
+                    "25% tariff rate detected (TARIFF)",
+                    f"Direct cost = order value x 25% = ${extra_cost_usd:,.2f} across {affected_orders} pending order(s)",
+                ],
             },
             "alternatives_finder": {
-                "options": [
+                "alternatives": [
                     {
-                        "supplier": "Dhaka Garments Ltd",
+                        "rank": 1,
+                        "supplier_name": "Dhaka Garments Ltd",
                         "country": "BD",
+                        "country_full": "Bangladesh",
+                        "source": "internal",
                         "lead_time_weeks": 8,
+                        "can_meet_deadline": True,
+                        "deadline_reasoning": "8-week lead time fits within the order's delivery window.",
                         "cost_delta_pct": -12,
+                        "cost_delta_usd": round(extra_cost_usd * -0.12, 2),
+                        "selection_reasoning": "Existing verified supplier in the same product category at lower cost.",
+                        "risks": ["Higher minimum order quantity than the current supplier"],
                     },
                     {
-                        "supplier": "Mumbai Exports",
+                        "rank": 2,
+                        "supplier_name": "Mumbai Exports",
                         "country": "IN",
+                        "country_full": "India",
+                        "source": "estimated",
                         "lead_time_weeks": 5,
+                        "can_meet_deadline": True,
+                        "deadline_reasoning": "Faster 5-week lead time comfortably meets the deadline.",
                         "cost_delta_pct": 8,
+                        "cost_delta_usd": round(extra_cost_usd * 0.08, 2),
+                        "selection_reasoning": "Estimated based on known Indian textile manufacturing hubs.",
+                        "risks": ["Not yet a verified relationship with this buyer"],
                     },
-                ]
+                ],
+                "recommendation_summary": (
+                    "Dhaka Garments Ltd (BD) is the strongest option: verified, lower cost, "
+                    "and within the delivery window."
+                ),
             },
             "import_compliance": {
-                "BD": ["Certificate of Origin", "Commercial Invoice update"],
-                "IN": ["BIS certification check", "Certificate of Origin"],
+                "compliance_by_country": {
+                    "BD": {
+                        "sanctions_clear": True,
+                        "sanctions_note": None,
+                        "mandatory_documents": [
+                            {"document": "Certificate of Origin", "regulatory_basis": "19 CFR 102", "timeline_days": 5},
+                            {"document": "Commercial Invoice", "regulatory_basis": "19 CFR 141.86", "timeline_days": 1},
+                        ],
+                        "conditional_documents": [],
+                        "recommended_documents": ["Packing List"],
+                        "compliance_timeline_days": 10,
+                        "overall_compliance_risk": "low",
+                        "compliance_explanation": (
+                            "Bangladesh has straightforward textile import requirements once GSP "
+                            "eligibility is confirmed."
+                        ),
+                    },
+                    "IN": {
+                        "sanctions_clear": True,
+                        "sanctions_note": None,
+                        "mandatory_documents": [
+                            {"document": "Certificate of Origin", "regulatory_basis": "19 CFR 102", "timeline_days": 5},
+                            {"document": "BIS Certification", "regulatory_basis": "Bureau of Indian Standards", "timeline_days": 14},
+                        ],
+                        "conditional_documents": [
+                            {"document": "Anti-dumping duty declaration", "condition": "product falls under an active AD order", "regulatory_basis": "19 CFR 351"},
+                        ],
+                        "recommended_documents": [],
+                        "compliance_timeline_days": 14,
+                        "overall_compliance_risk": "medium",
+                        "compliance_explanation": (
+                            "India requires an additional BIS certification step that can extend "
+                            "onboarding by up to two weeks."
+                        ),
+                    },
+                },
+                "summary": "Bangladesh has the lower compliance burden; India requires extra certification time.",
             },
             "adversarial": {
                 "verdict": "CAUTION",
-                "flags": ["BD option misses Aug 1 deadline by 1 week"],
-                "recommendation": (
-                    "Use Mumbai Exports (IN). "
-                    "Negotiate 1-week delivery extension with buyer before committing."
+                "flags": [
+                    {
+                        "flag": "Dhaka Garments Ltd's 8-week lead time is close to the buyer's delivery deadline.",
+                        "severity": "medium",
+                        "resolution": "Confirm the exact delivery date and consider partial air freight for the first shipment.",
+                    },
+                ],
+                "recommended_action": (
+                    "Switch this order to Dhaka Garments Ltd (Bangladesh) and confirm the 8-week "
+                    "lead time against your delivery deadline before placing the order."
                 ),
+                "confidence_in_recommendation": 0.85,
+                "reasoning_chain": [
+                    "Step 1: Confirmed the 25% tariff directly impacts this customer's pending order.",
+                    "Step 2: Identified Dhaka Garments Ltd as a verified, lower-cost alternative supplier.",
+                    "Step 3: Flagged the lead time as the main remaining risk and recommended confirming the deadline.",
+                ],
             },
         }
 
@@ -208,7 +276,7 @@ class MonitorPipeline:
             supplier_country=supplier_country,
             agent_outputs=agent_outputs,
             severity=agent_outputs["impact_calculator"]["severity"],
-            summary=agent_outputs["adversarial"]["recommendation"],
+            summary=agent_outputs["adversarial"]["recommended_action"],
             data_source="mock",
         )
 
@@ -233,48 +301,43 @@ class MonitorPipeline:
 
         llm = self.llm
 
-        # ── Agent 1: TariffMonitor ─────────────────────────────────────────────
-        # When USE_REAL_TOOLS=true, this agent gets a real GDELT search tool so
-        # it can ground its answer in actual news headlines instead of pure
-        # LLM guesswork. When false (default), it reasons from its backstory
-        # alone — same behavior as before this feature was added.
-        monitor_tools = [gdelt_search_tool] if settings.use_real_tools else []
+        # ── Agent 1: TariffMonitor (deterministic) ───────────────────────────
+        # Reads collectors/tariff.py + collectors/monitor.py JSONL output and
+        # picks the most relevant normalized event. No LLM call, no GDELT.
+        from core.monitor_agent import get_latest_event
+        monitor_event = get_latest_event(supplier_country=supplier_country, hs_code=hs_code)
 
-        tariff_monitor = Agent(
-            role="Tariff Risk Monitor",
-            goal=(
-                f"Detect tariff changes, port disruptions, and geopolitical events "
-                f"affecting US SMB importers sourcing HS {hs_code} from {supplier_country}."
-            ),
-            backstory=(
-                "You are a senior trade analyst who monitors USITC DataWeb, GDELT news feeds, "
-                "and Sentinel Hub satellite imagery. You excel at spotting early signals of "
-                "tariff changes and supply-chain disruptions that could financially hurt small "
-                "importers before they check their email."
-            ),
-            tools=monitor_tools,
-            llm=llm,
-            verbose=True,
-        )
+        # ── Agent 2: ImpactCalculator (deterministic) ───────────────────────
+        # Runs Agent 1's event through ImpactEngine against this customer's real
+        # pending orders in Aurora. No LLM call, no "$40,000" guess.
+        from services.impact_service import calculate_impact
+        impact_result = calculate_impact(db, customer_id, monitor_event)
 
-        # ── Agent 2: ImpactCalculator ──────────────────────────────────────────
-        impact_calculator = Agent(
-            role="Financial Impact Calculator",
-            goal="Calculate the exact dollar impact of a tariff event on pending import orders.",
-            backstory=(
-                "You are a financial analyst specializing in import cost modeling for SMBs. "
-                "Given a tariff rate change and pending order values, you calculate the extra cost "
-                "and classify severity: low (<5% increase), medium (5–20%), high (>20%), "
-                "or critical (order cannot be fulfilled as planned)."
-            ),
-            llm=llm,
-            verbose=True,
-        )
+        event_country = monitor_event.get("country") or supplier_country
+        event_product = monitor_event.get("product") or f"HS {hs_code} goods"
+        tariff_rate = monitor_event.get("tariff_rate")
+        tariff_desc = f"{tariff_rate:g}%" if tariff_rate is not None else "an unspecified rate"
 
-        # ── Agent 3: AlternativesFinder ───────────────────────────────────────
+        # ── Internal alternatives — this buyer's own active suppliers ────────
+        # not located in the affected country. AlternativesFinder ranks these
+        # real, verified suppliers above any LLM-estimated ones.
+        internal_alternatives = self._find_internal_alternatives(db, customer_id, event_country)
+        if internal_alternatives:
+            internal_alternatives_formatted = "\n".join(
+                f"- {a['name']} ({a['country']}), product category: "
+                f"{a['product_category'] or 'unspecified'}, reliability score: "
+                f"{a['reliability_score']:.0f}/100"
+                for a in internal_alternatives
+            )
+        else:
+            internal_alternatives_formatted = (
+                "None — this buyer has no other active suppliers outside the affected country."
+            )
+
+        # ── Agent 3: AlternativesFinder ───────────────────────────
         alternatives_finder = Agent(
             role="Alternative Supplier Finder",
-            goal="Find 2–3 backup suppliers in countries NOT subject to the tariff.",
+            goal="Find 2-3 backup suppliers in countries NOT subject to the tariff.",
             backstory=(
                 "You are a global supply chain expert with deep knowledge of Asian manufacturing "
                 "hubs. When a primary supplier becomes unviable due to tariffs, you rapidly identify "
@@ -285,7 +348,7 @@ class MonitorPipeline:
             verbose=True,
         )
 
-        # ── Agent 4: ImportCompliance ──────────────────────────────────────────
+        # ── Agent 4: ImportCompliance ────────────────────────────
         import_compliance = Agent(
             role="Import Compliance Specialist",
             goal="List the exact US customs documents required for each alternative supplier country.",
@@ -299,128 +362,132 @@ class MonitorPipeline:
             verbose=True,
         )
 
-        # ── Agent 5: Adversarial ───────────────────────────────────────────────
+        # ── Agent 5: Adversarial ───────────────────────────────
         adversarial = Agent(
             role="Risk Challenger",
             goal=(
-                "Challenge every recommendation from the other 4 agents. "
+                "Challenge every recommendation from the other agents. "
                 "Flag missed deadlines, unverified suppliers, hidden compliance gaps, "
                 "and quality risks before the alert reaches the human decision-maker."
             ),
             backstory=(
                 "You are the devil's advocate of the supply chain team. Your only job is to find "
                 "holes in the other agents' recommendations. You issue a CLEAR, CAUTION, or BLOCK "
-                "verdict with a specific list of flags and a single concrete recommendation."
+                "verdict with a specific list of flags, a recommended action written for the "
+                "business owner, and a short reasoning chain."
             ),
             llm=llm,
             verbose=True,
         )
 
-        # ── Tasks ──────────────────────────────────────────────────────────────
-        if settings.use_real_tools:
-            monitor_instructions = (
-                f"Use the 'GDELT Disruption Search' tool with country='{supplier_country}' "
-                f"to find recent real news headlines. Then check for active tariff changes, "
-                f"port disruptions, or geopolitical events affecting HS code '{hs_code}' "
-                f"imported from '{supplier_country}' into the US. Base 'event' and "
-                f"'confidence' on what the tool returns — if the tool returns no relevant "
-                f"articles, set risk_detected=false and confidence low. "
-                f"Set 'source' to 'gdelt'. Return valid JSON only."
-            )
-        else:
-            monitor_instructions = (
-                f"Check for active tariff changes, port disruptions, or geopolitical events "
-                f"affecting HS code '{hs_code}' imported from '{supplier_country}' into the US. "
-                f"Return valid JSON only."
-            )
-
-        monitor_task = Task(
-            description=monitor_instructions,
-            agent=tariff_monitor,
-            expected_output=(
-                'JSON: {"risk_detected": true, "event": "25% tariff on HS 6109 from VN", '
-                '"confidence": 0.92, "source": "usitc"}'
-            ),
-        )
-
-        # ImpactCalculator reasons over REAL pending-order data pulled from
-        # Aurora, not a hardcoded "$40,000" placeholder. If there's no DB
-        # session or no pending orders, fall back to a representative demo
-        # number so the agent still has something concrete to calculate from.
-        pending_total, pending_count = self._get_pending_orders_summary(db, customer_id)
-        if pending_total <= 0:
-            pending_total, pending_count = 40000.0, 1
-
-        impact_task = Task(
-            description=(
-                f"A tariff event was detected for HS {hs_code} from {supplier_country}. "
-                f"This customer has {pending_count} pending/in-transit order(s) totaling "
-                f"${pending_total:,.2f} USD. "
-                f"Calculate extra_cost_usd, classify severity, and count affected_orders. "
-                f"Return valid JSON only."
-            ),
-            agent=impact_calculator,
-            expected_output=(
-                'JSON: {"extra_cost_usd": 10000, "severity": "high", "affected_orders": 1}'
-            ),
-        )
-
+        # ── Tasks ─────────────────────────────────────────────────────────
+        # AlternativesFinder and Adversarial reason over Agent1's detected event
+        # and Agent2's deterministic cost numbers — they are told the facts
+        # directly rather than asked to "detect" or "calculate" them.
         alternatives_task = Task(
             description=(
-                f"Find 2 alternative supplier countries for HS code {hs_code} "
-                f"that are NOT subject to the same tariff as {supplier_country}. "
-                f"For each option provide: supplier (company name), country (2-letter code), "
-                f"lead_time_weeks (int), cost_delta_pct (signed int). Return valid JSON only."
+                f"{ALTERNATIVES_RULES}\n\n"
+                f"A {monitor_event.get('event_type') or 'TARIFF'} event was detected: "
+                f"\"{monitor_event.get('event')}\" affecting {event_country} "
+                f"({event_product}), tariff rate {tariff_desc}. "
+                f"This customer's pending orders show a direct cost impact of "
+                f"${impact_result['direct_cost']:,.2f} across {impact_result['affected_orders']} "
+                f"order(s), severity={impact_result['severity']}, ETA risk={impact_result['eta_risk']}.\n\n"
+                f"Internal alternatives (this buyer's own active suppliers, NOT in {event_country}):\n"
+                f"{internal_alternatives_formatted}\n\n"
+                "Instructions:\n"
+                "1. First evaluate whether any internal alternative above can absorb this order. "
+                "State your reasoning in deadline_reasoning / selection_reasoning.\n"
+                "2. If fewer than 2 viable alternatives exist, propose additional external options "
+                "using your knowledge of manufacturing hubs for this product category. Label these "
+                "source=\"estimated\".\n"
+                f"3. For each option, assess: can it meet the delivery timeline given ETA risk="
+                f"{impact_result['eta_risk']}? what is the cost delta vs. the current supplier? "
+                "what compliance complexity should be expected for that country?\n"
+                "4. Rank by (1) deadline feasibility, (2) cost delta, (3) compliance simplicity.\n"
+                f"5. Do NOT suggest {event_country} as an alternative.\n"
+                "6. Return 2-3 ranked alternatives total."
             ),
             agent=alternatives_finder,
             expected_output=(
-                'JSON: {"options": [{"supplier": "Dhaka Garments Ltd", "country": "BD", '
-                '"lead_time_weeks": 8, "cost_delta_pct": -12}]}'
+                'JSON: {"alternatives": [{"rank": 1, "supplier_name": "Dhaka Garments Ltd", '
+                '"country": "BD", "country_full": "Bangladesh", "source": "internal", '
+                '"lead_time_weeks": 8, "can_meet_deadline": true, '
+                '"deadline_reasoning": "...", "cost_delta_pct": -12, "cost_delta_usd": -4800.0, '
+                '"selection_reasoning": "...", "risks": ["..."]}], '
+                '"recommendation_summary": "..."}'
             ),
         )
 
         compliance_task = Task(
             description=(
-                "For each alternative supplier country identified, list the specific US customs "
-                "documents and certifications required to import HS code goods from that country. "
-                "Return a JSON object keyed by 2-letter country code."
+                f"{COMPLIANCE_RULES}\n\n"
+                "You are a licensed US customs broker. The buyer is considering switching suppliers "
+                f"to avoid a {monitor_event.get('event_type') or 'TARIFF'} event affecting "
+                f"{event_country} ({event_product}, HS code {hs_code}).\n\n"
+                "For each alternative country (2-letter code) identified in the prior agent's output, "
+                "determine:\n"
+                "1. Is this country subject to any active US sanctions or trade restrictions relevant "
+                "to this HS code?\n"
+                f"2. What customs entry documents are MANDATORY for HS code {hs_code} from that country?\n"
+                "3. Are there country-specific certifications required (RECOMMENDED or CONDITIONAL)?\n"
+                "4. Estimated compliance timeline in days.\n"
+                "5. Overall compliance risk: low, medium, or high."
             ),
             agent=import_compliance,
+            context=[alternatives_task],
             expected_output=(
-                'JSON: {"BD": ["Certificate of Origin", "Commercial Invoice"], '
-                '"IN": ["BIS certification", "Certificate of Origin"]}'
+                'JSON: {"compliance_by_country": {"BD": {"sanctions_clear": true, '
+                '"sanctions_note": null, "mandatory_documents": [{"document": "Certificate of '
+                'Origin", "regulatory_basis": "19 CFR 102", "timeline_days": 5}], '
+                '"conditional_documents": [], "recommended_documents": [], '
+                '"compliance_timeline_days": 10, "overall_compliance_risk": "low", '
+                '"compliance_explanation": "..."}}, "summary": "..."}'
             ),
         )
 
         adversarial_task = Task(
             description=(
-                "Review all prior agent outputs. Check: "
-                "(1) Does any alternative miss the buyer's delivery deadline? "
-                "(2) Are any recommended suppliers unverified or untested? "
-                "(3) Are there compliance gaps or quality risks? "
-                "Issue a CLEAR, CAUTION, or BLOCK verdict with specific flags and one recommendation. "
-                "Return valid JSON only."
+                f"{ADVERSARIAL_RULES}\n\n"
+                "You are the final decision-maker on this supply chain risk. The underlying event "
+                f"is: \"{monitor_event.get('event')}\" (type={monitor_event.get('event_type')}, "
+                f"confidence={monitor_event.get('confidence')}, severity={impact_result['severity']}, "
+                f"direct cost=${impact_result['direct_cost']:,.2f}, eta_risk={impact_result['eta_risk']}).\n"
+                f"Supporting reasons: {'; '.join(impact_result['reasons']) or 'none'}.\n\n"
+                "Review the alternatives and compliance outputs above (provided as context) and go "
+                "through this challenge checklist:\n"
+                "1. Does the top-ranked alternative actually address the ETA risk "
+                f"({impact_result['eta_risk']})? If not, flag it.\n"
+                "2. Is each alternative's cost estimate based on this buyer's own supplier data "
+                "(source=\"internal\") or LLM assumptions (source=\"estimated\")? Flag if assumptions.\n"
+                "3. Are any compliance requirements uncertain or marked CONDITIONAL without being "
+                "resolved? Flag if so.\n"
+                "4. Does the recommended alternative have a verified relationship with this buyer "
+                "(source=\"internal\")? Flag if not.\n"
+                f"5. Is the detected event's confidence ({monitor_event.get('confidence')}) high "
+                "enough (>= 0.6) to justify switching suppliers?\n\n"
+                "After the challenge, issue your verdict: CLEAR (proceed, risks manageable), "
+                "CAUTION (proceed with specific precautions), or BLOCK (do not proceed until flags "
+                "are resolved)."
             ),
             agent=adversarial,
+            context=[alternatives_task, compliance_task],
             expected_output=(
-                'JSON: {"verdict": "CAUTION", '
-                '"flags": ["BD misses deadline by 1 week"], '
-                '"recommendation": "Use IN supplier, negotiate 1-week extension with buyer"}'
+                'JSON: {"verdict": "CAUTION", "flags": [{"flag": "...", "severity": "medium", '
+                '"resolution": "..."}], "recommended_action": "...", '
+                '"confidence_in_recommendation": 0.75, "reasoning_chain": ["Step 1: ...", '
+                '"Step 2: ...", "Step 3: ..."]}'
             ),
         )
 
-        # ── Crew kickoff ───────────────────────────────────────────────────────
+        # ── Crew kickoff ────────────────────────────────────────────────
         crew = Crew(
             agents=[
-                tariff_monitor,
-                impact_calculator,
                 alternatives_finder,
                 import_compliance,
                 adversarial,
             ],
             tasks=[
-                monitor_task,
-                impact_task,
                 alternatives_task,
                 compliance_task,
                 adversarial_task,
@@ -435,16 +502,16 @@ class MonitorPipeline:
             raise
 
         agent_outputs = {
-            "tariff_monitor": _parse_task_output(monitor_task),
-            "impact_calculator": _parse_task_output(impact_task),
+            "tariff_monitor": monitor_event,
+            "impact_calculator": impact_result,
             "alternatives_finder": _parse_task_output(alternatives_task),
             "import_compliance": _parse_task_output(compliance_task),
             "adversarial": _parse_task_output(adversarial_task),
         }
 
-        severity = agent_outputs.get("impact_calculator", {}).get("severity", "medium")
+        severity = impact_result.get("severity", "medium")
         recommendation = agent_outputs.get("adversarial", {}).get(
-            "recommendation", "Review the alert and take action."
+            "recommended_action", "Review the alert and take action."
         )
 
         run_id = str(uuid.uuid4())
@@ -456,7 +523,7 @@ class MonitorPipeline:
             agent_outputs=agent_outputs,
             severity=severity,
             summary=recommendation,
-            data_source="gemini",
+            data_source="monitor_agent+gemini",
         )
 
         return {
@@ -497,6 +564,40 @@ class MonitorPipeline:
         except Exception as exc:
             logger.warning(f"Pending orders lookup failed: {exc}")
             return 0.0, 0
+
+    @staticmethod
+    def _find_internal_alternatives(
+        db: Optional[Session], customer_id: int, event_country: Optional[str], limit: int = 3
+    ) -> list[dict]:
+        """
+        This buyer's own active suppliers that are NOT located in the
+        affected country — the "internal alternatives" AlternativesFinder
+        should rank above any LLM-estimated supplier.
+        """
+        if db is None:
+            return []
+        try:
+            from models import Supplier
+            event_country_lower = (event_country or "").strip().lower()
+            suppliers = (
+                db.query(Supplier)
+                .filter(Supplier.customer_id == customer_id, Supplier.is_active == True)
+                .all()
+            )
+            alternatives = []
+            for s in suppliers:
+                if event_country_lower and event_country_lower in s.country.lower():
+                    continue
+                alternatives.append({
+                    "name": s.name,
+                    "country": s.country,
+                    "product_category": s.product_category,
+                    "reliability_score": s.reliability_score or 50.0,
+                })
+            return alternatives[:limit]
+        except Exception as exc:
+            logger.warning(f"Internal alternatives lookup failed: {exc}")
+            return []
 
     @staticmethod
     def _save_results(

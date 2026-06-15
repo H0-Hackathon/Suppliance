@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle, Info, X } from 'lucide-react';
+import { AgentOutputPanel } from './AgentOutputPanel';
 
 /**
  * AlertCard — Displays a single tariff alert with severity styling.
@@ -137,7 +138,7 @@ export const AlertCard: React.FC<AlertCardProps> = ({
           </button>
 
           {showReasoning && (
-            <AgentReasoningAccordion agentOutput={parsedOutput} />
+            <AgentOutputPanel agentOutput={parsedOutput} />
           )}
         </div>
       )}
@@ -155,116 +156,6 @@ export const AlertCard: React.FC<AlertCardProps> = ({
           </button>
         )}
       </div>
-    </div>
-  );
-};
-
-
-/* ---------------------------------------------------------- */
-/* AgentReasoningAccordion — inline, lives in this file        */
-/* ---------------------------------------------------------- */
-
-const AGENT_CONFIG: Record<string, { label: string; color: string }> = {
-  tariff_monitor:      { label: 'TariffMonitor',      color: '#3B82F6' },
-  impact_calculator:   { label: 'ImpactCalculator',   color: '#F97316' },
-  alternatives_finder: { label: 'AlternativesFinder', color: '#10B981' },
-  import_compliance:   { label: 'ImportCompliance',   color: '#8B5CF6' },
-  adversarial:         { label: 'Adversarial',        color: '#EF4444' },
-};
-
-interface AgentReasoningAccordionProps {
-  agentOutput: Record<string, unknown>;
-}
-
-const AgentReasoningAccordion: React.FC<AgentReasoningAccordionProps> = ({ agentOutput }) => {
-  const [openAgent, setOpenAgent] = React.useState<string | null>(null);
-
-  const agentKeys = Object.keys(AGENT_CONFIG).filter((k) => agentOutput[k]);
-
-  return (
-    <div
-      style={{
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        overflow: 'hidden',
-        marginBottom: 8,
-      }}
-    >
-      {agentKeys.map((key, idx) => {
-        const config = AGENT_CONFIG[key];
-        const isOpen = openAgent === key;
-        const data = agentOutput[key] as Record<string, unknown>;
-
-        return (
-          <div key={key} style={{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }}>
-            <button
-              onClick={() => setOpenAgent(isOpen ? null : key)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '10px 14px',
-                background: isOpen ? '#F8FAFC' : 'white',
-                border: 'none',
-                cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--text)',
-                textAlign: 'left',
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: config.color,
-                  flexShrink: 0,
-                }}
-              />
-              {config.label}
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>
-                {isOpen ? '▲' : '▼'}
-              </span>
-            </button>
-
-            {isOpen && (
-              <div
-                style={{
-                  padding: '12px 14px',
-                  background: '#FAFAFA',
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {Object.entries(data).map(([k, v]) => (
-                    <li
-                      key={k}
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--text)',
-                        padding: '3px 0',
-                        display: 'flex',
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ color: config.color, fontWeight: 700, minWidth: 4 }}>•</span>
-                      <span>
-                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
-                          {k.replace(/_/g, ' ')}:
-                        </span>{' '}
-                        {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 };

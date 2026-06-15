@@ -50,3 +50,14 @@ google-generativeai>=0.8.0
 # CrewAI's native Gemini provider (crewai.llms.providers.gemini) imports this
 # at runtime — without it, LLM(model="gemini/...") raises ImportError.
 google-genai>=1.0.0
+
+# --- Data Collectors (Monitor Agent inputs: collectors/tariff.py, collectors/monitor.py) ---
+trafilatura>=2.0.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.0
+newspaper3k>=0.2.8
+
+# Resolves news.google.com/rss/articles/... redirect links from Google News
+# RSS to their real publisher URL (required for collectors/tariff.py's
+# get_google_news_articles()).
+googlenewsdecoder>=0.1.7

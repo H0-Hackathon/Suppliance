@@ -14,6 +14,7 @@ from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.disruption_routes import router as disruption_router
+from api.v2.geo_routes import router as geo_router
 
 settings = get_settings()
 
@@ -48,6 +49,7 @@ app.include_router(supplier_router)
 app.include_router(alert_router)
 app.include_router(monitor_router)
 app.include_router(disruption_router)
+app.include_router(geo_router)
 
 
 @app.on_event("startup")

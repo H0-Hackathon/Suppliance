@@ -4,27 +4,12 @@ import DeckGL from '@deck.gl/react';
 import { ArcLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { MapView } from '@deck.gl/core';
 
-const SUPPLIERS = [
-    { name: 'Mekong Textiles Co', coords: [106.6838, 20.8651] as [number, number], status: 'risk', color: [239, 68, 68] as [number, number, number] },
-    { name: 'Dhaka Garments Ltd', coords: [90.4125, 23.8103] as [number, number], status: 'ok', color: [34, 197, 94] as [number, number, number] },
-    { name: 'MexiThread Mfg', coords: [-103.3496, 20.6597] as [number, number], status: 'alt', color: [251, 191, 36] as [number, number, number] },
-    { name: 'Los Angeles Port', coords: [-118.2437, 34.0522] as [number, number], status: 'dest', color: [56, 189, 248] as [number, number, number] },
-];
-
-const ARC_DATA = [
-    {
-        source: [106.6838, 20.8651] as [number, number],
-        target: [-118.2437, 34.0522] as [number, number],
-        sourceColor: [239, 68, 68, 220] as [number, number, number, number],
-        targetColor: [239, 68, 68, 40] as [number, number, number, number],
-    },
-    {
-        source: [-103.3496, 20.6597] as [number, number],
-        target: [-118.2437, 34.0522] as [number, number],
-        sourceColor: [251, 191, 36, 220] as [number, number, number, number],
-        targetColor: [34, 197, 94, 220] as [number, number, number, number],
-    },
-];
+// Fixed import destination for this demo (US importer). Coordinates match
+// the "US" entry in backend/services/coordinates.py.
+const DESTINATION = {
+    name: 'Port of Los Angeles',
+    coords: [-118.2610, 33.7395] as [number, number],
+};
 
 const INITIAL_VIEW = { longitude: -20, latitude: 25, zoom: 1.8, pitch: 0, bearing: 0 };
 
@@ -36,6 +21,12 @@ const SEVERITY_COLOR: Record<string, [number, number, number]> = {
     low: [107, 114, 128],
 };
 
+const RISK_COLOR: [number, number, number] = [239, 68, 68];
+const OK_COLOR: [number, number, number] = [34, 197, 94];
+const DEST_COLOR: [number, number, number] = [56, 189, 248];
+
+const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
 export interface DisruptionPoint {
     incident_id: string;
     title: string;
@@ -43,15 +34,33 @@ export interface DisruptionPoint {
     latitude: number | null;
     longitude: number | null;
     severity: string | null;
+    countries_affected?: string[] | null;
+}
+
+export interface TradeGlobeSupplier {
+    name: string;
+    country: string;
+    /** ISO 3166-1 alpha-2 code, used to match against disruption countries_affected */
+    countryCode: string | null;
+    latitude: number;
+    longitude: number;
+}
+
+interface GlobeMarker {
+    name: string;
+    coords: [number, number];
+    color: [number, number, number];
+    status: 'risk' | 'ok' | 'dest';
 }
 
 export interface TradeGlobeProps {
-    /** Live disruption events from GET /api/v2/disruptions. Optional —
-     * falls back to the hardcoded demo SUPPLIERS/ARC layers when empty. */
+    /** This customer's active suppliers, with resolved coordinates. */
+    suppliers?: TradeGlobeSupplier[];
+    /** Live disruption events from GET /api/v2/disruptions. */
     disruptions?: DisruptionPoint[];
 }
 
-export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
+export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disruptions = [] }) => {
     const [viewState, setViewState] = useState(INITIAL_VIEW);
     const [hoveredSupplier, setHoveredSupplier] = useState<string | null>(null);
     const [hoveredDisruption, setHoveredDisruption] = useState<string | null>(null);
@@ -64,12 +73,43 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
             d.latitude != null && d.longitude != null
     );
 
-    // useEffect(() => {
-    //     const id = setInterval(() => {
-    //         setViewState(v => ({ ...v, bearing: (v.bearing + 0.1) % 360 }));
-    //     }, 50);
-    //     return () => clearInterval(id);
-    // }, []);
+    // A supplier is "at risk" if its country shows up in any active
+    // disruption's countries_affected list.
+    const affectedCodes = new Set(
+        disruptions.flatMap((d) => d.countries_affected ?? [])
+    );
+
+    const supplierPoints = suppliers
+        .filter((s) => s.latitude != null && s.longitude != null)
+        .map((s) => ({
+            ...s,
+            coords: [s.longitude, s.latitude] as [number, number],
+            atRisk: s.countryCode ? affectedCodes.has(s.countryCode) : false,
+        }));
+
+    const markers: GlobeMarker[] = [
+        ...supplierPoints.map((s) => ({
+            name: s.name,
+            coords: s.coords,
+            color: s.atRisk ? RISK_COLOR : OK_COLOR,
+            status: (s.atRisk ? 'risk' : 'ok') as const,
+        })),
+        { name: DESTINATION.name, coords: DESTINATION.coords, color: DEST_COLOR, status: 'dest' as const },
+    ];
+
+    const arcData = supplierPoints.map((s) => ({
+        source: s.coords,
+        target: DESTINATION.coords,
+        sourceColor: [...(s.atRisk ? RISK_COLOR : OK_COLOR), 220] as [number, number, number, number],
+        targetColor: (s.atRisk ? [...RISK_COLOR, 40] : [...OK_COLOR, 160]) as [number, number, number, number],
+    }));
+
+    // Pick the most severe active disruption for the top banner.
+    const topDisruption = [...disruptions].sort(
+        (a, b) => (SEVERITY_RANK[b.severity ?? 'low'] ?? 0) - (SEVERITY_RANK[a.severity ?? 'low'] ?? 0)
+    )[0];
+    const showBanner = topDisruption && (topDisruption.severity === 'critical' || topDisruption.severity === 'high');
+    const bannerColor = topDisruption ? SEVERITY_COLOR[topDisruption.severity ?? 'medium'] ?? SEVERITY_COLOR.medium : SEVERITY_COLOR.medium;
 
     useEffect(() => {
         const id = setInterval(() => setAnimOffset(t => (t + 1) % 100), 50);
@@ -79,8 +119,8 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     const layers = [
         new ScatterplotLayer({
             id: 'pulse',
-            data: SUPPLIERS.filter(s => s.status === 'risk'),
-            getPosition: (d: typeof SUPPLIERS[0]) => d.coords,
+            data: markers.filter((m) => m.status === 'risk'),
+            getPosition: (d: GlobeMarker) => d.coords,
             getFillColor: [239, 68, 68, 0],
             getLineColor: [239, 68, 68, 140],
             getLineWidth: 4,
@@ -91,21 +131,21 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         }),
         new ArcLayer({
             id: 'arcs',
-            data: ARC_DATA,
-            getSourcePosition: (d: typeof ARC_DATA[0]) => d.source,
-            getTargetPosition: (d: typeof ARC_DATA[0]) => d.target,
-            getSourceColor: (d: typeof ARC_DATA[0]) => d.sourceColor,
-            getTargetColor: (d: typeof ARC_DATA[0]) => d.targetColor,
+            data: arcData,
+            getSourcePosition: (d: typeof arcData[0]) => d.source,
+            getTargetPosition: (d: typeof arcData[0]) => d.target,
+            getSourceColor: (d: typeof arcData[0]) => d.sourceColor,
+            getTargetColor: (d: typeof arcData[0]) => d.targetColor,
             getWidth: 3,
             greatCircle: true,
         }),
         new ScatterplotLayer({
             id: 'suppliers',
-            data: SUPPLIERS,
-            getPosition: (d: typeof SUPPLIERS[0]) => d.coords,
-            getFillColor: (d: typeof SUPPLIERS[0]) =>
+            data: markers,
+            getPosition: (d: GlobeMarker) => d.coords,
+            getFillColor: (d: GlobeMarker) =>
                 hoveredSupplier === d.name ? [255, 255, 255, 255] : [...d.color, 220] as [number, number, number, number],
-            getRadius: (d: typeof SUPPLIERS[0]) => hoveredSupplier === d.name ? 200000 : 140000,
+            getRadius: (d: GlobeMarker) => hoveredSupplier === d.name ? 200000 : 140000,
             pickable: true,
             onHover: ({ object }: any) => setHoveredSupplier(object ? object.name : null),
             updateTriggers: { getFillColor: hoveredSupplier, getRadius: hoveredSupplier },
@@ -132,7 +172,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     ];
 
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 420, background: '#060d1f', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#060d1f', borderRadius: 12, overflow: 'hidden' }}>
             <DeckGL
                 views={new MapView({ id: 'map', repeat: true })}
                 viewState={viewState}
@@ -145,16 +185,18 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
                 <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
             </DeckGL>
 
-            {/* Alert banner */}
-            <div style={{
-                position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
-                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-                borderRadius: 6, padding: '5px 16px', fontSize: 11, fontWeight: 700,
-                color: '#fca5a5', letterSpacing: '0.05em', fontFamily: 'system-ui, sans-serif',
-                zIndex: 10, whiteSpace: 'nowrap',
-            }}>
-                ⚠ CRITICAL — Haiphong Port Closure
-            </div>
+            {/* Alert banner — shows the most severe active disruption */}
+            {showBanner && (
+                <div style={{
+                    position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
+                    background: `rgba(${bannerColor.join(',')},0.15)`, border: `1px solid rgba(${bannerColor.join(',')},0.4)`,
+                    borderRadius: 6, padding: '5px 16px', fontSize: 11, fontWeight: 700,
+                    color: '#fca5a5', letterSpacing: '0.05em', fontFamily: 'system-ui, sans-serif',
+                    zIndex: 10, whiteSpace: 'nowrap', maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                    ⚠ {(topDisruption.severity ?? 'medium').toUpperCase()} — {topDisruption.title}
+                </div>
+            )}
 
             {/* Legend */}
             <div style={{
@@ -165,31 +207,23 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
                 fontSize: 11, color: '#cbd5e1', minWidth: 200, zIndex: 10,
             }}>
                 <div style={{ fontWeight: 700, fontSize: 10, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 10 }}>
-                    Trade Routes
+                    Tracked Suppliers
                 </div>
-                {[
-                    { color: '#ef4444', label: 'Blocked — Haiphong → LA' },
-                    { color: '#fbbf24', label: 'Alternative — Mexico → LA' },
-                ].map(({ color, label }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <div style={{ width: 24, height: 3, background: color, borderRadius: 2 }} />
-                        <span>{label}</span>
+                {markers.length === 0 && (
+                    <div style={{ color: '#64748b', fontSize: 10 }}>No suppliers to display</div>
+                )}
+                {markers.map(m => (
+                    <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: `rgb(${m.color.join(',')})`, flexShrink: 0 }} />
+                        <span style={{ color: hoveredSupplier === m.name ? '#f1f5f9' : '#94a3b8', fontSize: 10 }}>{m.name}</span>
+                        <span style={{
+                            marginLeft: 'auto', fontSize: 9, fontWeight: 700,
+                            color: m.status === 'risk' ? '#ef4444' : m.status === 'dest' ? '#38bdf8' : '#22c55e',
+                        }}>
+                            {m.status === 'risk' ? '⚠ AT RISK' : m.status === 'dest' ? '📦 DEST' : '✓ OK'}
+                        </span>
                     </div>
                 ))}
-                <div style={{ marginTop: 10, borderTop: '1px solid rgba(56,189,248,0.1)', paddingTop: 10 }}>
-                    {SUPPLIERS.map(s => (
-                        <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: `rgb(${s.color.join(',')})`, flexShrink: 0 }} />
-                            <span style={{ color: hoveredSupplier === s.name ? '#f1f5f9' : '#94a3b8', fontSize: 10 }}>{s.name}</span>
-                            <span style={{
-                                marginLeft: 'auto', fontSize: 9, fontWeight: 700,
-                                color: s.status === 'risk' ? '#ef4444' : s.status === 'alt' ? '#fbbf24' : s.status === 'dest' ? '#38bdf8' : '#22c55e',
-                            }}>
-                                {s.status === 'risk' ? '⚠ AT RISK' : s.status === 'alt' ? '↗ ALT' : s.status === 'dest' ? '📦 DEST' : '✓ OK'}
-                            </span>
-                        </div>
-                    ))}
-                </div>
             </div>
 
             {hoveredSupplier && (

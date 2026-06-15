@@ -1,7 +1,8 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AlertCard, AlertSeverity, AlertType } from '../components/AlertCard';
-import { TradeGlobe, DisruptionPoint } from '../components/TradeGlobe';
+import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
+import { MonitorProgress, MonitorProgressState, MonitorTarget, MONITOR_STEPS } from '../components/MonitorProgress';
 import api from '../services/api';
 
 /**
@@ -9,7 +10,8 @@ import api from '../services/api';
  *
  * Wired to the real backend:
  *   - GET  /api/v2/alerts?customer_id=1       initial alert feed
- *   - POST /api/v2/monitor/run                "Run Monitor" button
+ *   - GET  /api/v2/monitor/targets            countries/HS codes to scan
+ *   - POST /api/v2/monitor/run                "Run Monitor" button (once per target)
  *   - PUT  /api/v2/alerts/{id}/dismiss|resolve  alert actions
  *   - GET  /api/v2/disruptions?customer_id=1  globe markers
  *
@@ -18,11 +20,6 @@ import api from '../services/api';
  */
 
 const CUSTOMER_ID = 1;
-
-// Default HS code / supplier country used when the "Run Monitor" button is
-// clicked. Matches the seeded demo product (Cotton T-Shirts from Vietnam).
-const DEMO_HS_CODE = '6109.10';
-const DEMO_SUPPLIER_COUNTRY = 'VN';
 
 interface ApiAlert {
   id: number;
@@ -34,16 +31,47 @@ interface ApiAlert {
   created_at: string;
 }
 
+interface ApiSupplier {
+  id: number;
+  name: string;
+  country: string;
+  product_category: string | null;
+  reliability_score: number;
+  is_active: boolean;
+}
+
+interface GeoCoords {
+  country: string;
+  code: string | null;
+  latitude: number;
+  longitude: number;
+  location_name: string;
+}
+
+interface SupplierWithGeo extends ApiSupplier {
+  latitude: number | null;
+  longitude: number | null;
+  countryCode: string | null;
+}
+
 type FilterSeverity = 'all' | AlertSeverity;
 
 const FILTER_OPTIONS: FilterSeverity[] = ['all', 'critical', 'high', 'medium', 'low'];
 
+// Unicode regional indicator flag emoji from an ISO 3166-1 alpha-2 code.
+function flagEmoji(countryCode: string | null): string {
+  if (!countryCode || countryCode.length !== 2) return '🏳️';
+  return String.fromCodePoint(...[...countryCode.toUpperCase()].map((c) => 127397 + c.charCodeAt(0)));
+}
+
 export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
   const [disruptions, setDisruptions] = React.useState<DisruptionPoint[]>([]);
+  const [suppliers, setSuppliers] = React.useState<SupplierWithGeo[]>([]);
   const [filter, setFilter] = React.useState<FilterSeverity>('all');
   const [isRunning, setIsRunning] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [progress, setProgress] = React.useState<MonitorProgressState | null>(null);
 
   async function fetchAlerts() {
     const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
@@ -55,10 +83,25 @@ export const AlertsDashboard: React.FC = () => {
     setDisruptions(res.data);
   }
 
+  async function fetchSuppliers() {
+    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: CUSTOMER_ID } });
+    const withGeo = await Promise.all(
+      res.data.map(async (s): Promise<SupplierWithGeo> => {
+        try {
+          const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: s.country } });
+          return { ...s, latitude: geo.data.latitude, longitude: geo.data.longitude, countryCode: geo.data.code };
+        } catch {
+          return { ...s, latitude: null, longitude: null, countryCode: null };
+        }
+      })
+    );
+    setSuppliers(withGeo);
+  }
+
   React.useEffect(() => {
     (async () => {
       try {
-        await Promise.all([fetchAlerts(), fetchDisruptions()]);
+        await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers()]);
       } catch (err) {
         console.error('Failed to load dashboard data', err);
       } finally {
@@ -83,19 +126,48 @@ export const AlertsDashboard: React.FC = () => {
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
   }
 
+  // Runs the 5-agent pipeline once per (supplier_country, hs_code) target
+  // from /v2/monitor/targets (one per active supplier). The backend runs
+  // each request synchronously with no status-polling endpoint, so while
+  // each request is in flight a timer advances a simulated 5-agent
+  // progress stepper (MonitorProgress) for visual feedback.
   async function handleRunMonitor() {
     setIsRunning(true);
+    setProgress(null);
     try {
-      await api.post('/v2/monitor/run', {
-        customer_id: CUSTOMER_ID,
-        hs_code: DEMO_HS_CODE,
-        supplier_country: DEMO_SUPPLIER_COUNTRY,
+      const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
+        params: { customer_id: CUSTOMER_ID },
       });
+      const targets = targetsRes.data;
+
+      for (let i = 0; i < targets.length; i++) {
+        const target = targets[i];
+        setProgress({ targetIndex: i, totalTargets: targets.length, target, stepIndex: 0 });
+
+        const interval = window.setInterval(() => {
+          setProgress((prev) => {
+            if (!prev || prev.stepIndex >= MONITOR_STEPS.length - 1) return prev;
+            return { ...prev, stepIndex: prev.stepIndex + 1 };
+          });
+        }, 1500);
+
+        try {
+          await api.post('/v2/monitor/run', {
+            customer_id: CUSTOMER_ID,
+            hs_code: target.hs_code,
+            supplier_country: target.supplier_country,
+          });
+        } finally {
+          window.clearInterval(interval);
+        }
+      }
+
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
     } catch (err) {
       console.error('Run Monitor failed', err);
     } finally {
       setIsRunning(false);
+      setProgress(null);
     }
   }
 
@@ -104,6 +176,14 @@ export const AlertsDashboard: React.FC = () => {
     critical: activeAlerts.filter((a) => a.severity === 'critical').length,
     high: activeAlerts.filter((a) => a.severity === 'high').length,
   };
+
+  // A supplier's country shows up in an active disruption's countries_affected.
+  const affectedCodes = new Set(disruptions.flatMap((d) => d.countries_affected ?? []));
+  const isSupplierAtRisk = (s: SupplierWithGeo) => !!s.countryCode && affectedCodes.has(s.countryCode);
+
+  const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
+    .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
+    .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
 
   return (
     <main className="page-with-sidebar">
@@ -144,6 +224,9 @@ export const AlertsDashboard: React.FC = () => {
         </button>
       </div>
 
+      {/* Run Monitor progress */}
+      {progress && <MonitorProgress state={progress} />}
+
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
         <div className="stat-card">
@@ -156,7 +239,7 @@ export const AlertsDashboard: React.FC = () => {
         </div>
         <div className="stat-card">
           <div className="stat-label">Monitored Suppliers</div>
-          <div className="stat-value">2</div>
+          <div className="stat-value">{suppliers.length}</div>
         </div>
       </div>
 
@@ -231,7 +314,7 @@ export const AlertsDashboard: React.FC = () => {
           </h2>
 
           <div style={{ height: 320, marginBottom: 16 }}>
-            <TradeGlobe disruptions={disruptions} />
+            <TradeGlobe suppliers={tradeGlobeSuppliers} disruptions={disruptions} />
           </div>
 
           {/* Supplier list preview */}
@@ -239,38 +322,42 @@ export const AlertsDashboard: React.FC = () => {
             <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 10 }}>
               Tracked Suppliers
             </p>
-            {[
-              { name: 'Mekong Textiles Co', country: 'Vietnam', flag: '🇻🇳', status: 'at-risk' },
-              { name: 'Dhaka Garments Ltd', country: 'Bangladesh', flag: '🇧🇩', status: 'ok' },
-            ].map((s) => (
-              <div
-                key={s.name}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '6px 0',
-                  borderBottom: '1px solid var(--border)',
-                  fontSize: 12,
-                }}
-              >
-                <span style={{ fontSize: 18 }}>{s.flag}</span>
-                <div>
-                  <p style={{ fontWeight: 600 }}>{s.name}</p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.country}</p>
-                </div>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: s.status === 'at-risk' ? '#EF4444' : '#10B981',
-                  }}
-                >
-                  {s.status === 'at-risk' ? '⚠ AT RISK' : '✓ OK'}
-                </span>
-              </div>
-            ))}
+            {suppliers.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No suppliers on file yet.</p>
+            ) : (
+              suppliers.map((s) => {
+                const atRisk = isSupplierAtRisk(s);
+                return (
+                  <div
+                    key={s.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '6px 0',
+                      borderBottom: '1px solid var(--border)',
+                      fontSize: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>{flagEmoji(s.countryCode)}</span>
+                    <div>
+                      <p style={{ fontWeight: 600 }}>{s.name}</p>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.country}</p>
+                    </div>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: atRisk ? '#EF4444' : '#10B981',
+                      }}
+                    >
+                      {atRisk ? '⚠ AT RISK' : '✓ OK'}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>

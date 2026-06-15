@@ -3,6 +3,9 @@ CoastGuard — SQLAlchemy Models
 
 Tables:
   customers         — SMB business accounts (linked to Clerk auth)
+  business_profiles — per-customer sourcing footprint + risk config, used to
+                       decide which countries/HS codes the monitor pipeline
+                       scans for this customer
   suppliers         — each customer's import suppliers
   products          — products tracked per customer (with HS code)
   import_orders     — pending/in-transit orders
@@ -48,6 +51,44 @@ class Customer(Base):
     products = relationship("Product", back_populates="customer")
     orders = relationship("ImportOrder", back_populates="customer")
     alerts = relationship("TariffAlert", back_populates="customer")
+    business_profile = relationship(
+        "BusinessProfile", back_populates="customer", uselist=False
+    )
+
+
+class BusinessProfile(Base):
+    """
+    Per-customer sourcing footprint and risk configuration.
+
+    This is the data a business owner fills in once during onboarding. It
+    determines which countries/HS codes the monitor pipeline scans for this
+    customer, so that e.g. a customer sourcing from India + South Africa sees
+    alerts for those countries, while a customer sourcing from the
+    Netherlands sees alerts for the Netherlands instead. One row per customer.
+    """
+    __tablename__ = "business_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), unique=True, nullable=False, index=True)
+
+    business_type = Column(String(100), nullable=True)
+    annual_import_volume_usd = Column(Float, nullable=True)
+
+    # primary_hs_codes: ["6109.10", "8708.29"]
+    primary_hs_codes = Column(JSON, nullable=True)
+    # primary_origin_countries: ISO-2 codes, e.g. ["VN", "BD", "IN", "ZA"]
+    primary_origin_countries = Column(JSON, nullable=True)
+
+    destination_country = Column(String(100), default="US")
+    destination_port = Column(String(255), nullable=True)
+    import_region = Column(String(255), nullable=True)
+
+    # risk_tolerance: low | medium | high
+    risk_tolerance = Column(String(50), default="medium")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="business_profile")
 
 
 class Supplier(Base):
@@ -185,3 +226,36 @@ class DisruptionEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     alerts = relationship("TariffAlert", back_populates="disruption_event")
+
+
+class HistoricalImpact(Base):
+    """
+    Past disruption outcomes (real or seeded) used by the Impact Agent
+    (core/impact_engine.py) to ground its expected/best/worst-case loss
+    estimates in historical data instead of an LLM guess.
+
+    Historical similarity is matched on event_type + country (and later,
+    via `embedding`, semantic similarity over `event_text`) — see
+    services/impact_service.py.
+    """
+    __tablename__ = "historical_impacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # event_type: TARIFF | PORT_DISRUPTION | GEOPOLITICAL | WEATHER
+    event_type = Column(String(100), nullable=False)
+    country = Column(String(100), nullable=False, index=True)
+    product = Column(String(255), nullable=True)
+
+    actual_loss = Column(Float, nullable=False)
+    delay_days = Column(Integer, nullable=True)
+    confidence = Column(Float, nullable=True)
+
+    event_text = Column(Text, nullable=True)
+
+    # Embedding column — present for future semantic similarity search
+    # (ticket 7, pgvector). Left NULL until that work is picked up.
+    if HAS_PGVECTOR:
+        embedding = Column(Vector(768), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
