@@ -61,11 +61,7 @@ const ConversationDetail = () => {
         onClick={() => navigate('/admin/customers')}
         style={{ marginBottom: 16 }}
       >
-<<<<<<< HEAD
-        返回客户列表
-=======
         Back to Customer List
->>>>>>> main
       </Button>
 
       {customer && (
