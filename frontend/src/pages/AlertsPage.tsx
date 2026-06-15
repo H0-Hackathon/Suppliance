@@ -289,7 +289,7 @@ export const AlertsPage: React.FC = () => {
 
             {/* Section 5: Agent Workflow */}
             <section className="investigation-section">
-              <h3 className="section-title">Agent Workflow</h3>
+              <h3 className="section-title">Agent Reasoning</h3>
               <div className="workflow">
                 {[
                   { key: 'monitor', label: 'Monitor' },
@@ -297,15 +297,20 @@ export const AlertsPage: React.FC = () => {
                   { key: 'alternatives', label: 'Alternatives' },
                   { key: 'compliance', label: 'Compliance' },
                   { key: 'validation', label: 'Validation' },
-                ].map((step, idx) => (
-                  <div key={step.key} className="workflow-step">
-                    <div className={`workflow-circle ${selectedAlert.agentWorkflow[step.key as keyof typeof selectedAlert.agentWorkflow] ? 'complete' : 'pending'}`}>
-                      {selectedAlert.agentWorkflow[step.key as keyof typeof selectedAlert.agentWorkflow] ? '✓' : '○'}
+                ].map((step) => {
+                  const isComplete = selectedAlert.agentWorkflow[step.key as keyof typeof selectedAlert.agentWorkflow];
+                  return (
+                    <div key={step.key} className="workflow-step">
+                      <div className={`workflow-circle ${isComplete ? 'complete' : 'pending'}`}>
+                        {isComplete ? '✓' : '○'}
+                      </div>
+                      <div className="workflow-step-content">
+                        <div className="step-label">{step.label}</div>
+                        <div className="step-status">{isComplete ? 'Complete' : 'Pending'}</div>
+                      </div>
                     </div>
-                    <span className="step-label">{step.label}</span>
-                    {idx < 4 && <div className="workflow-connector" />}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </div>
