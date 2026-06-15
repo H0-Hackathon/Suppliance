@@ -90,17 +90,18 @@ const ROUTES: Route[] = [
 
 // ─── Color maps ───────────────────────────────────────────────────────────────
 
+// Warm trade-risk palette: crimson · emerald · amber · teal
 const NODE_COLOR: Record<Supplier['status'], [number, number, number]> = {
-  impacted:    [239, 68, 68],
-  healthy:     [34, 197, 94],
-  alternative: [251, 191, 36],
-  customer:    [56, 189, 248],
+  impacted:    [220, 38, 38],    // crimson
+  healthy:     [16, 185, 129],   // emerald
+  alternative: [13, 148, 136],   // teal
+  customer:    [217, 119, 6],    // amber
 };
 
 const ROUTE_COLOR: Record<Route['routeStatus'], { src: [number,number,number,number]; tgt: [number,number,number,number] }> = {
-  impacted:    { src: [239, 68, 68, 230],  tgt: [239, 68, 68, 40]  },
-  healthy:     { src: [34, 197, 94, 220],  tgt: [34, 197, 94, 40]  },
-  alternative: { src: [251, 191, 36, 220], tgt: [251, 191, 36, 40] },
+  impacted:    { src: [220, 38, 38, 230],  tgt: [220, 38, 38, 35]  },
+  healthy:     { src: [16, 185, 129, 220], tgt: [16, 185, 129, 35] },
+  alternative: { src: [13, 148, 136, 220], tgt: [13, 148, 136, 35] },
 };
 
 // Ring radius per tier (in meters)
@@ -331,7 +332,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     fontFamily: 'Inter, system-ui, sans-serif',
     fontWeight: 600,
     background: true,
-    getBackgroundColor: [6, 13, 31, 180],
+    getBackgroundColor: [14, 11, 7, 185],
     getBorderColor: (d) => [...NODE_COLOR[d.status], 80] as [number,number,number,number],
     getBorderWidth: 1,
     backgroundPadding: [4, 2, 4, 2],
@@ -345,13 +346,13 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     getPosition: (d) => d.coords,
     getText: (d) => `Risk ${d.riskScore}  ·  Exp ${d.exposure}`,
     getSize: 9,
-    getColor: [148, 163, 184, 180],
+    getColor: [160, 148, 130, 180],
     getPixelOffset: [0, -8],
     fontFamily: 'JetBrains Mono, monospace',
     fontWeight: 400,
     background: true,
-    getBackgroundColor: [6, 13, 31, 160],
-    getBorderColor: [30, 40, 60, 60],
+    getBackgroundColor: [14, 11, 7, 165],
+    getBorderColor: [50, 38, 22, 60],
     getBorderWidth: 1,
     backgroundPadding: [4, 2, 4, 2],
     pickable: false,
@@ -377,7 +378,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
         controller={true}
         layers={layers}
         style={{ position: 'absolute', inset: 0 }}
-        parameters={{ clearColor: [0.02, 0.05, 0.12, 1] }}
+        parameters={{ clearColor: [0.04, 0.03, 0.02, 1] }}
       >
         <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
       </DeckGL>
@@ -385,35 +386,35 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
       {/* ── Critical alert banner ── */}
       <div style={{
         position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
-        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+        background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.32)',
         borderRadius: 6, padding: '5px 16px', fontSize: 11, fontWeight: 700,
         color: '#fca5a5', letterSpacing: '0.05em', fontFamily: 'Inter, system-ui, sans-serif',
         zIndex: 10, whiteSpace: 'nowrap', backdropFilter: 'blur(8px)',
       }}>
-        CRITICAL — Vietnam tariff exposure +34% · Shenzhen factory suspension
+        CRITICAL — Vietnam tariff +34% · Shenzhen factory suspension
       </div>
 
       {/* ── Legend ── */}
       <div style={{
         position: 'absolute', bottom: 16, left: 16,
-        background: 'rgba(6,13,31,0.88)', backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(56,189,248,0.12)', borderRadius: 10,
+        background: 'rgba(14,11,7,0.9)', backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(245,158,11,0.12)', borderRadius: 10,
         padding: '12px 16px', fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: 11, color: '#cbd5e1', minWidth: 220, zIndex: 10,
       }}>
         <div style={{
           fontWeight: 700, fontSize: 9, letterSpacing: '0.1em',
-          color: 'rgba(100,116,139,0.8)', textTransform: 'uppercase', marginBottom: 10,
+          color: 'rgba(120,113,108,0.7)', textTransform: 'uppercase', marginBottom: 10,
         }}>
           Supplier Risk Network
         </div>
 
         {/* Node types */}
         {([
-          { color: '#ef4444', label: 'Impacted Supplier' },
-          { color: '#22c55e', label: 'Healthy Supplier' },
-          { color: '#fbbf24', label: 'Alternative Supplier' },
-          { color: '#38bdf8', label: 'Customer Destination' },
+          { color: '#dc2626', label: 'Impacted Supplier' },
+          { color: '#10b981', label: 'Healthy Supplier' },
+          { color: '#0d9488', label: 'Alternative Supplier' },
+          { color: '#d97706', label: 'Customer Destination' },
         ] as const).map(({ color, label }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <div style={{
@@ -430,9 +431,9 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
 
         {/* Route types */}
         {([
-          { color: '#ef4444', label: 'Impacted route' },
-          { color: '#22c55e', label: 'Healthy route' },
-          { color: '#fbbf24', label: 'Alternative route' },
+          { color: '#dc2626', label: 'Impacted route' },
+          { color: '#10b981', label: 'Healthy route' },
+          { color: '#0d9488', label: 'Alternative route' },
         ] as const).map(({ color, label }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <div style={{ width: 20, height: 2, background: color, borderRadius: 2, flexShrink: 0 }} />
@@ -468,7 +469,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
           position: 'absolute',
           left: tooltipPos.x + 14,
           top: tooltipPos.y - 10,
-          background: 'rgba(6,13,31,0.97)',
+          background: 'rgba(14,11,7,0.97)',
           border: `1px solid ${NODE_COLOR[hoveredNode.status] ? `rgba(${NODE_COLOR[hoveredNode.status].join(',')},0.4)` : 'rgba(56,189,248,0.3)'}`,
           borderRadius: 8, padding: '10px 14px',
           fontFamily: 'Inter, system-ui, sans-serif',

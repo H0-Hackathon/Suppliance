@@ -1,6 +1,7 @@
 /* ============================================================
-   CoastGuard — Global Design System
-   Dark mode enterprise command center.
+   CoastGuard — Trade Risk Intelligence Platform
+   Premium financial terminal aesthetic.
+   Deep charcoal · Warm amber · Emerald · Crimson · Teal
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -8,36 +9,54 @@
 
 /* --- Design Tokens --- */
 :root {
-  --primary:        #1a2744;
-  --primary-hover:  #243660;
-  --accent:         #3b82f6;
-  --accent-glow:    rgba(59, 130, 246, 0.25);
-  --electric:       #38bdf8;
-  --electric-dim:   rgba(56, 189, 248, 0.15);
-  --critical:       #ef4444;
-  --high:           #f97316;
-  --medium:         #f59e0b;
-  --low:            #6b7280;
-  --success:        #22c55e;
-  --bg:             #080e1c;
-  --surface:        #0d1528;
-  --surface-2:      #111d35;
-  --card:           #0f1a2e;
-  --card-border:    rgba(56, 189, 248, 0.1);
-  --border:         rgba(255, 255, 255, 0.07);
-  --text:           #e2e8f0;
-  --text-muted:     #64748b;
-  --text-dim:       #334155;
-  --sidebar-w:      220px;
+  /* Brand */
+  --brand-amber:      #d97706;
+  --brand-gold:       #f59e0b;
+  --brand-gold-dim:   rgba(245, 158, 11, 0.15);
+  --brand-gold-glow:  rgba(245, 158, 11, 0.25);
 
+  /* Semantics */
+  --healthy:          #10b981;
+  --healthy-dim:      rgba(16, 185, 129, 0.12);
+  --critical:         #dc2626;
+  --critical-dim:     rgba(220, 38, 38, 0.12);
+  --high:             #ea580c;
+  --high-dim:         rgba(234, 88, 12, 0.12);
+  --medium:           #ca8a04;
+  --medium-dim:       rgba(202, 138, 4, 0.12);
+  --alternative:      #0d9488;
+  --alternative-dim:  rgba(13, 148, 136, 0.12);
+  --low:              #6b7280;
+  --success:          #10b981;
+
+  /* Surfaces */
+  --bg:               #0a0907;
+  --bg-warm:          #0e0c0a;
+  --surface:          #131008;
+  --surface-2:        #1a1510;
+  --card:             #161209;
+  --card-border:      rgba(245, 158, 11, 0.1);
+  --border:           rgba(255, 255, 255, 0.06);
+  --border-warm:      rgba(245, 158, 11, 0.08);
+
+  /* Text */
+  --text:             #f5f0e8;
+  --text-muted:       #78716c;
+  --text-dim:         #44403c;
+
+  /* Layout */
+  --sidebar-w:        224px;
+
+  /* Radii */
   --radius-sm:  5px;
   --radius-md:  8px;
   --radius-lg:  12px;
 
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.4);
-  --shadow-lg:  0 8px 32px rgba(0,0,0,0.5);
-  --glow-blue:  0 0 20px rgba(59,130,246,0.2);
+  /* Shadows */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6);
+  --glow-amber: 0 0 20px rgba(217,119,6,0.2);
 }
 
 /* --- Reset & Base --- */
@@ -86,21 +105,21 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.badge-critical { background: rgba(239,68,68,0.15);  color: #fca5a5; }
-.badge-high     { background: rgba(249,115,22,0.15); color: #fdba74; }
-.badge-medium   { background: rgba(245,158,11,0.15); color: #fcd34d; }
-.badge-low      { background: rgba(107,114,128,0.15);color: #9ca3af; }
-.badge-success  { background: rgba(34,197,94,0.15);  color: #86efac; }
+.badge-critical { background: var(--critical-dim);     color: #fca5a5; }
+.badge-high     { background: var(--high-dim);         color: #fdba74; }
+.badge-medium   { background: var(--medium-dim);       color: #fcd34d; }
+.badge-low      { background: rgba(107,114,128,0.12);  color: #9ca3af; }
+.badge-success  { background: var(--healthy-dim);      color: #6ee7b7; }
 
 /* --- Buttons --- */
 .btn-primary {
-  background: var(--accent);
-  color: white;
+  background: var(--brand-amber);
+  color: #0a0907;
   border: none;
   border-radius: var(--radius-sm);
   padding: 7px 16px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: 'Inter', sans-serif;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -108,19 +127,19 @@ body {
 .btn-primary:hover { opacity: 0.85; }
 
 .btn-accent {
-  background: var(--accent);
-  color: white;
+  background: var(--brand-amber);
+  color: #0a0907;
   border: none;
   border-radius: var(--radius-sm);
   padding: 7px 16px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: 'Inter', sans-serif;
   cursor: pointer;
   transition: opacity 0.15s;
 }
-.btn-accent:hover { opacity: 0.85; }
-.btn-accent:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-accent:hover  { opacity: 0.85; }
+.btn-accent:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-ghost {
   background: transparent;
@@ -133,7 +152,7 @@ body {
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
-.btn-ghost:hover { border-color: var(--electric); color: var(--electric); }
+.btn-ghost:hover { border-color: var(--brand-gold); color: var(--brand-gold); }
 
 /* --- Stat card --- */
 .stat-card {
@@ -153,12 +172,12 @@ body {
 .stat-card .stat-value {
   font-size: 26px;
   font-weight: 700;
-  color: var(--electric);
+  color: var(--brand-gold);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Alert card severity borders --- */
+/* --- Alert severity borders --- */
 .alert-border-critical { border-left: 3px solid var(--critical); }
 .alert-border-high     { border-left: 3px solid var(--high); }
 .alert-border-medium   { border-left: 3px solid var(--medium); }
@@ -166,7 +185,7 @@ body {
 
 /* --- Typography helpers --- */
 .text-muted   { color: var(--text-muted); }
-.text-primary { color: var(--electric); }
+.text-primary { color: var(--brand-gold); }
 .font-mono    { font-family: 'JetBrains Mono', monospace; }
 
 /* --- Empty state --- */
@@ -182,7 +201,7 @@ body {
 .empty-state h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
 .empty-state p  { font-size: 12px; }
 
-/* --- Pulse animation --- */
+/* --- Animations --- */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: 0.5; transform: scale(0.85); }
@@ -201,4 +220,10 @@ body {
 @keyframes scroll-feed {
   0%   { transform: translateY(0); }
   100% { transform: translateY(-50%); }
+}
+
+@keyframes pipeline-flow {
+  0%   { opacity: 0.3; transform: scaleX(0.4); }
+  50%  { opacity: 1;   transform: scaleX(1); }
+  100% { opacity: 0.3; transform: scaleX(0.4); }
 }

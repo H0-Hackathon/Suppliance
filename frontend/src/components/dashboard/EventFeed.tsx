@@ -4,46 +4,45 @@ import { Radio } from 'lucide-react';
 interface FeedEvent {
   id: string;
   time: string;
-  category: 'tariff' | 'port' | 'shipping' | 'customs' | 'supplier';
+  category: 'tariff' | 'sanctions' | 'customs' | 'supplier' | 'compliance';
   message: string;
   severity?: 'critical' | 'high' | 'medium' | 'low';
 }
 
 const CATEGORY_COLORS: Record<FeedEvent['category'], string> = {
-  tariff:   '#38bdf8',
-  port:     '#ef4444',
-  shipping: '#a78bfa',
-  customs:  '#f59e0b',
-  supplier: '#34d399',
+  tariff:     '#d97706',
+  sanctions:  '#dc2626',
+  customs:    '#ca8a04',
+  supplier:   '#10b981',
+  compliance: '#0d9488',
 };
 
 const CATEGORY_LABELS: Record<FeedEvent['category'], string> = {
-  tariff:   'TARIFF',
-  port:     'PORT',
-  shipping: 'SHIPPING',
-  customs:  'CUSTOMS',
-  supplier: 'SUPPLIER',
+  tariff:     'TARIFF',
+  sanctions:  'SANCTIONS',
+  customs:    'CUSTOMS',
+  supplier:   'SUPPLIER',
+  compliance: 'COMPLIANCE',
 };
 
 const MOCK_EVENTS: FeedEvent[] = [
-  { id: '1',  time: '14:32:10', category: 'tariff',   severity: 'critical', message: 'US adds 25% tariff on HS 6109.10 Vietnamese textiles — effective immediately' },
-  { id: '2',  time: '14:31:44', category: 'port',     severity: 'high',    message: 'Haiphong Port partial closure — Typhoon Mawar disrupting container operations' },
-  { id: '3',  time: '14:30:22', category: 'shipping', severity: 'medium',  message: 'COSCO vessel ETA +72h delay on Trans-Pacific Lane 4 routing' },
-  { id: '4',  time: '14:28:55', category: 'customs',  severity: 'low',     message: 'Bangladesh GSP renewal approved — duty-free access extended through 2026' },
-  { id: '5',  time: '14:27:18', category: 'supplier', severity: 'medium',  message: 'Dhaka Garments capacity at 94% — consider order redistribution' },
-  { id: '6',  time: '14:25:03', category: 'tariff',   severity: 'low',     message: 'USMCA preferential rate verified for HS 6109.10 via Mexico origin' },
-  { id: '7',  time: '14:24:11', category: 'port',     severity: 'low',     message: 'Long Beach Port — congestion index 0.72, 2.1 day average dwell time' },
-  { id: '8',  time: '14:21:30', category: 'shipping', severity: 'low',     message: 'Maersk updates bunker adjustment factor +3.2% for Q3 2025' },
-  { id: '9',  time: '14:19:45', category: 'customs',  severity: 'medium',  message: 'CBP targeting Vietnamese textile shipments for enhanced scrutiny' },
-  { id: '10', time: '14:17:02', category: 'supplier', severity: 'low',     message: 'MexiThread Guadalajara — production capacity confirmed at 18,000 units/month' },
-  { id: '11', time: '14:15:33', category: 'tariff',   severity: 'high',    message: 'Section 301 review expanded to include HS chapter 62 apparel categories' },
-  { id: '12', time: '14:13:20', category: 'port',     severity: 'low',     message: 'Singapore Tuas Port — new automated terminal reduces loading time by 18%' },
+  { id: '1',  time: '14:32', category: 'tariff',     severity: 'critical', message: 'US adds 34% tariff on HS 6109.10 Vietnamese textiles — effective immediately' },
+  { id: '2',  time: '14:31', category: 'sanctions',  severity: 'critical', message: 'Vietnam factory suspension order — Mekong Textiles Co halts operations' },
+  { id: '3',  time: '14:29', category: 'tariff',     severity: 'high',    message: 'Section 301 review expanded to HS chapter 62 — apparel categories impacted' },
+  { id: '4',  time: '14:27', category: 'customs',    severity: 'medium',  message: 'CBP enhanced scrutiny on Vietnamese textile shipments — +3-5 day clearance' },
+  { id: '5',  time: '14:25', category: 'supplier',   severity: 'medium',  message: 'Dhaka Apparel Co capacity at 94% — redistribution recommended' },
+  { id: '6',  time: '14:22', category: 'compliance', severity: 'low',     message: 'USMCA preferential rate confirmed for HS 6109.10 via Mexico origin' },
+  { id: '7',  time: '14:20', category: 'tariff',     severity: 'low',     message: 'Bangladesh GSP renewal approved — duty-free access extended through 2026' },
+  { id: '8',  time: '14:18', category: 'supplier',   severity: 'low',     message: 'MexiThread Guadalajara — 18,000 units/month capacity confirmed available' },
+  { id: '9',  time: '14:15', category: 'customs',    severity: 'low',     message: 'Sri Lanka origin verification cleared — Colombo Fabrics duty rate 0%' },
+  { id: '10', time: '14:12', category: 'tariff',     severity: 'medium',  message: 'China Section 301 List 4A — Shenzhen electronics components +25% duty' },
+  { id: '11', time: '14:09', category: 'compliance', severity: 'medium',  message: 'CTPAT enrollment confirmed for MexiThread — expedited customs processing' },
+  { id: '12', time: '14:06', category: 'sanctions',  severity: 'high',    message: 'OFAC alert — new entity designations affecting Southeast Asia textile trade' },
 ];
 
 export const EventFeed: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to show latest events
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollLeft = 0;
@@ -51,45 +50,41 @@ export const EventFeed: React.FC = () => {
 
   return (
     <div style={{
-      background: 'rgba(13,21,40,0.8)',
-      border: '1px solid rgba(56,189,248,0.1)',
-      borderRadius: 10,
-      overflow: 'hidden',
+      background: 'rgba(14,12,10,0.95)',
+      borderTop: '1px solid rgba(245,158,11,0.07)',
       height: '100%',
       display: 'flex',
-      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 0,
     }}>
-      {/* Header */}
+      {/* Live label */}
       <div style={{
-        padding: '8px 14px',
-        borderBottom: '1px solid rgba(56,189,248,0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flexShrink: 0,
+        padding: '0 14px',
+        display: 'flex', alignItems: 'center', gap: 6,
+        borderRight: '1px solid rgba(245,158,11,0.08)',
+        flexShrink: 0, height: '100%',
       }}>
-        <Radio size={11} color="#ef4444" />
-        <span style={{
-          fontSize: 10, fontWeight: 700,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-          color: 'rgba(148,163,184,0.8)',
-        }}>
-          Live Global Event Stream
-        </span>
-        <div style={{
-          marginLeft: 'auto',
-          display: 'flex', alignItems: 'center', gap: 5,
-        }}>
-          <div style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: '#ef4444',
-            animation: 'pulse-dot 1s ease-in-out infinite',
-          }} />
-          <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>LIVE</span>
+        <Radio size={10} color="#dc2626" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
+            textTransform: 'uppercase', color: 'rgba(120,113,108,0.6)',
+            whiteSpace: 'nowrap',
+          }}>
+            Trade Intel
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{
+              width: 4, height: 4, borderRadius: '50%',
+              background: '#dc2626',
+              animation: 'pulse-dot 1s ease-in-out infinite',
+            }} />
+            <span style={{ fontSize: 8, color: '#dc2626', fontWeight: 700 }}>LIVE</span>
+          </div>
         </div>
       </div>
 
-      {/* Scrollable event list */}
+      {/* Scrollable events */}
       <div
         ref={scrollRef}
         style={{
@@ -98,7 +93,7 @@ export const EventFeed: React.FC = () => {
           overflowY: 'hidden',
           display: 'flex',
           alignItems: 'center',
-          gap: 0,
+          height: '100%',
           scrollbarWidth: 'none',
         }}
       >
@@ -107,59 +102,55 @@ export const EventFeed: React.FC = () => {
           alignItems: 'center',
           padding: '0 12px',
           gap: 0,
-          animation: 'none',
         }}>
           {MOCK_EVENTS.map((event, i) => {
             const catColor = CATEGORY_COLORS[event.category];
-            const severityColor =
-              event.severity === 'critical' ? '#ef4444' :
-              event.severity === 'high'     ? '#f97316' :
-              event.severity === 'medium'   ? '#f59e0b' : '#6b7280';
+            const severityDot =
+              event.severity === 'critical' ? '#dc2626' :
+              event.severity === 'high'     ? '#ea580c' :
+              event.severity === 'medium'   ? '#ca8a04' : 'rgba(120,113,108,0.4)';
 
             return (
               <React.Fragment key={event.id}>
                 {i > 0 && (
                   <div style={{
-                    width: 1, height: 24,
-                    background: 'rgba(56,189,248,0.1)',
-                    flexShrink: 0,
-                    margin: '0 16px',
+                    width: 1, height: 20,
+                    background: 'rgba(245,158,11,0.08)',
+                    flexShrink: 0, margin: '0 14px',
                   }} />
                 )}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 7,
                   flexShrink: 0,
-                  maxWidth: 340,
+                  maxWidth: 360,
                 }}>
                   <span style={{
                     fontSize: 9,
-                    color: 'rgba(100,116,139,0.7)',
+                    color: 'rgba(120,113,108,0.5)',
                     fontFamily: 'JetBrains Mono, monospace',
                     flexShrink: 0,
                   }}>
                     {event.time}
                   </span>
                   <span style={{
-                    fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                    fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
                     color: catColor,
-                    background: `${catColor}15`,
-                    border: `1px solid ${catColor}25`,
+                    background: `${catColor}12`,
+                    border: `1px solid ${catColor}22`,
                     borderRadius: 3,
                     padding: '1px 5px',
                     flexShrink: 0,
                   }}>
                     {CATEGORY_LABELS[event.category]}
                   </span>
-                  {event.severity && (
-                    <div style={{
-                      width: 5, height: 5, borderRadius: '50%',
-                      background: severityColor, flexShrink: 0,
-                    }} />
-                  )}
+                  <div style={{
+                    width: 4, height: 4, borderRadius: '50%',
+                    background: severityDot, flexShrink: 0,
+                  }} />
                   <span style={{
-                    fontSize: 11, color: '#cbd5e1',
+                    fontSize: 11, color: '#d6cfc4',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
