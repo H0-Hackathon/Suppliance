@@ -125,7 +125,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     ];
 
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 420, background: '#060d1f', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#060d1f', overflow: 'hidden' }}>
             <DeckGL
                 views={new MapView({ id: 'map', repeat: true })}
                 viewState={viewState}
