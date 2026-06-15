@@ -151,14 +151,17 @@ export const AlertsPage: React.FC = () => {
       {/* Left Sidebar - Alert Inbox */}
       <div className="alerts-sidebar">
         <div className="sidebar-header">
-          <h2>Trade Alerts</h2>
+          <div className="header-content">
+            <h2>Incidents</h2>
+            <p className="header-subtitle">Active trade disruptions</p>
+          </div>
           <span className="alert-count">{filteredAlerts.length}</span>
         </div>
 
         <input
           type="text"
           className="search-input"
-          placeholder="Search country, product, or title..."
+          placeholder="Search incidents..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -167,7 +170,7 @@ export const AlertsPage: React.FC = () => {
           {(['all', 'critical', 'high', 'medium', 'low'] as const).map((severity) => (
             <button
               key={severity}
-              className={`filter-btn ${severity} ${selectedSeverity === severity ? 'active' : ''}`}
+              className={`filter-btn ${selectedSeverity === severity ? 'active' : ''}`}
               onClick={() => setSelectedSeverity(severity)}
             >
               {severity === 'all' ? 'All' : severity.charAt(0).toUpperCase() + severity.slice(1)}
@@ -177,7 +180,7 @@ export const AlertsPage: React.FC = () => {
 
         <div className="alerts-list">
           {filteredAlerts.length === 0 ? (
-            <div className="empty-state">No alerts match your filters</div>
+            <div className="empty-state">No incidents matching filters</div>
           ) : (
             filteredAlerts.map((alert) => (
               <button
@@ -185,15 +188,20 @@ export const AlertsPage: React.FC = () => {
                 className={`alert-item ${alert.severity} ${selectedAlert?.id === alert.id ? 'selected' : ''}`}
                 onClick={() => handleSelectAlert(alert)}
               >
-                <div className="alert-indicator" />
-                <div className="alert-content">
-                  <h4 className="alert-title">{alert.title}</h4>
-                  <div className="alert-tags">
-                    <span className="tag location">{alert.country}</span>
-                    <span className="tag product">{alert.product}</span>
-                    <span className="tag confidence">{alert.confidence}%</span>
+                <div className="alert-card-header">
+                  <div className="severity-dot" data-severity={alert.severity} title={alert.severity} />
+                  <div className="alert-title-block">
+                    <h4 className="alert-title">{alert.title}</h4>
+                    <div className="alert-meta-top">
+                      <span className="location-tag">{alert.country}</span>
+                      <span className="product-tag">{alert.product}</span>
+                    </div>
                   </div>
-                  <div className="alert-time">{alert.timeDetected}</div>
+                  <div className="alert-flag">🚩</div>
+                </div>
+                <div className="alert-card-footer">
+                  <span className="confidence-badge">{alert.confidence}% confident</span>
+                  <span className="time-badge">{alert.timeDetected}</span>
                 </div>
               </button>
             ))
@@ -205,140 +213,138 @@ export const AlertsPage: React.FC = () => {
       <div className="investigation-panel">
         {selectedAlert ? (
           <div className="case-file">
-            {/* Header */}
+            {/* Header - Case Context */}
             <div className="case-header">
-              <div className="header-meta">
-                <div className="severity-indicator" data-severity={selectedAlert.severity} />
-                <div className="header-text">
-                  <span className="breadcrumb">Trade Alert</span>
-                  <h1 className="case-title">{selectedAlert.title}</h1>
-                </div>
+              <div>
+                <div className="case-breadcrumb">INCIDENT ANALYSIS</div>
+                <h1 className="case-title">{selectedAlert.title}</h1>
+                <p className="case-subtitle">
+                  {selectedAlert.country} • {selectedAlert.product} • Detected {selectedAlert.timeDetected}
+                </p>
               </div>
-              <div className="header-stats">
-                <div className="stat">
-                  <span className="stat-label">Confidence</span>
-                  <span className="stat-value">{selectedAlert.confidence}%</span>
+              <div className="case-meta">
+                <div className="meta-stat">
+                  <span className="meta-stat-label">Confidence</span>
+                  <span className="meta-stat-value">{selectedAlert.confidence}%</span>
                 </div>
-                <div className="stat">
-                  <span className="stat-label">Detected</span>
-                  <span className="stat-value">{selectedAlert.timeDetected}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Hero Section - Recommended Action */}
-            <div className="hero-decision">
-              <div className="hero-label">RECOMMENDED ACTION</div>
-              <div className="hero-card">
-                <div className="hero-grid">
-                  <div className="hero-item">
-                    <span className="hero-label-small">Switch To</span>
-                    <div className="hero-value gold">{selectedAlert.recommendedAction.alternativeSupplier}</div>
-                  </div>
-                  <div className="hero-item">
-                    <span className="hero-label-small">Expected Savings</span>
-                    <div className="hero-value emerald">${(selectedAlert.recommendedAction.expectedSavings / 1000).toFixed(0)}K</div>
-                  </div>
-                  <div className="hero-item">
-                    <span className="hero-label-small">Lead Time</span>
-                    <div className="hero-value">{selectedAlert.recommendedAction.leadTime}</div>
-                  </div>
+                <div className={`severity-badge severity-${selectedAlert.severity}`}>
+                  {selectedAlert.severity.toUpperCase()}
                 </div>
               </div>
             </div>
 
-            {/* Context Section - What Happened */}
-            <section className="context-section">
-              <h3 className="section-header">What Happened</h3>
-              <div className="context-box">
-                <p className="context-text">{selectedAlert.event.summary}</p>
-                <div className="context-meta">
-                  <div className="meta-item">
-                    <span className="meta-label">Location</span>
-                    <span className="meta-value">{selectedAlert.country}</span>
+            {/* What Happened - Narrative Context */}
+            <section className="narrative-section">
+              <h2 className="narrative-title">What Happened</h2>
+              <div className="narrative-content">
+                <p className="narrative-text">{selectedAlert.event.summary}</p>
+                <div className="narrative-context">
+                  <div className="context-item">
+                    <span className="context-label">Affected Region</span>
+                    <span className="context-value">{selectedAlert.country}</span>
                   </div>
-                  <div className="meta-item">
-                    <span className="meta-label">Product Category</span>
-                    <span className="meta-value">{selectedAlert.product}</span>
+                  <div className="context-item">
+                    <span className="context-label">Product Category</span>
+                    <span className="context-value">{selectedAlert.product}</span>
+                  </div>
+                  <div className="context-item">
+                    <span className="context-label">Detection Method</span>
+                    <span className="context-value">AI Trade Monitor</span>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Impact Section - What's At Risk */}
-            <section className="impact-section">
-              <h3 className="section-header">What's At Risk</h3>
-              <div className="impact-grid">
-                <div className="impact-item">
-                  <span className="impact-number">{selectedAlert.impact.affectedOrders}</span>
-                  <span className="impact-label">Affected Orders</span>
-                </div>
-                <div className="impact-item">
-                  <span className="impact-number">${(selectedAlert.impact.exposureAmount / 1000).toFixed(0)}K</span>
-                  <span className="impact-label">Total Exposure</span>
-                </div>
-                <div className="impact-item">
-                  <span className="impact-number">${(selectedAlert.impact.estimatedAdditionalCost / 1000).toFixed(0)}K</span>
-                  <span className="impact-label">Estimated Cost</span>
-                </div>
-                <div className="impact-item">
-                  <span className="impact-number">{selectedAlert.impact.riskScore}</span>
-                  <span className="impact-label">Risk Score</span>
+            {/* Impact Narrative - Business Risk */}
+            <section className="impact-narrative">
+              <h2 className="narrative-title">Business Impact</h2>
+              <div className="impact-story">
+                <p className="impact-text">
+                  This disruption puts <strong>{selectedAlert.impact.affectedOrders} active orders</strong> at risk, 
+                  representing <strong>${(selectedAlert.impact.exposureAmount / 1000).toFixed(0)}K in total exposure</strong>. 
+                  If unmitigated, your costs could increase by <strong>${(selectedAlert.impact.estimatedAdditionalCost / 1000).toFixed(0)}K</strong>.
+                </p>
+                <div className="risk-meter">
+                  <div className="risk-label">Risk Assessment</div>
+                  <div className="risk-bar">
+                    <div 
+                      className="risk-fill"
+                      style={{ width: `${selectedAlert.impact.riskScore}%` }}
+                      data-risk={selectedAlert.impact.riskScore > 75 ? 'high' : selectedAlert.impact.riskScore > 50 ? 'medium' : 'low'}
+                    />
+                  </div>
+                  <div className="risk-value">{selectedAlert.impact.riskScore}/100</div>
                 </div>
               </div>
             </section>
 
-            {/* Investigation Timeline - Agent Workflow */}
-            <section className="timeline-section">
-              <h3 className="section-header">Investigation Timeline</h3>
-              <div className="timeline">
+            {/* Recommended Action - Decision Point */}
+            <section className="action-section">
+              <h2 className="narrative-title">Recommended Action</h2>
+              <div className="action-card">
+                <div className="action-decision">
+                  <div className="action-label">SWITCH TO</div>
+                  <div className="action-supplier">{selectedAlert.recommendedAction.alternativeSupplier}</div>
+                </div>
+                <div className="action-benefits">
+                  <div className="benefit">
+                    <span className="benefit-icon">💰</span>
+                    <div className="benefit-content">
+                      <span className="benefit-label">Expected Savings</span>
+                      <span className="benefit-value">${(selectedAlert.recommendedAction.expectedSavings / 1000).toFixed(0)}K</span>
+                    </div>
+                  </div>
+                  <div className="benefit">
+                    <span className="benefit-icon">📦</span>
+                    <div className="benefit-content">
+                      <span className="benefit-label">Lead Time</span>
+                      <span className="benefit-value">{selectedAlert.recommendedAction.leadTime}</span>
+                    </div>
+                  </div>
+                  <div className="benefit">
+                    <span className="benefit-icon">✓</span>
+                    <div className="benefit-content">
+                      <span className="benefit-label">Compliance Status</span>
+                      <span className={`benefit-value status-${selectedAlert.complianceStatus}`}>
+                        {selectedAlert.complianceStatus === 'pass' ? 'Approved' : 'Review Required'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Agent Reasoning - Process Transparency */}
+            <section className="reasoning-section">
+              <h2 className="narrative-title">Analysis Process</h2>
+              <div className="reasoning-timeline">
                 {[
-                  { key: 'monitor', label: 'Monitoring', icon: '◉' },
-                  { key: 'impact', label: 'Impact Analysis', icon: '◉' },
-                  { key: 'alternatives', label: 'Finding Alternatives', icon: '◉' },
-                  { key: 'compliance', label: 'Compliance Check', icon: '◉' },
-                  { key: 'validation', label: 'Validation', icon: '◉' },
+                  { key: 'monitor', label: 'Monitor', icon: '👁' },
+                  { key: 'impact', label: 'Impact', icon: '📊' },
+                  { key: 'alternatives', label: 'Alternatives', icon: '🔍' },
+                  { key: 'compliance', label: 'Compliance', icon: '✓' },
+                  { key: 'validation', label: 'Validation', icon: '✅' },
                 ].map((step, idx) => {
                   const isComplete = selectedAlert.agentWorkflow[step.key as keyof typeof selectedAlert.agentWorkflow];
                   return (
-                    <div key={step.key} className="timeline-item">
-                      <div className={`timeline-dot ${isComplete ? 'complete' : 'pending'}`}>{step.icon}</div>
-                      <div className="timeline-text">
-                        <div className="timeline-label">{step.label}</div>
-                        <div className={`timeline-status ${isComplete ? 'done' : 'waiting'}`}>
-                          {isComplete ? 'Complete' : 'In Progress'}
-                        </div>
+                    <div key={step.key} className={`reasoning-step ${isComplete ? 'complete' : 'pending'}`}>
+                      <div className="step-circle">{step.icon}</div>
+                      <div className="step-info">
+                        <div className="step-name">{step.label}</div>
+                        <div className="step-state">{isComplete ? '✓ Done' : '○ Pending'}</div>
                       </div>
-                      {idx < 4 && <div className="timeline-connector" />}
+                      {idx < 4 && <div className="step-line" />}
                     </div>
                   );
                 })}
               </div>
             </section>
-
-            {/* Compliance Section */}
-            <section className="compliance-section">
-              <h3 className="section-header">Regulatory Status</h3>
-              <div className={`compliance-badge ${selectedAlert.complianceStatus}`}>
-                {selectedAlert.complianceStatus === 'pass' ? (
-                  <>
-                    <span className="badge-icon">✓</span>
-                    <span className="badge-text">Compliant</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="badge-icon">⚠</span>
-                    <span className="badge-text">Review Required</span>
-                  </>
-                )}
-              </div>
-            </section>
           </div>
         ) : (
           <div className="empty-workspace">
-            <div className="empty-icon">→</div>
-            <p className="empty-title">No Alert Selected</p>
-            <p className="empty-message">Select an alert from the left to begin investigation</p>
+            <div className="empty-icon">📋</div>
+            <p className="empty-title">Select an Incident</p>
+            <p className="empty-message">Choose an alert from the left to review details and investigation findings</p>
           </div>
         )}
       </div>
