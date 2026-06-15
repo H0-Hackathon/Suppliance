@@ -2,11 +2,12 @@ import React from 'react';
 import {
   RefreshCw,
   Globe,
-  Truck,
-  Anchor,
   AlertTriangle,
-  Navigation,
   Layers,
+  DollarSign,
+  Users,
+  MapPin,
+  Activity,
 } from 'lucide-react';
 import { TradeGlobe, DisruptionPoint } from '../components/TradeGlobe';
 import { AgentStatusPanel } from '../components/dashboard/AgentStatusPanel';
@@ -27,19 +28,51 @@ interface ApiAlert {
   created_at: string;
 }
 
-const OVERVIEW_STATS = [
-  { label: 'Monitored Suppliers', value: '24', icon: Truck, color: '#38bdf8' },
-  { label: 'Active Orders',       value: '127', icon: Anchor, color: '#a78bfa' },
-  { label: 'Countries Covered',   value: '18', icon: Globe, color: '#34d399' },
-  { label: 'Trade Routes',        value: '43', icon: Navigation, color: '#f59e0b' },
+// Intelligence KPI cards
+const INTEL_CARDS = [
+  {
+    label: 'Trade Exposure',
+    value: '$420K',
+    sub: '+$40K new risk',
+    icon: DollarSign,
+    color: '#dc2626',
+    bg: 'rgba(220,38,38,0.07)',
+    border: 'rgba(220,38,38,0.18)',
+  },
+  {
+    label: 'High Risk Suppliers',
+    value: '4',
+    sub: '1 critical',
+    icon: Users,
+    color: '#ea580c',
+    bg: 'rgba(234,88,12,0.07)',
+    border: 'rgba(234,88,12,0.18)',
+  },
+  {
+    label: 'Critical Trade Events',
+    value: '2',
+    sub: 'Last 24 hours',
+    icon: AlertTriangle,
+    color: '#f59e0b',
+    bg: 'rgba(245,158,11,0.07)',
+    border: 'rgba(245,158,11,0.18)',
+  },
+  {
+    label: 'Countries Monitored',
+    value: '18',
+    sub: '43 trade routes',
+    icon: MapPin,
+    color: '#10b981',
+    bg: 'rgba(16,185,129,0.07)',
+    border: 'rgba(16,185,129,0.18)',
+  },
 ];
 
 const MAP_LAYERS = [
-  { id: 'suppliers',   label: 'Suppliers',          color: '#34d399' },
-  { id: 'routes',      label: 'Trade Routes',       color: '#38bdf8' },
-  { id: 'ports',       label: 'Ports',              color: '#a78bfa' },
-  { id: 'risk',        label: 'Risk Zones',         color: '#ef4444' },
-  { id: 'alt',         label: 'Alt. Suppliers',     color: '#f59e0b' },
+  { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
+  { id: 'routes',      label: 'Exposure Routes', color: '#f59e0b' },
+  { id: 'risk',        label: 'Risk Zones',      color: '#dc2626' },
+  { id: 'alt',         label: 'Alternatives',    color: '#14b8a6' },
 ];
 
 export const AlertsDashboard: React.FC = () => {
@@ -47,7 +80,7 @@ export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [activeLayers, setActiveLayers] = React.useState<Set<string>>(
-    new Set(['suppliers', 'routes', 'ports', 'risk'])
+    new Set(['suppliers', 'routes', 'risk'])
   );
   const [lastSync] = React.useState(() => new Date().toISOString());
 
@@ -93,7 +126,6 @@ export const AlertsDashboard: React.FC = () => {
 
   const active = alerts.filter((a) => a.status === 'active');
   const critical = active.filter((a) => a.severity === 'critical').length;
-  const high = active.filter((a) => a.severity === 'high').length;
 
   const syncTime = new Date(lastSync).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -109,48 +141,48 @@ export const AlertsDashboard: React.FC = () => {
     }}>
       {/* ── Top Hero Bar ── */}
       <div style={{
-        padding: '14px 24px',
-        borderBottom: '1px solid rgba(56,189,248,0.08)',
+        padding: '12px 24px',
+        borderBottom: '1px solid rgba(245,158,11,0.08)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
-        background: 'rgba(8,14,28,0.9)',
+        background: 'rgba(14,14,10,0.95)',
         backdropFilter: 'blur(12px)',
       }}>
         <div>
           <h1 style={{
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: 800,
-            color: '#f1f5f9',
+            color: '#e8e3d8',
             letterSpacing: '-0.3px',
             fontFamily: 'Inter, sans-serif',
             lineHeight: 1,
             marginBottom: 4,
           }}>
-            Global Supply Chain Intelligence
+            Trade Risk Intelligence
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 11, color: 'rgba(100,116,139,0.9)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'rgba(130,120,90,0.8)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{
                 width: 5, height: 5, borderRadius: '50%',
-                background: '#22c55e',
-                boxShadow: '0 0 5px #22c55e',
+                background: '#10b981',
+                boxShadow: '0 0 5px #10b981',
                 display: 'inline-block',
                 animation: 'pulse-dot 2s ease-in-out infinite',
               }} />
               Monitoring 24 suppliers across 18 countries
             </span>
-            <span>|</span>
+            <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
             <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
-              Last sync: {syncTime}
+              Updated {syncTime}
             </span>
             {critical > 0 && (
               <>
-                <span>|</span>
+                <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 4,
-                  color: '#ef4444', fontWeight: 600,
+                  color: '#dc2626', fontWeight: 600,
                 }}>
                   <AlertTriangle size={11} />
                   {critical} critical alert{critical !== 1 ? 's' : ''}
@@ -161,22 +193,17 @@ export const AlertsDashboard: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* System health */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(34,197,94,0.08)',
-            border: '1px solid rgba(34,197,94,0.2)',
+            background: 'rgba(16,185,129,0.07)',
+            border: '1px solid rgba(16,185,129,0.18)',
             borderRadius: 6,
             padding: '5px 12px',
             fontSize: 10,
-            color: '#86efac',
+            color: '#6ee7b7',
             fontWeight: 600,
           }}>
-            <div style={{
-              width: 5, height: 5, borderRadius: '50%',
-              background: '#22c55e',
-              animation: 'pulse-dot 2s ease-in-out infinite',
-            }} />
+            <Activity size={10} color="#10b981" />
             SYSTEMS NOMINAL
           </div>
 
@@ -190,7 +217,7 @@ export const AlertsDashboard: React.FC = () => {
               size={12}
               style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }}
             />
-            {isRunning ? 'Scanning…' : 'Run Monitor'}
+            {isRunning ? 'Scanning…' : 'Run Analysis'}
           </button>
         </div>
       </div>
@@ -199,8 +226,7 @@ export const AlertsDashboard: React.FC = () => {
       <div style={{
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: '1fr 272px',
-        gridTemplateRows: '1fr',
+        gridTemplateColumns: '1fr 276px',
         minHeight: 0,
         overflow: 'hidden',
       }}>
@@ -215,13 +241,13 @@ export const AlertsDashboard: React.FC = () => {
           <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
             <TradeGlobe disruptions={disruptions} />
 
-            {/* Map layer toggles overlay */}
+            {/* Layer toggles overlay */}
             <div style={{
               position: 'absolute',
               top: 14, right: 14,
-              background: 'rgba(8,14,28,0.85)',
+              background: 'rgba(14,14,10,0.88)',
               backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(56,189,248,0.12)',
+              border: '1px solid rgba(245,158,11,0.12)',
               borderRadius: 8,
               padding: '10px 12px',
               zIndex: 20,
@@ -232,12 +258,12 @@ export const AlertsDashboard: React.FC = () => {
               <div style={{
                 fontSize: 9, fontWeight: 700,
                 letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'rgba(100,116,139,0.8)',
+                color: 'rgba(150,140,100,0.7)',
                 display: 'flex', alignItems: 'center', gap: 5,
                 marginBottom: 2,
               }}>
-                <Layers size={9} />
-                Layers
+                <Layers size={9} color="#f59e0b" />
+                <span>Map Layers</span>
               </div>
               {MAP_LAYERS.map((layer) => {
                 const on = activeLayers.has(layer.id);
@@ -253,12 +279,13 @@ export const AlertsDashboard: React.FC = () => {
                   >
                     <div style={{
                       width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                      background: on ? layer.color : 'rgba(255,255,255,0.08)',
-                      border: `1px solid ${on ? layer.color : 'rgba(255,255,255,0.1)'}`,
+                      background: on ? layer.color : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${on ? layer.color : 'rgba(255,255,255,0.08)'}`,
                       transition: 'background 0.15s',
                     }} />
                     <span style={{
-                      fontSize: 10, color: on ? '#e2e8f0' : 'rgba(100,116,139,0.7)',
+                      fontSize: 10.5,
+                      color: on ? '#e8e3d8' : 'rgba(130,120,90,0.6)',
                       fontFamily: 'Inter, sans-serif',
                     }}>
                       {layer.label}
@@ -267,103 +294,100 @@ export const AlertsDashboard: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Exposure callout overlay — bottom left of map */}
+            <div style={{
+              position: 'absolute',
+              bottom: 14, left: 14,
+              background: 'rgba(14,14,10,0.88)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(220,38,38,0.2)',
+              borderRadius: 8,
+              padding: '8px 14px',
+              zIndex: 20,
+            }}>
+              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>
+                Total Exposure at Risk
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                $420,000
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(220,38,38,0.7)', marginTop: 3 }}>
+                +$40K from today&apos;s tariff ruling
+              </div>
+            </div>
           </div>
 
-          {/* ── Bottom: Event Feed ── */}
-          <div style={{ height: 52, flexShrink: 0, borderTop: '1px solid rgba(56,189,248,0.08)' }}>
+          {/* Bottom: Trade Intelligence Feed */}
+          <div style={{ height: 56, flexShrink: 0 }}>
             <EventFeed />
           </div>
         </div>
 
         {/* ── Right Sidebar ── */}
         <div style={{
-          borderLeft: '1px solid rgba(56,189,248,0.08)',
+          borderLeft: '1px solid rgba(245,158,11,0.08)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 0,
           overflow: 'hidden',
+          background: 'rgba(14,14,10,0.5)',
         }}>
-          {/* Supply Chain Overview */}
+          {/* Intelligence KPI cards */}
           <div style={{
             padding: '12px 14px',
-            borderBottom: '1px solid rgba(56,189,248,0.08)',
+            borderBottom: '1px solid rgba(245,158,11,0.07)',
             flexShrink: 0,
           }}>
             <div style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
-              textTransform: 'uppercase', color: 'rgba(100,116,139,0.7)',
-              marginBottom: 10,
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
+              marginBottom: 9,
+              display: 'flex', alignItems: 'center', gap: 5,
             }}>
-              Supply Chain Overview
+              <Globe size={9} color="#f59e0b" />
+              Trade Intelligence
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {OVERVIEW_STATS.map(({ label, value, icon: Icon, color }) => (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+              {INTEL_CARDS.map(({ label, value, sub, icon: Icon, color, bg, border }) => (
                 <div key={label} style={{
-                  background: 'rgba(13,21,40,0.8)',
-                  border: '1px solid rgba(56,189,248,0.08)',
-                  borderRadius: 8, padding: '10px 12px',
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  borderRadius: 8,
+                  padding: '10px 11px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                    <Icon size={11} color={color} />
-                    <span style={{ fontSize: 9, color: 'rgba(100,116,139,0.8)' }}>{label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+                    <Icon size={10} color={color} />
+                    <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
                   </div>
                   <div style={{
-                    fontSize: 22, fontWeight: 700,
+                    fontSize: 20, fontWeight: 800,
                     color, fontVariantNumeric: 'tabular-nums',
-                    lineHeight: 1,
+                    lineHeight: 1, marginBottom: 3,
                   }}>
                     {value}
                   </div>
+                  <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
                 </div>
               ))}
             </div>
-
-            {/* Alert counts */}
-            {(critical > 0 || high > 0) && (
-              <div style={{
-                marginTop: 8,
-                display: 'flex', gap: 6,
-              }}>
-                {critical > 0 && (
-                  <div style={{
-                    flex: 1, textAlign: 'center',
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    borderRadius: 6, padding: '6px',
-                  }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444', lineHeight: 1 }}>{critical}</div>
-                    <div style={{ fontSize: 9, color: 'rgba(239,68,68,0.7)', marginTop: 2 }}>CRITICAL</div>
-                  </div>
-                )}
-                {high > 0 && (
-                  <div style={{
-                    flex: 1, textAlign: 'center',
-                    background: 'rgba(249,115,22,0.08)',
-                    border: '1px solid rgba(249,115,22,0.2)',
-                    borderRadius: 6, padding: '6px',
-                  }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#f97316', lineHeight: 1 }}>{high}</div>
-                    <div style={{ fontSize: 9, color: 'rgba(249,115,22,0.7)', marginTop: 2 }}>HIGH</div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* AI Agent Status Panel */}
+          {/* Intelligence Pipeline */}
           <div style={{
             flex: 1,
             overflow: 'auto',
             padding: '12px 14px',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(56,189,248,0.1) transparent',
+            scrollbarColor: 'rgba(245,158,11,0.1) transparent',
           }}>
             <div style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
-              textTransform: 'uppercase', color: 'rgba(100,116,139,0.7)',
-              marginBottom: 10,
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
+              marginBottom: 9,
+              display: 'flex', alignItems: 'center', gap: 5,
             }}>
-              Intelligence Agents
+              <Activity size={9} color="#f59e0b" />
+              Analysis Pipeline
             </div>
             <AgentStatusPanel />
           </div>

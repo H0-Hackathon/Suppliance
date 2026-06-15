@@ -1,41 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, TrendingUp, Search, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Zap, Search, ShieldCheck, CheckCircle, ChevronDown } from 'lucide-react';
 
-const AGENTS = [
+const PIPELINE_STEPS = [
   {
-    id: 'tariff',
-    name: 'Tariff Monitor',
-    desc: 'Scanning HS code changes',
+    id: 'monitor',
+    label: 'Monitor',
+    desc: 'Scanning tariffs, sanctions & trade policy',
     icon: TrendingUp,
-    color: '#38bdf8',
+    color: '#f59e0b',
+    statusLabel: 'ACTIVE',
+    statusColor: '#f59e0b',
   },
   {
     id: 'impact',
-    name: 'Impact Engine',
-    desc: 'Calculating cost exposure',
+    label: 'Impact',
+    desc: 'Calculating financial exposure per supplier',
     icon: Zap,
-    color: '#a78bfa',
+    color: '#dc2626',
+    statusLabel: 'RUNNING',
+    statusColor: '#dc2626',
   },
   {
     id: 'alternatives',
-    name: 'Alternatives Agent',
-    desc: 'Identifying backup suppliers',
+    label: 'Alternatives',
+    desc: 'Sourcing backup suppliers by country & HS code',
     icon: Search,
-    color: '#34d399',
+    color: '#14b8a6',
+    statusLabel: 'READY',
+    statusColor: '#14b8a6',
   },
   {
     id: 'compliance',
-    name: 'Compliance Agent',
-    desc: 'Verifying USMCA / trade agreements',
+    label: 'Compliance',
+    desc: 'Verifying USMCA, GSP & FTA eligibility',
     icon: ShieldCheck,
-    color: '#f59e0b',
+    color: '#10b981',
+    statusLabel: 'READY',
+    statusColor: '#10b981',
   },
   {
-    id: 'adversarial',
-    name: 'Adversarial Validator',
-    desc: 'Red-teaming recommendations',
-    icon: AlertTriangle,
-    color: '#fb7185',
+    id: 'validation',
+    label: 'Validation',
+    desc: 'Red-teaming recommendations for accuracy',
+    icon: CheckCircle,
+    color: '#6b7280',
+    statusLabel: 'IDLE',
+    statusColor: '#6b7280',
   },
 ];
 
@@ -46,118 +56,144 @@ export const AgentStatusPanel: React.FC = () => {
     const id = setInterval(() => {
       setTicks((prev) => {
         const next = { ...prev };
-        AGENTS.forEach((a) => {
-          next[a.id] = ((prev[a.id] ?? 0) + 1) % 100;
+        PIPELINE_STEPS.forEach((s) => {
+          next[s.id] = ((prev[s.id] ?? 0) + 1) % 100;
         });
         return next;
       });
-    }, 120);
+    }, 140);
     return () => clearInterval(id);
   }, []);
 
   return (
     <div style={{
-      background: 'rgba(13,21,40,0.8)',
-      border: '1px solid rgba(56,189,248,0.1)',
+      background: 'rgba(20,20,18,0.9)',
+      border: '1px solid rgba(245,158,11,0.1)',
       borderRadius: 10,
       overflow: 'hidden',
     }}>
       {/* Header */}
       <div style={{
         padding: '10px 14px',
-        borderBottom: '1px solid rgba(56,189,248,0.08)',
+        borderBottom: '1px solid rgba(245,158,11,0.07)',
         display: 'flex',
         alignItems: 'center',
         gap: 7,
+        background: 'rgba(245,158,11,0.04)',
       }}>
         <div style={{
           width: 6, height: 6, borderRadius: '50%',
-          background: '#22c55e',
-          boxShadow: '0 0 6px #22c55e',
+          background: '#f59e0b',
+          boxShadow: '0 0 6px #f59e0b',
           animation: 'pulse-dot 2s ease-in-out infinite',
         }} />
         <span style={{
           fontSize: 10, fontWeight: 700,
           letterSpacing: '0.1em', textTransform: 'uppercase',
-          color: 'rgba(148,163,184,0.8)',
+          color: 'rgba(200,185,140,0.8)',
         }}>
-          AI Agent Status
+          Intelligence Pipeline
         </span>
         <span style={{
           marginLeft: 'auto',
-          fontSize: 9, color: '#22c55e',
+          fontSize: 9, color: '#10b981',
           fontFamily: 'JetBrains Mono, monospace',
           fontWeight: 600,
         }}>
-          ALL ONLINE
+          2/5 ACTIVE
         </span>
       </div>
 
-      {/* Agents */}
-      <div style={{ padding: '8px 0' }}>
-        {AGENTS.map((agent) => {
-          const Icon = agent.icon;
-          const tick = ticks[agent.id] ?? 0;
-          const barWidth = 30 + Math.abs(Math.sin(tick / 15)) * 55;
+      {/* Pipeline steps */}
+      <div style={{ padding: '6px 0' }}>
+        {PIPELINE_STEPS.map((step, idx) => {
+          const Icon = step.icon;
+          const tick = ticks[step.id] ?? 0;
+          const isActive = step.statusLabel === 'ACTIVE' || step.statusLabel === 'RUNNING';
+          const barWidth = isActive
+            ? 30 + Math.abs(Math.sin(tick / 12)) * 60
+            : step.statusLabel === 'READY' ? 100 : 0;
+          const isLast = idx === PIPELINE_STEPS.length - 1;
 
           return (
-            <div key={agent.id} style={{
-              padding: '8px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              borderBottom: '1px solid rgba(255,255,255,0.03)',
-            }}>
-              {/* Icon */}
+            <div key={step.id}>
               <div style={{
-                width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-                background: `${agent.color}18`,
-                border: `1px solid ${agent.color}30`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '9px 14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 10,
+                background: isActive ? `${step.color}06` : 'transparent',
+                borderLeft: isActive ? `2px solid ${step.color}` : '2px solid transparent',
               }}>
-                <Icon size={13} color={agent.color} />
-              </div>
-
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 600, color: '#e2e8f0',
-                  marginBottom: 2, whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                  {agent.name}
-                </div>
-                <div style={{ fontSize: 9.5, color: 'rgba(100,116,139,0.9)' }}>
-                  {agent.desc}
-                </div>
-                {/* Activity bar */}
-                <div style={{
-                  marginTop: 4, height: 2,
-                  background: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2, overflow: 'hidden',
-                }}>
+                {/* Step number + connector */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                   <div style={{
-                    height: '100%',
-                    width: `${barWidth}%`,
-                    background: `linear-gradient(90deg, ${agent.color}80, ${agent.color})`,
+                    width: 28, height: 28, borderRadius: 7,
+                    background: `${step.color}18`,
+                    border: `1px solid ${step.color}30`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Icon size={13} color={step.color} />
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                    <span style={{
+                      fontSize: 11.5, fontWeight: 600,
+                      color: isActive ? '#e8e3d8' : 'rgba(200,185,140,0.7)',
+                    }}>
+                      {step.label}
+                    </span>
+                    <span style={{
+                      fontSize: 8.5, fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      color: step.statusColor,
+                      background: `${step.statusColor}15`,
+                      border: `1px solid ${step.statusColor}25`,
+                      borderRadius: 3,
+                      padding: '1px 5px',
+                    }}>
+                      {step.statusLabel}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'rgba(130,120,90,0.9)', marginBottom: 5 }}>
+                    {step.desc}
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{
+                    height: 2,
+                    background: 'rgba(255,255,255,0.04)',
                     borderRadius: 2,
-                    transition: 'width 0.3s ease',
-                  }} />
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${barWidth}%`,
+                      background: isActive
+                        ? `linear-gradient(90deg, ${step.color}60, ${step.color})`
+                        : step.statusLabel === 'READY'
+                        ? `${step.color}40`
+                        : 'transparent',
+                      borderRadius: 2,
+                      transition: isActive ? 'width 0.35s ease' : 'none',
+                    }} />
+                  </div>
                 </div>
               </div>
 
-              {/* Status badge */}
-              <div style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
-                color: '#22c55e',
-                background: 'rgba(34,197,94,0.1)',
-                border: '1px solid rgba(34,197,94,0.2)',
-                borderRadius: 4,
-                padding: '2px 6px',
-                flexShrink: 0,
-              }}>
-                ONLINE
-              </div>
+              {/* Connector arrow between steps */}
+              {!isLast && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  padding: '1px 0',
+                  opacity: 0.3,
+                }}>
+                  <ChevronDown size={12} color="rgba(245,158,11,0.6)" />
+                </div>
+              )}
             </div>
           );
         })}

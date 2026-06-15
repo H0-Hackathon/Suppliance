@@ -7,7 +7,8 @@ import {
   ShieldCheck,
   Settings,
   Anchor,
-  Activity,
+  TrendingUp,
+  Globe,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -46,17 +47,17 @@ export const CommonHeader: React.FC = () => {
   }, []);
 
   const statusColor =
-    dbStatus === 'ok' ? '#22c55e' :
-    dbStatus === 'error' ? '#ef4444' : '#f59e0b';
+    dbStatus === 'ok' ? '#10b981' :
+    dbStatus === 'error' ? '#dc2626' : '#f59e0b';
 
   return (
     <aside style={{
       position: 'fixed',
       top: 0, left: 0,
-      width: 'var(--sidebar-w, 220px)',
+      width: 'var(--sidebar-w, 224px)',
       height: '100vh',
-      background: 'linear-gradient(180deg, #080e1c 0%, #0b1220 100%)',
-      borderRight: '1px solid rgba(56,189,248,0.08)',
+      background: 'linear-gradient(180deg, #0e0e10 0%, #111108 100%)',
+      borderRight: '1px solid rgba(245,158,11,0.1)',
       display: 'flex',
       flexDirection: 'column',
       zIndex: 1000,
@@ -64,54 +65,81 @@ export const CommonHeader: React.FC = () => {
       {/* Brand */}
       <div
         style={{
-          padding: '24px 20px 20px',
-          borderBottom: '1px solid rgba(56,189,248,0.08)',
+          padding: '22px 20px 18px',
+          borderBottom: '1px solid rgba(245,158,11,0.08)',
           cursor: 'pointer',
         }}
         onClick={() => navigate('/dashboard')}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          {/* Anchor icon in warm amber ring */}
           <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(59,130,246,0.15)',
-            border: '1px solid rgba(59,130,246,0.3)',
+            width: 34, height: 34, borderRadius: 9,
+            background: 'rgba(245,158,11,0.12)',
+            border: '1px solid rgba(245,158,11,0.35)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
+            boxShadow: '0 0 12px rgba(245,158,11,0.15)',
           }}>
-            <Anchor size={16} color="#38bdf8" />
+            <Anchor size={17} color="#f59e0b" />
           </div>
           <div>
             <div style={{
               fontFamily: 'Inter, sans-serif',
-              fontSize: 15,
+              fontSize: 16,
               fontWeight: 800,
-              color: '#f1f5f9',
-              letterSpacing: '-0.3px',
+              color: '#e8e3d8',
+              letterSpacing: '-0.4px',
               lineHeight: 1,
             }}>
-              Coast<span style={{ color: '#38bdf8' }}>Guard</span>
+              Coast<span style={{ color: '#f59e0b' }}>Guard</span>
             </div>
             <div style={{
               fontSize: 9,
-              color: 'rgba(148,163,184,0.6)',
-              letterSpacing: '0.08em',
+              color: 'rgba(180,170,140,0.55)',
+              letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              fontWeight: 500,
-              marginTop: 2,
+              fontWeight: 600,
+              marginTop: 3,
             }}>
-              Supply Chain Intel
+              Trade Risk Intel
             </div>
           </div>
+        </div>
+
+        {/* Risk snapshot bar */}
+        <div style={{
+          marginTop: 10,
+          background: 'rgba(220,38,38,0.07)',
+          border: '1px solid rgba(220,38,38,0.15)',
+          borderRadius: 6,
+          padding: '5px 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+        }}>
+          <TrendingUp size={10} color="#dc2626" />
+          <span style={{ fontSize: 10, color: 'rgba(220,100,100,0.9)', fontWeight: 600 }}>
+            4 high-risk suppliers
+          </span>
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: 9,
+            color: 'rgba(220,38,38,0.6)',
+            fontFamily: 'JetBrains Mono, monospace',
+          }}>
+            LIVE
+          </span>
         </div>
       </div>
 
       {/* System status bar */}
       <div style={{
-        margin: '12px 12px 4px',
-        background: 'rgba(34,197,94,0.06)',
-        border: '1px solid rgba(34,197,94,0.15)',
+        margin: '10px 12px 2px',
+        background: dbStatus === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(220,38,38,0.06)',
+        border: `1px solid ${dbStatus === 'ok' ? 'rgba(16,185,129,0.15)' : 'rgba(220,38,38,0.15)'}`,
         borderRadius: 6,
-        padding: '6px 10px',
+        padding: '5px 10px',
         display: 'flex',
         alignItems: 'center',
         gap: 7,
@@ -124,7 +152,7 @@ export const CommonHeader: React.FC = () => {
           animation: dbStatus === 'ok' ? 'pulse-dot 2s ease-in-out infinite' : 'none',
         }} />
         <span style={{
-          fontSize: 10, color: 'rgba(148,163,184,0.8)',
+          fontSize: 10, color: 'rgba(180,170,140,0.7)',
           fontFamily: 'JetBrains Mono, monospace',
           fontWeight: 500,
           flex: 1,
@@ -136,17 +164,17 @@ export const CommonHeader: React.FC = () => {
           {dbStatus === 'ok' && `SYS: ${dbBackend || 'ONLINE'}`}
           {dbStatus === 'error' && 'SYS: OFFLINE'}
         </span>
-        <Activity size={10} color={statusColor} />
+        <Globe size={10} color={statusColor} />
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <div style={{
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
-          color: 'rgba(100,116,139,0.7)', textTransform: 'uppercase',
-          padding: '8px 10px 4px',
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+          color: 'rgba(150,140,110,0.55)', textTransform: 'uppercase',
+          padding: '10px 10px 5px',
         }}>
-          Navigation
+          Platform
         </div>
         {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
           const isActive = location.pathname === path ||
@@ -164,28 +192,28 @@ export const CommonHeader: React.FC = () => {
                 border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'Inter, sans-serif',
-                fontSize: 12,
+                fontSize: 12.5,
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#e2e8f0' : 'rgba(148,163,184,0.6)',
+                color: isActive ? '#e8e3d8' : 'rgba(160,150,120,0.55)',
                 background: isActive
-                  ? 'linear-gradient(90deg, rgba(59,130,246,0.18) 0%, rgba(59,130,246,0.06) 100%)'
+                  ? 'linear-gradient(90deg, rgba(245,158,11,0.14) 0%, rgba(245,158,11,0.04) 100%)'
                   : 'transparent',
                 textAlign: 'left',
                 width: '100%',
                 transition: 'all 0.15s',
-                borderLeft: isActive ? '2px solid #38bdf8' : '2px solid transparent',
-                position: 'relative',
+                borderLeft: isActive ? '2px solid #f59e0b' : '2px solid transparent',
+                boxShadow: isActive ? 'inset 0 0 0 1px rgba(245,158,11,0.08)' : 'none',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(56,189,248,0.05)';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(226,232,240,0.9)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(245,158,11,0.05)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,227,216,0.85)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(148,163,184,0.6)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(160,150,120,0.55)';
                 }
               }}
             >
@@ -194,7 +222,7 @@ export const CommonHeader: React.FC = () => {
               {label === 'Alerts' && (
                 <span style={{
                   marginLeft: 'auto',
-                  background: '#ef4444',
+                  background: '#dc2626',
                   color: 'white',
                   fontSize: 9,
                   fontWeight: 700,
@@ -214,13 +242,13 @@ export const CommonHeader: React.FC = () => {
       {/* Footer */}
       <div style={{
         padding: '12px 20px',
-        borderTop: '1px solid rgba(56,189,248,0.08)',
+        borderTop: '1px solid rgba(245,158,11,0.07)',
       }}>
-        <div style={{ fontSize: 9, color: 'rgba(100,116,139,0.5)', fontFamily: 'JetBrains Mono, monospace' }}>
+        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
           CoastGuard v0.1.0
         </div>
-        <div style={{ fontSize: 9, color: 'rgba(100,116,139,0.35)', marginTop: 2 }}>
-          © 2025 CoastGuard Intel
+        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
+          Trade Risk Intelligence Platform
         </div>
       </div>
     </aside>
