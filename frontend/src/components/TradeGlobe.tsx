@@ -1,5 +1,5 @@
 import { Map } from 'react-map-gl/maplibre';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { ArcLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { MapView } from '@deck.gl/core';
@@ -112,6 +112,47 @@ const RING_RADIUS: Record<1|2|3, number> = {
 
 const INITIAL_VIEW = { longitude: -10, latitude: 22, zoom: 1.7, pitch: 0, bearing: 0 };
 
+// ─── Particle helpers ─────────────────────────────────────────────────────────
+
+// Particles per route tier — more particles = higher exposure
+const PARTICLES_PER_TIER: Record<1 | 2 | 3, number> = { 1: 3, 2: 5, 3: 9 };
+
+// Great-circle interpolation between two lon/lat points at fraction t
+function lerpGreatCircle(
+  src: [number, number],
+  tgt: [number, number],
+  t: number,
+  arcHeight = 0.35
+): [number, number, number] {
+  // Simple spherical linear interpolation (good enough for short-to-mid arcs)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const lat1 = toRad(src[1]);
+  const lon1 = toRad(src[0]);
+  const lat2 = toRad(tgt[1]);
+  const lon2 = toRad(tgt[0]);
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
+  ));
+  if (d === 0) return [src[0], src[1], 0];
+  const A = Math.sin((1 - t) * d) / Math.sin(d);
+  const B = Math.sin(t * d) / Math.sin(d);
+  const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+  const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+  const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+  const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+  const lon = Math.atan2(y, x);
+  // Bell-curve altitude lift
+  const alt = Math.sin(t * Math.PI) * arcHeight * 1e6;
+  return [(lon * 180) / Math.PI, (lat * 180) / Math.PI, alt];
+}
+
+interface Particle {
+  position: [number, number, number];
+  color: [number, number, number, number];
+  radius: number;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DisruptionPoint {
@@ -143,7 +184,50 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
   // Pulse factor: 0→1→0
   const pulse = (Math.sin((animTick / 360) * Math.PI * 2) + 1) / 2;
 
+  // ── Exposure packet particles (recomputed every tick) ──────────────────────
+  const particles = useMemo<Particle[]>(() => {
+    const out: Particle[] = [];
+    ROUTES.forEach((route) => {
+      // Determine exposure tier from the source supplier
+      const supplier = SUPPLIERS.find(
+        (s) => s.coords[0] === route.source[0] && s.coords[1] === route.source[1]
+      );
+      const tier = (supplier?.exposureTier ?? 1) as 1 | 2 | 3;
+      const count = PARTICLES_PER_TIER[tier];
+      const color = ROUTE_COLOR[route.routeStatus].src;
+
+      for (let i = 0; i < count; i++) {
+        // Each particle has a base offset spread evenly, animated by tick
+        const baseT = i / count;
+        const t = ((baseT + animTick / 360) % 1 + 1) % 1; // 0→1 looping
+        const position = lerpGreatCircle(route.source, route.target, t);
+        // Fade out near endpoints for smooth appearance/disappearance
+        const alpha = t < 0.08
+          ? Math.round((t / 0.08) * 230)
+          : t > 0.92
+          ? Math.round(((1 - t) / 0.08) * 230)
+          : 230;
+        // Larger, brighter packets on high-exposure routes
+        const radius = tier === 3 ? 55000 : tier === 2 ? 40000 : 28000;
+        out.push({ position, color: [color[0], color[1], color[2], alpha], radius });
+      }
+    });
+    return out;
+  }, [animTick]);
+
   // ── Layers ──────────────────────────────────────────────────────────────────
+
+  // Heat zone glow under high-risk nodes (soft filled halo)
+  const heatLayer = new ScatterplotLayer<Supplier>({
+    id: 'heat-zones',
+    data: SUPPLIERS.filter((s) => s.exposureTier === 3 && s.status !== 'customer'),
+    getPosition: (d) => d.coords,
+    getFillColor: (d) => [...NODE_COLOR[d.status], Math.round(18 + pulse * 22)] as [number,number,number,number],
+    getRadius: 620000 + pulse * 80000,
+    stroked: false,
+    radiusUnits: 'meters',
+    updateTriggers: { getFillColor: animTick, getRadius: animTick },
+  });
 
   // Outer exposure rings (pulsing, per tier)
   const riskRingLayers = ([1, 2, 3] as const).map((tier) => {
@@ -157,7 +241,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
       data,
       getPosition: (d) => d.coords,
       getFillColor: [0, 0, 0, 0],
-      getLineColor: (d) => [...NODE_COLOR[d.status], tier === 3 ? 180 : tier === 2 ? 120 : 70] as [number,number,number,number],
+      getLineColor: (d) => [...NODE_COLOR[d.status], tier === 3 ? 190 : tier === 2 ? 130 : 75] as [number,number,number,number],
       getLineWidth: tier === 3 ? 3 : tier === 2 ? 2 : 1,
       stroked: true,
       filled: false,
@@ -167,17 +251,48 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     });
   });
 
-  // Animated particle arcs — second set offset by half cycle for flow feel
-  const arcLayerA = new ArcLayer<Route>({
-    id: 'routes-a',
+  // Base route arcs — dim underlayer
+  const arcBaseLayer = new ArcLayer<Route>({
+    id: 'routes-base',
+    data: ROUTES,
+    getSourcePosition: (d) => d.source,
+    getTargetPosition: (d) => d.target,
+    getSourceColor: (d) => {
+      const c = ROUTE_COLOR[d.routeStatus].src;
+      return [c[0], c[1], c[2], 40] as [number,number,number,number];
+    },
+    getTargetColor: (d) => {
+      const c = ROUTE_COLOR[d.routeStatus].tgt;
+      return [c[0], c[1], c[2], 10] as [number,number,number,number];
+    },
+    getWidth: (d) => d.routeStatus === 'impacted' ? 1 : 0.8,
+    greatCircle: true,
+    getHeight: 0.5,
+  });
+
+  // Bright glow arcs on top (impacted routes glow harder)
+  const arcGlowLayer = new ArcLayer<Route>({
+    id: 'routes-glow',
     data: ROUTES,
     getSourcePosition: (d) => d.source,
     getTargetPosition: (d) => d.target,
     getSourceColor: (d) => ROUTE_COLOR[d.routeStatus].src,
     getTargetColor: (d) => ROUTE_COLOR[d.routeStatus].tgt,
-    getWidth: (d) => d.routeStatus === 'impacted' ? 2.5 : 1.5,
+    getWidth: (d) => d.routeStatus === 'impacted' ? 2.5 : d.routeStatus === 'alternative' ? 1.8 : 1.5,
     greatCircle: true,
     getHeight: 0.5,
+  });
+
+  // Exposure packet particles
+  const particleLayer = new ScatterplotLayer<Particle>({
+    id: 'particles',
+    data: particles,
+    getPosition: (d) => d.position,
+    getFillColor: (d) => d.color,
+    getRadius: (d) => d.radius,
+    stroked: false,
+    radiusUnits: 'meters',
+    updateTriggers: { getPosition: animTick, getFillColor: animTick, getRadius: animTick },
   });
 
   // Node core dots
@@ -204,7 +319,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     radiusUnits: 'meters',
   });
 
-  // Floating labels (name + country)
+  // Floating labels (name)
   const labelLayer = new TextLayer<Supplier>({
     id: 'labels',
     data: SUPPLIERS.filter((s) => s.status !== 'customer'),
@@ -228,7 +343,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     id: 'scores',
     data: SUPPLIERS.filter((s) => s.status !== 'customer'),
     getPosition: (d) => d.coords,
-    getText: (d) => `Risk: ${d.riskScore}  Exp: ${d.exposure}`,
+    getText: (d) => `Risk ${d.riskScore}  ·  Exp ${d.exposure}`,
     getSize: 9,
     getColor: [148, 163, 184, 180],
     getPixelOffset: [0, -8],
@@ -242,7 +357,16 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ disruptions = [] }) => {
     pickable: false,
   });
 
-  const layers = [...riskRingLayers, arcLayerA, nodeLayer, labelLayer, scoreLayer];
+  const layers = [
+    heatLayer,
+    ...riskRingLayers,
+    arcBaseLayer,
+    arcGlowLayer,
+    particleLayer,
+    nodeLayer,
+    labelLayer,
+    scoreLayer,
+  ];
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#060d1f', overflow: 'hidden' }}>
