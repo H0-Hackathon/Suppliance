@@ -138,7 +138,6 @@ export const AlertsPage: React.FC = () => {
     });
   }, [searchTerm, selectedSeverity]);
 
-  // Load selected alert details
   const handleSelectAlert = (alert: Alert) => {
     const details = getAlertDetails(alert.id);
     if (details) {
@@ -147,9 +146,9 @@ export const AlertsPage: React.FC = () => {
   };
 
   return (
-    <div className="alerts-page">
+    <div className="alerts-container">
       {/* Left Sidebar - Alert Inbox */}
-      <div className="alerts-sidebar">
+      <aside className="alerts-sidebar">
         <div className="sidebar-header">
           <div className="header-content">
             <h2>Incidents</h2>
@@ -207,10 +206,10 @@ export const AlertsPage: React.FC = () => {
             ))
           )}
         </div>
-      </div>
+      </aside>
 
       {/* Right Panel - Investigation Workspace */}
-      <div className="investigation-panel">
+      <main className="investigation-panel">
         {selectedAlert ? (
           <div className="case-file">
             {/* Header - Case Context */}
@@ -347,9 +346,7 @@ export const AlertsPage: React.FC = () => {
             <p className="empty-message">Choose an alert from the left to review details and investigation findings</p>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
-
-export default AlertsPage;
