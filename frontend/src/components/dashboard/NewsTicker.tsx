@@ -34,10 +34,14 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+const SCROLL_PX_PER_SEC = 70; // constant, readable ticker speed
+
 export const NewsTicker: React.FC = () => {
   const [items, setItems] = React.useState<NewsItem[]>([]);
   const [paused, setPaused] = React.useState(false);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
+  const [durationSec, setDurationSec] = React.useState(60);
+  const trackRef = React.useRef<HTMLDivElement>(null);
 
   const fetchNews = React.useCallback(async () => {
     try {
@@ -57,13 +61,22 @@ export const NewsTicker: React.FC = () => {
     return () => clearInterval(id);
   }, [fetchNews]);
 
+  // Measure the rendered track and derive a duration that yields a constant
+  // scroll speed regardless of how many headlines are present. The track holds
+  // two copies, so translating by -50% scrolls exactly one copy width.
+  React.useLayoutEffect(() => {
+    if (!trackRef.current || items.length === 0) return;
+    const oneCopyPx = trackRef.current.scrollWidth / 2;
+    if (oneCopyPx > 0) {
+      setDurationSec(Math.max(20, Math.round(oneCopyPx / SCROLL_PX_PER_SEC)));
+    }
+  }, [items]);
+
   // Hide entirely when there's no real data to show.
   if (items.length === 0) return null;
 
-  // Duplicate the list so the marquee loops seamlessly. Speed scales with the
-  // number of headlines so reading pace stays roughly constant.
+  // Duplicate the list so the marquee loops seamlessly.
   const loop = [...items, ...items];
-  const durationSec = Math.max(40, items.length * 5);
 
   const renderItem = (it: NewsItem, i: number) => {
     const color = catColor(it.category);
@@ -117,9 +130,11 @@ export const NewsTicker: React.FC = () => {
         onMouseLeave={() => setPaused(false)}
       >
         <div
+          ref={trackRef}
           className="ticker-track"
           style={{
             display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
+            width: 'max-content', flexShrink: 0, willChange: 'transform',
             animation: `ticker-scroll ${durationSec}s linear infinite`,
             animationPlayState: paused ? 'paused' : 'running',
           }}
