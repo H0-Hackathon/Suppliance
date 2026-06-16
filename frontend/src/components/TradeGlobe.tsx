@@ -60,7 +60,20 @@ export interface TradeGlobeProps {
     disruptions?: DisruptionPoint[];
 }
 
+function detectWebGL(): boolean {
+    try {
+        const canvas = document.createElement('canvas');
+        return !!(
+            window.WebGLRenderingContext &&
+            (canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+        );
+    } catch {
+        return false;
+    }
+}
+
 export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disruptions = [] }) => {
+    const [webglOk] = useState<boolean>(() => detectWebGL());
     const [viewState, setViewState] = useState(INITIAL_VIEW);
     const [hoveredSupplier, setHoveredSupplier] = useState<string | null>(null);
     const [hoveredDisruption, setHoveredDisruption] = useState<string | null>(null);
@@ -170,6 +183,25 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
             updateTriggers: { getRadius: animOffset },
         }),
     ];
+
+    if (!webglOk) {
+        return (
+            <div style={{
+                width: '100%', height: '100%', background: '#060d1f', borderRadius: 12,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 8, color: '#475569', fontFamily: 'system-ui, sans-serif', fontSize: 12,
+            }}>
+                <span style={{ fontSize: 28 }}>🗺️</span>
+                <span style={{ fontWeight: 600, color: '#64748b' }}>Interactive map unavailable</span>
+                <span style={{ fontSize: 11, color: '#475569' }}>WebGL is disabled or not supported by this browser</span>
+                {suppliers.length > 0 && (
+                    <div style={{ marginTop: 8, textAlign: 'center', fontSize: 11, color: '#64748b' }}>
+                        {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} tracked
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%', background: '#060d1f', borderRadius: 12, overflow: 'hidden' }}>

@@ -1,27 +1,26 @@
 """
 CoastGuard — Monitor Agent (Agent 1).
 
-Reads the two collector datasets:
-  data/tariff_dataset.jsonl        (collectors/tariff.py — Bing news)
-  data/supply_chain_dataset.jsonl  (collectors/monitor.py — RSS feeds)
+Primary path (USE_MOCK_LLM=false, GEMINI_API_KEY set):
+  All in-flight articles (RSS cache + targeted Google News query) are sent
+  to Gemini Flash in a single call via core/event_clusterer.py. The LLM
+  groups them into event clusters and fully synthesizes the top cluster:
+  title, description, event_type, affected_country, tariff_rate. Severity
+  and confidence are then derived deterministically from the cluster's
+  constituent articles using the signal extractors in collectors/tariff.py.
 
-and normalizes each article into a structured risk event:
+  The returned dict includes a `news` list — all articles in the winning
+  cluster, each with title, url, domain, summary (400 chars), scraped_at.
+  This list flows downstream to Agents 3-5 (Task 4) and to the frontend
+  "Related News" panel (future).
 
-    {
-        "event_type": "TARIFF",
-        "affected_country": "Vietnam",
-        "affected_product": "Textiles",
-        "tariff_rate": 25.0,
-        "severity": "HIGH",
-        "confidence": 0.91,
-        ...
-    }
+Fallback path (no API key, LLM failure, or JSONL-only data):
+  Deterministic best-pick using relevance_score + country/product boosts.
+  Returns the same dict shape with `news: []`.
 
-This is a pure data-extraction step — NO LLM call. event_type, severity and
-confidence are derived deterministically from signals already extracted by
-the collectors (country/product mentions, trade actions, tariff percentages,
-relevance score). This replaces the GDELT tool as the TariffMonitor agent's
-data source in core/crew_monitor_pipeline.py.
+JSONL fallback (cache empty at startup):
+  Reads data/tariff_dataset.jsonl + data/supply_chain_dataset.jsonl.
+  Skips LLM clustering (stale data doesn't warrant an API call).
 """
 
 import json
@@ -82,8 +81,7 @@ def _load_jsonl(path: pathlib.Path) -> list[dict]:
 
 
 def _pick_country(mentions: list[str]) -> Optional[str]:
-    """Prefer a non-US country mention (the US is almost always mentioned as
-    the importer, not the affected supplier country)."""
+    """Prefer a non-US country mention (the US is almost always the importer)."""
     candidates = [m for m in (mentions or []) if m != "united states"]
     chosen = candidates[0] if candidates else (mentions[0] if mentions else None)
     return chosen.title() if chosen else None
@@ -199,40 +197,179 @@ def _hs_code_to_products(hs_code: Optional[str]) -> set[str]:
     return HS2_TO_PRODUCTS.get(hs_code[:2], set())
 
 
+def _empty_result(country_label: Optional[str]) -> dict:
+    return {
+        "risk_detected": False,
+        "event": "No tariff or supply-chain events found in collector data.",
+        "event_type": None,
+        "country": country_label,
+        "product": None,
+        "tariff_rate": None,
+        "severity": "LOW",
+        "confidence": 0.2,
+        "source": "monitor_agent",
+        "source_url": None,
+        "summary": None,
+        "news": [],
+    }
+
+
+def _build_cluster_result(
+    cluster: dict,
+    all_articles: list[dict],
+    country_label: Optional[str],
+    hs_code: Optional[str],
+) -> dict:
+    """
+    Turn an LLM cluster dict into the final event dict returned by get_latest_event().
+    Severity and confidence are derived deterministically from the cluster articles'
+    extracted signals so the LLM only handles synthesis, not risk scoring.
+    """
+    indices = cluster.get("article_indices") or []
+    cluster_articles = [all_articles[i] for i in indices if i < len(all_articles)]
+
+    # Deterministic severity/confidence from the cluster's constituent articles
+    tariff_rate = cluster.get("tariff_rate")
+    if cluster_articles:
+        normalized = [_normalize_record(r) for r in cluster_articles]
+        max_relevance = max(e["relevance_score"] for e in normalized)
+        if tariff_rate is None:
+            all_pcts = []
+            for e in normalized:
+                # _normalize_record doesn't preserve tariff_percentages as strings,
+                # but tariff_rate (float) is already the max. Use the largest across
+                # cluster articles as a fallback.
+                if e["tariff_rate"] is not None:
+                    all_pcts.append(e["tariff_rate"])
+            tariff_rate = max(all_pcts) if all_pcts else None
+        severity, confidence = _score_severity(
+            {"relevance_score": max_relevance}, tariff_rate
+        )
+    else:
+        severity, confidence = "MEDIUM", 0.6
+
+    # Source URL: first cluster article that has one
+    source_url = None
+    for a in cluster_articles:
+        u = a.get("source_url") or a.get("url")
+        if u:
+            source_url = u
+            break
+
+    # Product label from HS code mapping
+    product_terms = _hs_code_to_products(hs_code)
+    product = next(iter(product_terms), None)
+
+    # news list passed to Agents 3-5 and the future frontend panel
+    news = [
+        {
+            "title": a.get("title", ""),
+            "url": a.get("source_url") or a.get("url", ""),
+            "domain": a.get("domain", ""),
+            "summary": (a.get("summary") or a.get("full_text") or "")[:400],
+            "scraped_at": a.get("scraped_at", ""),
+        }
+        for a in cluster_articles
+    ]
+
+    return {
+        "risk_detected": cluster.get("event_type") in {
+            "TARIFF", "EXPORT_CONTROL", "PORT_DISRUPTION", "WEATHER", "GEOPOLITICAL"
+        },
+        "event": cluster["title"],
+        "event_type": cluster["event_type"],
+        "country": cluster.get("affected_country") or country_label,
+        "product": product.title() if product else None,
+        "tariff_rate": tariff_rate,
+        "severity": severity,
+        "confidence": confidence,
+        "source": "event_clusterer",
+        "source_url": source_url,
+        "summary": cluster.get("description", ""),
+        "news": news,
+    }
+
+
 def load_events() -> list[dict]:
-    """Load + normalize every record from both collector datasets."""
+    """
+    Fallback loader: normalize records from the on-disk JSONL datasets.
+    Used when the in-memory article cache (core/article_cache) is empty
+    (e.g. server started without network access or before the startup
+    scrape completed). LLM clustering is skipped for JSONL data.
+    """
     records = _load_jsonl(TARIFF_DATASET) + _load_jsonl(SUPPLY_CHAIN_DATASET)
     return [_normalize_record(r) for r in records]
 
 
-def get_latest_event(supplier_country: Optional[str] = None, hs_code: Optional[str] = None) -> dict:
+def get_latest_event(
+    supplier_country: Optional[str] = None,
+    hs_code: Optional[str] = None,
+    articles: Optional[list] = None,
+) -> dict:
     """
-    Agent 1's main entrypoint: pick the single most relevant normalized event
-    for the given supplier country / HS code.
+    Agent 1's main entrypoint: return the most relevant event for this
+    supplier country / HS code, with a supporting `news` list.
 
-    Returns a dict shaped for `agent_outputs["tariff_monitor"]` in
-    core/crew_monitor_pipeline.py — keeps "risk_detected", "event",
-    "confidence", "source" for backwards compatibility with the existing
-    AlertCard reasoning UI, plus structured fields (event_type, country,
-    product, tariff_rate, severity) for the Impact Agent (Agent 2).
+    Primary path: all in-flight articles → Gemini Flash clustering →
+    synthesized Event + news list.
+
+    Fallback path (LLM unavailable): deterministic relevance-score ranking,
+    news list is empty.
+
+    articles: pre-collected article dicts from monitor_routes.py
+              (RSS cache + targeted Google News query). When None, reads
+              from core/article_cache, then falls back to JSONL datasets.
     """
-    events = load_events()
     country_label = get_country_name(supplier_country) if supplier_country else None
 
+    # ── Resolve article source ─────────────────────────────────────────────────
+    using_live = True
+    pre_normalized_events: Optional[list] = None
+
+    if articles is not None:
+        live_articles = articles
+    else:
+        from core.article_cache import get_articles
+        live_articles = get_articles()
+        if not live_articles:
+            logger.info("Article cache empty — falling back to JSONL datasets")
+            pre_normalized_events = load_events()
+            using_live = False
+
+    if using_live and not live_articles:
+        return _empty_result(country_label)
+    if not using_live and not pre_normalized_events:
+        return _empty_result(country_label)
+
+    # ── LLM clustering (live articles only) ───────────────────────────────────
+    if using_live:
+        from config import get_settings
+        _settings = get_settings()
+        if not _settings.use_mock_llm and _settings.gemini_api_key:
+            from core.event_clusterer import cluster_articles as _cluster
+            cluster = _cluster(
+                articles=live_articles,
+                supplier_country=country_label or supplier_country or "any country",
+                hs_code=hs_code,
+                api_key=_settings.gemini_api_key,
+            )
+            if cluster:
+                return _build_cluster_result(
+                    cluster=cluster,
+                    all_articles=live_articles,
+                    country_label=country_label,
+                    hs_code=hs_code,
+                )
+            logger.warning("LLM clustering returned None — falling back to deterministic ranking")
+
+    # ── Deterministic fallback ─────────────────────────────────────────────────
+    if pre_normalized_events is not None:
+        events = pre_normalized_events
+    else:
+        events = [_normalize_record(r) for r in live_articles]
+
     if not events:
-        return {
-            "risk_detected": False,
-            "event": "No tariff or supply-chain events found in collector data.",
-            "event_type": None,
-            "country": country_label,
-            "product": None,
-            "tariff_rate": None,
-            "severity": "LOW",
-            "confidence": 0.2,
-            "source": "monitor_agent",
-            "source_url": None,
-            "summary": None,
-        }
+        return _empty_result(country_label)
 
     country_name = country_label.lower() if country_label else None
     product_terms = _hs_code_to_products(hs_code)
@@ -243,9 +380,7 @@ def get_latest_event(supplier_country: Optional[str] = None, hs_code: Optional[s
             # Must dominate the relevance_score range so a country-specific
             # article always outranks a broad multi-country "tracker" article
             # (those can rack up relevance_score 30+ just from mentioning many
-            # countries/products). relevance_score still breaks ties between
-            # multiple country-matching events, and is still the sole ranking
-            # signal when nothing mentions the queried country at all.
+            # countries/products). relevance_score still breaks ties.
             score += 100
         if product_terms & {p.lower() for p in event["products_mentioned"]}:
             score += 10
@@ -257,12 +392,8 @@ def get_latest_event(supplier_country: Optional[str] = None, hs_code: Optional[s
         "TARIFF", "EXPORT_CONTROL", "PORT_DISRUPTION", "WEATHER", "GEOPOLITICAL",
     }
 
-    # _pick_country() picks the first non-US country mention alphabetically,
-    # which can be a different country than the one this customer actually
-    # sources from (e.g. an India-focused article that also name-drops China
-    # would otherwise report "China" for a customer asking about India). If
-    # the queried supplier_country is itself mentioned in this event, prefer
-    # it — that's the country this alert is actually about for this customer.
+    # If the queried country is mentioned in this event, prefer it over
+    # _pick_country()'s alphabetical first-non-US pick.
     event_country = best["affected_country"] or country_label
     if country_name and country_name in [c.lower() for c in best["country_mentions"]]:
         event_country = country_label
@@ -279,4 +410,5 @@ def get_latest_event(supplier_country: Optional[str] = None, hs_code: Optional[s
         "source": "monitor_agent",
         "source_url": best["source_url"],
         "summary": best["summary"],
+        "news": [],
     }
