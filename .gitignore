@@ -124,7 +124,7 @@ package-lock.json
 # - backend/data/vectordb/ (pre-built knowledge base, kept in git)
 # - backend/scripts/data/vectordb/ (pre-built knowledge base, kept in git)
 
-# Ignore runtime-generated database files
+# 忽略运行时生成的数据库文件
 *.db
 *.sqlite
 *.sqlite3
@@ -133,7 +133,7 @@ package-lock.json
 !backend/data/vectordb/**
 !backend/scripts/data/vectordb/**
 
-# Ignore database directories elsewhere
+# 忽略其他位置的数据库目录
 chroma_db/
 backend/chroma_db/
 
@@ -277,26 +277,24 @@ $RECYCLE.BIN/
 # ============================================
 # Project Specific
 # ============================================
-# Test data
+# 测试数据
 test_data/
 *.test
 
-# Docs build output
+# 文档构建
 docs/_build/
 site/
 
-# Migration scripts (if generated temporarily)
-# backend/migrate_*.py (commented out — migrate_handoffs.py etc. already exist)
+# 迁移脚本（如果临时生成）
+# backend/migrate_*.py (注释掉，因为已有 migrate_handoffs.py 等)
 
 # Alembic
-# Uncomment to ignore auto-generated migration files:
+# 如果需要忽略自动生成的迁移文件，取消注释：
 # backend/alembic/versions/*.py
 # (generally recommended to keep migration files)
 
 # Ignore all markdown files except README.md
 *.md
 !README.md
-
-
 
 .txt
