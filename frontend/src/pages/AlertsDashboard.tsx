@@ -2,7 +2,7 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AlertCard, AlertSeverity, AlertType } from '../components/AlertCard';
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
-import { MonitorProgress, MonitorProgressState, MonitorTarget, MONITOR_STEPS } from '../components/MonitorProgress';
+import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import api from '../services/api';
 
 /**
@@ -54,6 +54,22 @@ interface SupplierWithGeo extends ApiSupplier {
   countryCode: string | null;
 }
 
+export interface MonitorTarget {
+  supplier_country: string;
+  country_name: string;
+  hs_code: string;
+  supplier_name: string | null;
+  product_category: string | null;
+}
+
+interface DebugState {
+  target: AgentDebugTarget;
+  targetIndex: number;
+  totalTargets: number;
+  agentStates: Record<string, AgentState>;
+  logs: string[];
+}
+
 type FilterSeverity = 'all' | AlertSeverity;
 
 const FILTER_OPTIONS: FilterSeverity[] = ['all', 'critical', 'high', 'medium', 'low'];
@@ -71,7 +87,7 @@ export const AlertsDashboard: React.FC = () => {
   const [filter, setFilter] = React.useState<FilterSeverity>('all');
   const [isRunning, setIsRunning] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [progress, setProgress] = React.useState<MonitorProgressState | null>(null);
+  const [debugState, setDebugState] = React.useState<DebugState | null>(null);
 
   async function fetchAlerts() {
     const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
@@ -126,14 +142,14 @@ export const AlertsDashboard: React.FC = () => {
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
   }
 
-  // Runs the 5-agent pipeline once per (supplier_country, hs_code) target
-  // from /v2/monitor/targets (one per active supplier). The backend runs
-  // each request synchronously with no status-polling endpoint, so while
-  // each request is in flight a timer advances a simulated 5-agent
-  // progress stepper (MonitorProgress) for visual feedback.
+  // Runs the 5-agent pipeline via the SSE /monitor/stream endpoint.
+  // Real-time progress is shown in the AgentDebugPanel as each agent
+  // emits start/done events. Logs from CrewAI's verbose output stream
+  // into the debug panel's output log in real time.
   async function handleRunMonitor() {
     setIsRunning(true);
-    setProgress(null);
+    setDebugState(null);
+
     try {
       const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
         params: { customer_id: CUSTOMER_ID },
@@ -142,24 +158,69 @@ export const AlertsDashboard: React.FC = () => {
 
       for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
-        setProgress({ targetIndex: i, totalTargets: targets.length, target, stepIndex: 0 });
 
-        const interval = window.setInterval(() => {
-          setProgress((prev) => {
-            if (!prev || prev.stepIndex >= MONITOR_STEPS.length - 1) return prev;
-            return { ...prev, stepIndex: prev.stepIndex + 1 };
-          });
-        }, 1500);
+        // Reset debug state for this target
+        setDebugState({
+          target: { ...target },
+          targetIndex: i,
+          totalTargets: targets.length,
+          agentStates: {},
+          logs: [],
+        });
 
-        try {
-          await api.post('/v2/monitor/run', {
-            customer_id: CUSTOMER_ID,
+        await new Promise<void>((resolve, reject) => {
+          const params = new URLSearchParams({
+            customer_id: String(CUSTOMER_ID),
             hs_code: target.hs_code,
             supplier_country: target.supplier_country,
           });
-        } finally {
-          window.clearInterval(interval);
-        }
+          const es = new EventSource(`/api/v2/monitor/stream?${params}`);
+
+          es.onmessage = (e: MessageEvent) => {
+            try {
+              const event = JSON.parse(e.data as string) as Record<string, unknown>;
+              const type = event.type as string;
+
+              if (type === 'agent_start') {
+                const agent = event.agent as string;
+                setDebugState((prev) =>
+                  prev ? {
+                    ...prev,
+                    agentStates: { ...prev.agentStates, [agent]: { status: 'running' } },
+                  } : prev
+                );
+              } else if (type === 'agent_done') {
+                const agent = event.agent as string;
+                const output = event.output as Record<string, unknown> | undefined;
+                setDebugState((prev) =>
+                  prev ? {
+                    ...prev,
+                    agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
+                  } : prev
+                );
+              } else if (type === 'log') {
+                const text = event.text as string;
+                setDebugState((prev) =>
+                  prev ? { ...prev, logs: [...prev.logs.slice(-300), text] } : prev
+                );
+              } else if (type === 'done') {
+                es.close();
+                resolve();
+              } else if (type === 'error') {
+                es.close();
+                reject(new Error(event.message as string));
+              }
+              // heartbeat: ignore
+            } catch {
+              // malformed event — ignore
+            }
+          };
+
+          es.onerror = () => {
+            es.close();
+            reject(new Error('SSE connection lost'));
+          };
+        });
       }
 
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
@@ -167,7 +228,8 @@ export const AlertsDashboard: React.FC = () => {
       console.error('Run Monitor failed', err);
     } finally {
       setIsRunning(false);
-      setProgress(null);
+      // Leave debugState visible so the user can inspect the final output;
+      // it clears on the next run.
     }
   }
 
@@ -224,8 +286,16 @@ export const AlertsDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Run Monitor progress */}
-      {progress && <MonitorProgress state={progress} />}
+      {/* Agent Debug panel — visible while running and stays up after completion */}
+      {debugState && (
+        <AgentDebugPanel
+          target={debugState.target}
+          agentStates={debugState.agentStates}
+          logs={debugState.logs}
+          targetIndex={debugState.targetIndex}
+          totalTargets={debugState.totalTargets}
+        />
+      )}
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>

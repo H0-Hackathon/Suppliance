@@ -1,0 +1,65 @@
+{
+  "_NOTE": "TEMPORARY SAMPLE DATA — used as fallback when the database is unavailable (SQLite schema mismatch / Aurora not yet connected). Remove this fallback once the real DB is working and Aurora is reconnected. See backend/.env for the commented-out Aurora DATABASE_URL.",
+  "alerts": [
+    {
+      "id": 1,
+      "customer_id": 1,
+      "order_id": null,
+      "alert_type": "tariff_change",
+      "severity": "high",
+      "summary": "Switch this order to Dhaka Garments Ltd (Bangladesh) and confirm the 8-week lead time against your delivery deadline before placing the order.",
+      "agent_output": null,
+      "data_source": "sample_data",
+      "status": "active",
+      "created_at": "2026-06-16T08:00:00",
+      "resolved_at": null
+    },
+    {
+      "id": 2,
+      "customer_id": 1,
+      "order_id": null,
+      "alert_type": "tariff_change",
+      "severity": "medium",
+      "summary": "US imposes 46% tariff on Vietnamese textiles. Evaluate alternate suppliers in Bangladesh or India to maintain delivery schedule.",
+      "agent_output": null,
+      "data_source": "sample_data",
+      "status": "active",
+      "created_at": "2026-06-15T14:30:00",
+      "resolved_at": null
+    }
+  ],
+  "disruptions": [
+    {
+      "id": 1,
+      "incident_id": "demo-0001-vn-tariff",
+      "event_type": "tariff_change",
+      "title": "US imposes 46% tariff on Vietnamese textile exports",
+      "description": "The US announced a 46% tariff on textile and apparel imports from Vietnam effective immediately. Importers sourcing HS 61xx/62xx goods from Vietnamese manufacturers face significant cost increases on all pending orders.",
+      "location_name": "Ho Chi Minh City, Vietnam",
+      "latitude": 10.8231,
+      "longitude": 106.6297,
+      "hs_codes": ["6109", "6110"],
+      "countries_affected": ["VN"],
+      "severity": "high",
+      "confidence": 0.88,
+      "source": "sample_data",
+      "detected_at": "2026-06-16T08:00:00"
+    },
+    {
+      "id": 2,
+      "incident_id": "demo-0002-cn-steel",
+      "event_type": "tariff_change",
+      "title": "25% tariff on Chinese steel products extended through 2027",
+      "description": "Section 232 tariffs on Chinese steel (HS 72xx/73xx) have been extended. Buyers relying on Chinese steel suppliers for construction or manufacturing should expect sustained cost pressure.",
+      "location_name": "Shanghai, China",
+      "latitude": 31.2304,
+      "longitude": 121.4737,
+      "hs_codes": ["7208", "7210"],
+      "countries_affected": ["CN"],
+      "severity": "medium",
+      "confidence": 0.75,
+      "source": "sample_data",
+      "detected_at": "2026-06-15T14:30:00"
+    }
+  ]
+}
