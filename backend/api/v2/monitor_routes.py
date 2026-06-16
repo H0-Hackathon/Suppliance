@@ -68,16 +68,21 @@ def _collect_articles_for_target(supplier_country: str) -> list[dict]:
       2. A targeted Google News query for this supplier's country (~2-5s, 6 articles max).
     Returns a deduplicated merged list.
     """
-    from collectors.tariff import query_country_news
     from services.coordinates import get_country_name as _cn
 
     country_name = _cn(supplier_country) or supplier_country
     cached = article_cache.get_articles()
 
+    # Targeted Google News query is best-effort: it needs network access and a
+    # collector helper that may not be present. Any failure (ImportError,
+    # network, parse) must not abort the run — Agent 1 still works from the
+    # in-memory cache or the bundled JSONL datasets.
+    targeted: list[dict] = []
     try:
+        from collectors.tariff import query_country_news
         targeted = query_country_news(country_name, max_results=6)
     except Exception as exc:
-        logger.warning("Targeted Google News query failed for %s: %s", country_name, exc)
+        logger.warning("Targeted Google News query unavailable for %s: %s", country_name, exc)
         targeted = []
 
     # Dedup by URL — prefer targeted articles (more specific) first
