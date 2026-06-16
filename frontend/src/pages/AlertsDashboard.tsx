@@ -145,6 +145,7 @@ export const AlertsDashboard: React.FC = () => {
   // ImportCompliance, Adversarial), surfaced live from the SSE stream during a
   // run and from the latest persisted alert (TariffAlert.agent_output) on load.
   const [agentResults, setAgentResults] = React.useState<AgentResults>({});
+  const [agentStatus, setAgentStatus] = React.useState<Record<string, 'running' | 'done'>>({});
   const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
   const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
 
@@ -224,6 +225,7 @@ export const AlertsDashboard: React.FC = () => {
     setIsRunning(true);
     setDebugState(null);
     setAgentResults({});
+    setAgentStatus({});
 
     try {
       const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
@@ -263,6 +265,7 @@ export const AlertsDashboard: React.FC = () => {
                     agentStates: { ...prev.agentStates, [agent]: { status: 'running' } },
                   } : prev
                 );
+                if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'running' }));
               } else if (type === 'agent_done') {
                 const agent = event.agent as string;
                 const output = event.output as Record<string, unknown> | undefined;
@@ -272,6 +275,7 @@ export const AlertsDashboard: React.FC = () => {
                     agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
                   } : prev
                 );
+                if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'done' }));
                 // Surface each real agent output in the Live Agent Results panel.
                 if (agent && output) {
                   setAgentResults((prev) => ({ ...prev, [agent]: output }));
@@ -612,6 +616,7 @@ export const AlertsDashboard: React.FC = () => {
                 LLM mode) AlternativesFinder, ImportCompliance, Adversarial */}
             <LiveAgentResults
               agents={agentResults}
+              agentStatus={agentStatus}
               supplier={agentSupplier}
               updatedAt={agentsUpdatedAt}
               live={isRunning}
