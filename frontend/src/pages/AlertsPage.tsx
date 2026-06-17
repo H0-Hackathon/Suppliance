@@ -141,9 +141,21 @@ export function AlertsPage() {
     const alts = ao.alternatives_finder || {};
     const comp = ao.import_compliance || {};
     const adv = ao.adversarial || {};
-    const altList: any[] = Array.isArray(alts.alternatives) ? alts.alternatives : [];
+    // Normalize across pipeline schema (alternatives) and legacy seed schema (options).
+    const altRaw: any[] = Array.isArray(alts.alternatives) ? alts.alternatives
+      : (Array.isArray(alts.options) ? alts.options : []);
+    const altList = altRaw.map((a) => ({
+      supplier_name: a.supplier_name || a.supplier || 'Alternative',
+      country: a.country_full || a.country || '',
+      country_full: a.country_full || a.country || '',
+      cost_delta_pct: a.cost_delta_pct,
+      lead_time_weeks: a.lead_time_weeks,
+    }));
     const topAlt = altList[0];
+    const advRecommended = adv.recommended_action || adv.recommendation || null;
 
+    const countryLabel = tm.country || (selected.country !== '—' ? selected.country : 'the affected region');
+    const sectorLabel = selected.sector !== '—' ? selected.sector : 'affected goods';
     const countryLc = (tm.country || '').toLowerCase();
     const affectedSuppliers = countryLc
       ? suppliers.filter((s) => s.country.toLowerCase().includes(countryLc) || countryLc.includes(s.country.toLowerCase()))
@@ -179,12 +191,12 @@ export function AlertsPage() {
       recs.push(`Review ${affectedSuppliers.length} tracked supplier${affectedSuppliers.length !== 1 ? 's' : ''} in ${tm.country} (${affectedSuppliers.map((s) => s.name).slice(0, 3).join(', ')}${affectedSuppliers.length > 3 ? '…' : ''}).`);
     }
     if (affectedOrders) {
-      recs.push(`Re-cost ${affectedOrders} affected order(s) for ${selected.sector} against the ${tm.tariff_rate != null ? `${tm.tariff_rate}% ` : ''}tariff.`);
+      recs.push(`Re-cost ${affectedOrders} affected order(s) for ${sectorLabel} against the ${tm.tariff_rate != null ? `${tm.tariff_rate}% ` : ''}tariff.`);
     }
     if (!topAlt) {
-      recs.push(`Run the full agent pipeline (real-LLM mode) to source compliant alternatives for ${tm.country}.`);
+      recs.push(`Run the full agent pipeline (real-LLM mode) to source compliant alternatives for ${countryLabel}.`);
     }
-    if (adv.recommended_action) recs.unshift(adv.recommended_action);
+    if (advRecommended) recs.unshift(advRecommended);
     else if (alts.recommendation_summary) recs.unshift(alts.recommendation_summary);
 
     const steps = [
@@ -213,13 +225,13 @@ export function AlertsPage() {
           : null,
       },
       {
-        key: 'final', name: 'Final Recommendation', done: !!ao.adversarial, final: true,
-        finding: adv.recommended_action || null,
+        key: 'final', name: 'Final Recommendation', done: !!advRecommended, final: true,
+        finding: advRecommended,
       },
     ];
 
     return {
-      tm, impact, comp, adv, topAlt,
+      tm, impact, comp, adv, topAlt, countryLabel,
       directCost, riskScore, riskLevel,
       affectedSuppliersCount: affectedSuppliers.length,
       affectedRoutes,
@@ -397,7 +409,7 @@ export function AlertsPage() {
                   <div className="ap-metric">
                     <span className="ap-metric-label">Affected Suppliers</span>
                     <span className="ap-metric-value">{detail.affectedSuppliersCount}</span>
-                    <span className="ap-metric-sub">tracked in {selected.country}</span>
+                    <span className="ap-metric-sub">tracked in {detail.countryLabel}</span>
                   </div>
                   <div className="ap-metric">
                     <span className="ap-metric-label">Affected Routes</span>
