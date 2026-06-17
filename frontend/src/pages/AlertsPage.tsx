@@ -1,81 +1,119 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import './AlertsPage.css';
+import { AlertCard, AlertSeverity, AlertType } from '../components/AlertCard';
+import api from '../services/api';
 
-interface Alert {
-  id: string;
+const CUSTOMER_ID = 1;
+
+/** Raw alert as returned by GET /api/v2/alerts (schemas.TariffAlertResponse). */
+interface ApiAlert {
+  id: number;
+  alert_type: string;
+  severity: AlertSeverity;
+  summary: string | null;
+  agent_output: string | null;
+  status: string;
+  created_at: string;
+}
+
+/** Inbox display fields derived from an ApiAlert + its agent_output. */
+interface AlertView {
+  id: number;
   title: string;
   country: string;
   product: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  confidence: number;
+  severity: AlertSeverity;
+  confidence: number | null;
   timeDetected: string;
+  raw: ApiAlert;
 }
 
-interface SelectedAlert extends Alert {
-  event: { summary: string };
-  impact: {
-    affectedOrders: number;
-    exposureAmount: number;
-    estimatedAdditionalCost: number;
-    riskScore: number;
-  };
-  recommendedAction: {
-    alternativeSupplier: string;
-    expectedSavings: number;
-    leadTime: string;
-  };
-  complianceStatus: 'pass' | 'review_required';
-  agentWorkflow: {
-    monitor: boolean;
-    impact: boolean;
-    alternatives: boolean;
-    compliance: boolean;
-    validation: boolean;
-  };
+function parseAgentOutput(s: string | null): Record<string, any> {
+  if (!s) return {};
+  try { return JSON.parse(s); } catch { return {}; }
 }
 
-const MOCK_ALERTS: Alert[] = [
-  { id: '1', title: 'Vietnam Tariff Escalation', country: 'Vietnam', product: 'Electronics', severity: 'critical', confidence: 98, timeDetected: '2 hours ago' },
-  { id: '2', title: 'Port Congestion Alert', country: 'Singapore', product: 'Textiles', severity: 'high', confidence: 85, timeDetected: '4 hours ago' },
-  { id: '3', title: 'Factory Strike Notice', country: 'Mexico', product: 'Auto Parts', severity: 'high', confidence: 92, timeDetected: '6 hours ago' },
-  { id: '4', title: 'Shipment Delay', country: 'Germany', product: 'Machinery', severity: 'medium', confidence: 76, timeDetected: '8 hours ago' },
-  { id: '5', title: 'Currency Volatility', country: 'Turkey', product: 'Chemicals', severity: 'low', confidence: 62, timeDetected: '12 hours ago' },
-];
+function relativeTime(iso: string): string {
+  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (Number.isNaN(diffMin)) return '';
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? 's' : ''} ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+}
 
-const DETAIL_MAP: Record<string, Partial<SelectedAlert>> = {
-  '1': { event: { summary: 'Vietnam has announced a sweeping tariff escalation on electronics components exported to the US and EU. Several major OEMs sourcing PCBs and semiconductors from Hanoi are now exposed to an additional 18–22% duty. This is effective immediately and applies retroactively to shipments in transit.' }, impact: { affectedOrders: 34, exposureAmount: 427000, estimatedAdditionalCost: 88000, riskScore: 94 }, recommendedAction: { alternativeSupplier: 'Thailand', expectedSavings: 62000, leadTime: '21 days' }, complianceStatus: 'pass', agentWorkflow: { monitor: true, impact: true, alternatives: true, compliance: true, validation: true } },
-  '2': { event: { summary: 'Singapore\'s Port of Tanjong Pagar is experiencing critical congestion due to a labour dispute. Container dwell times have tripled and vessel turnaround is delayed by 6–9 days. Textile shipments are among the most affected due to vessel prioritisation for tech cargo.' }, impact: { affectedOrders: 19, exposureAmount: 214000, estimatedAdditionalCost: 42000, riskScore: 78 }, recommendedAction: { alternativeSupplier: 'Port Klang (Malaysia)', expectedSavings: 28000, leadTime: '14 days' }, complianceStatus: 'pass', agentWorkflow: { monitor: true, impact: true, alternatives: true, compliance: true, validation: false } },
-  '3': { event: { summary: 'A coordinated factory strike across three major auto parts manufacturers in Monterrey, Mexico has halted production. The strike is driven by wage disputes affecting approximately 12,000 workers. No resolution timeline is known and escalation to national unions is likely within 48 hours.' }, impact: { affectedOrders: 27, exposureAmount: 389000, estimatedAdditionalCost: 71000, riskScore: 86 }, recommendedAction: { alternativeSupplier: 'Philippines', expectedSavings: 45000, leadTime: '28 days' }, complianceStatus: 'review_required', agentWorkflow: { monitor: true, impact: true, alternatives: true, compliance: false, validation: false } },
-  '4': { event: { summary: 'Deutsche Bahn logistics disruption is causing multi-week delays on machinery shipments routed through Frankfurt. A combination of infrastructure maintenance and driver shortages has reduced freight capacity by 35%. Custom clearance queues at Hamburg port are backed up 11 days.' }, impact: { affectedOrders: 15, exposureAmount: 443000, estimatedAdditionalCost: 85000, riskScore: 89 }, recommendedAction: { alternativeSupplier: 'Philippines', expectedSavings: 30000, leadTime: '14 days' }, complianceStatus: 'pass', agentWorkflow: { monitor: true, impact: true, alternatives: true, compliance: true, validation: true } },
-  '5': { event: { summary: 'The Turkish lira has depreciated 14% against the USD in the past 72 hours following a surprise central bank rate decision. Chemical feedstock contracts denominated in USD are now significantly more expensive for local suppliers, and several are requesting contract renegotiation.' }, impact: { affectedOrders: 9, exposureAmount: 118000, estimatedAdditionalCost: 23000, riskScore: 52 }, recommendedAction: { alternativeSupplier: 'Poland', expectedSavings: 14000, leadTime: '21 days' }, complianceStatus: 'pass', agentWorkflow: { monitor: true, impact: true, alternatives: false, compliance: false, validation: false } },
-};
-
-function getAlertDetails(alert: Alert): SelectedAlert {
-  const extra = DETAIL_MAP[alert.id] ?? {};
+function toView(a: ApiAlert): AlertView {
+  const ao = parseAgentOutput(a.agent_output);
+  const tm = ao.tariff_monitor || {};
   return {
-    ...alert,
-    event: extra.event ?? { summary: `${alert.title}: Supply chain disruption detected. ${alert.product} sourcing from ${alert.country} may be affected.` },
-    impact: extra.impact ?? { affectedOrders: 12, exposureAmount: 180000, estimatedAdditionalCost: 35000, riskScore: 65 },
-    recommendedAction: extra.recommendedAction ?? { alternativeSupplier: 'Indonesia', expectedSavings: 25000, leadTime: '21 days' },
-    complianceStatus: extra.complianceStatus ?? 'pass',
-    agentWorkflow: extra.agentWorkflow ?? { monitor: true, impact: true, alternatives: false, compliance: false, validation: false },
+    id: a.id,
+    title: tm.event || a.summary || 'Trade risk alert',
+    country: tm.country || '—',
+    product: tm.product || '—',
+    severity: a.severity,
+    confidence: tm.confidence != null ? Math.round(tm.confidence * 100) : null,
+    timeDetected: relativeTime(a.created_at),
+    raw: a,
   };
 }
-
-const SEVERITY_STEPS: Array<keyof SelectedAlert['agentWorkflow']> = ['monitor', 'impact', 'alternatives', 'compliance', 'validation'];
-const STEP_LABELS = ['Monitor', 'Impact', 'Alternatives', 'Compliance', 'Validation'];
 
 export function AlertsPage() {
-  const [selectedAlert, setSelectedAlert] = useState<SelectedAlert | null>(null);
+  const [alerts, setAlerts] = useState<ApiAlert[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeSeverity, setActiveSeverity] = useState<'all' | Alert['severity']>('all');
+  const [activeSeverity, setActiveSeverity] = useState<'all' | AlertSeverity>('all');
+  const [loading, setLoading] = useState(true);
+  const [pendingId, setPendingId] = useState<number | null>(null);
 
-  const filtered = useMemo(() => MOCK_ALERTS.filter((a) => {
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
+      setAlerts(res.data.filter((a) => a.status === 'active'));
+    } catch {
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  const views = useMemo(() => alerts.map(toView), [alerts]);
+
+  const filtered = useMemo(() => views.filter((a) => {
     const matchSev = activeSeverity === 'all' || a.severity === activeSeverity;
     const q = searchTerm.toLowerCase();
-    const matchQ = !q || a.title.toLowerCase().includes(q) || a.country.toLowerCase().includes(q) || a.product.toLowerCase().includes(q);
+    const matchQ = !q
+      || a.title.toLowerCase().includes(q)
+      || a.country.toLowerCase().includes(q)
+      || a.product.toLowerCase().includes(q);
     return matchSev && matchQ;
-  }), [searchTerm, activeSeverity]);
+  }), [views, searchTerm, activeSeverity]);
+
+  const selected = useMemo(
+    () => views.find((v) => v.id === selectedId) ?? null,
+    [views, selectedId],
+  );
+
+  // Dismiss / resolve hit the real PUT endpoints, then drop the alert from the
+  // active feed (and clear the selection if it was the open one).
+  const mutate = useCallback(async (id: number, action: 'dismiss' | 'resolve') => {
+    setPendingId(id);
+    try {
+      await api.put(`/v2/alerts/${id}/${action}`);
+      setAlerts((prev) => prev.filter((a) => a.id !== id));
+      setSelectedId((cur) => (cur === id ? null : cur));
+    } catch {
+      // leave the alert in place on failure
+    } finally {
+      setPendingId(null);
+    }
+  }, []);
+
+  const handleDismiss = useCallback((id: number) => mutate(id, 'dismiss'), [mutate]);
+  const handleResolve = useCallback((id: number) => mutate(id, 'resolve'), [mutate]);
 
   return (
     <div className="ap-root">
@@ -107,17 +145,18 @@ export function AlertsPage() {
         </div>
 
         <div className="ap-inbox-list">
-          {filtered.length === 0 && (
-            <p className="ap-no-results">No incidents match your filters</p>
+          {loading && <p className="ap-no-results">Loading incidents…</p>}
+          {!loading && filtered.length === 0 && (
+            <p className="ap-no-results">No active incidents match your filters</p>
           )}
           {filtered.map((alert) => (
             <div
               key={alert.id}
-              className={`ap-card ap-card--${alert.severity}${selectedAlert?.id === alert.id ? ' is-selected' : ''}`}
-              onClick={() => setSelectedAlert(getAlertDetails(alert))}
+              className={`ap-card ap-card--${alert.severity}${selectedId === alert.id ? ' is-selected' : ''}`}
+              onClick={() => setSelectedId(alert.id)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setSelectedAlert(getAlertDetails(alert))}
+              onKeyDown={(e) => e.key === 'Enter' && setSelectedId(alert.id)}
             >
               <div className="ap-card-header">
                 <span className={`ap-dot ap-dot--${alert.severity}`} />
@@ -129,7 +168,9 @@ export function AlertsPage() {
                 <span className="ap-tag">{alert.product}</span>
               </div>
               <div className="ap-card-meta">
-                <span className="ap-card-confidence">{alert.confidence}% confidence</span>
+                <span className="ap-card-confidence">
+                  {alert.confidence != null ? `${alert.confidence}% confidence` : 'AI Trade Monitor'}
+                </span>
                 <span className="ap-card-time">{alert.timeDetected}</span>
               </div>
             </div>
@@ -139,113 +180,43 @@ export function AlertsPage() {
 
       {/* ── INVESTIGATION PANEL ──────────────────── */}
       <main className="ap-panel">
-        {selectedAlert ? (
+        {selected ? (
           <div className="ap-investigation">
             {/* Header */}
             <div className="ap-inv-header">
               <div className="ap-inv-header-left">
                 <span className="ap-inv-label">INCIDENT REPORT</span>
-                <h1 className="ap-inv-title">{selectedAlert.title}</h1>
-                <p className="ap-inv-sub">{selectedAlert.country} · {selectedAlert.product} · Detected {selectedAlert.timeDetected}</p>
+                <h1 className="ap-inv-title">{selected.title}</h1>
+                <p className="ap-inv-sub">
+                  {selected.country} · {selected.product} · Detected {selected.timeDetected}
+                </p>
               </div>
               <div className="ap-inv-header-right">
-                <div className="ap-inv-confidence">
-                  <span className="ap-inv-confidence-num">{selectedAlert.confidence}%</span>
-                  <span className="ap-inv-confidence-label">Confidence</span>
-                </div>
-                <span className={`ap-severity-pill ap-severity-pill--${selectedAlert.severity}`}>
-                  {selectedAlert.severity.toUpperCase()}
+                {selected.confidence != null && (
+                  <div className="ap-inv-confidence">
+                    <span className="ap-inv-confidence-num">{selected.confidence}%</span>
+                    <span className="ap-inv-confidence-label">Confidence</span>
+                  </div>
+                )}
+                <span className={`ap-severity-pill ap-severity-pill--${selected.severity}`}>
+                  {selected.severity.toUpperCase()}
                 </span>
               </div>
             </div>
 
-            {/* What Happened */}
+            {/* Real alert detail + dismiss/resolve actions (AlertCard) */}
             <section className="ap-section">
-              <h2 className="ap-section-title">What Happened</h2>
-              <div className="ap-prose-card">
-                <p className="ap-prose">{selectedAlert.event.summary}</p>
-                <div className="ap-context-row">
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Affected Region</span>
-                    <span className="ap-context-value">{selectedAlert.country}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Product Category</span>
-                    <span className="ap-context-value">{selectedAlert.product}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Detection Method</span>
-                    <span className="ap-context-value">AI Trade Monitor</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Business Impact */}
-            <section className="ap-section">
-              <h2 className="ap-section-title">Business Impact</h2>
-              <div className="ap-prose-card">
-                <p className="ap-prose">
-                  This disruption puts{' '}
-                  <strong className="ap-strong">{selectedAlert.impact.affectedOrders} active orders</strong>{' '}
-                  at risk, representing{' '}
-                  <strong className="ap-strong">${(selectedAlert.impact.exposureAmount / 1000).toFixed(0)}K in total exposure</strong>.{' '}
-                  If unmitigated, costs could increase by{' '}
-                  <strong className="ap-strong">${(selectedAlert.impact.estimatedAdditionalCost / 1000).toFixed(0)}K</strong>.
-                </p>
-                <div className="ap-risk-row">
-                  <span className="ap-risk-label">Risk Assessment</span>
-                  <div className="ap-risk-track">
-                    <div
-                      className="ap-risk-fill"
-                      style={{ width: `${selectedAlert.impact.riskScore}%` }}
-                      data-level={selectedAlert.impact.riskScore >= 75 ? 'high' : selectedAlert.impact.riskScore >= 50 ? 'med' : 'low'}
-                    />
-                  </div>
-                  <span className="ap-risk-num">{selectedAlert.impact.riskScore}/100</span>
-                </div>
-              </div>
-            </section>
-
-            {/* Recommended Action */}
-            <section className="ap-section">
-              <h2 className="ap-section-title">Recommended Action</h2>
-              <div className="ap-action-card">
-                <div className="ap-action-top">
-                  <span className="ap-action-label">SWITCH TO</span>
-                  <span className="ap-action-supplier">{selectedAlert.recommendedAction.alternativeSupplier}</span>
-                </div>
-                <div className="ap-benefits">
-                  <div className="ap-benefit">
-                    <span className="ap-benefit-label">Expected Savings</span>
-                    <span className="ap-benefit-value ap-benefit-value--green">${(selectedAlert.recommendedAction.expectedSavings / 1000).toFixed(0)}K</span>
-                  </div>
-                  <div className="ap-benefit">
-                    <span className="ap-benefit-label">Lead Time</span>
-                    <span className="ap-benefit-value">{selectedAlert.recommendedAction.leadTime}</span>
-                  </div>
-                  <div className="ap-benefit">
-                    <span className="ap-benefit-label">Compliance</span>
-                    <span className={`ap-benefit-value ap-benefit-value--${selectedAlert.complianceStatus === 'pass' ? 'green' : 'amber'}`}>
-                      {selectedAlert.complianceStatus === 'pass' ? 'Approved' : 'Review Required'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Analysis Process */}
-            <section className="ap-section">
-              <h2 className="ap-section-title">Analysis Process</h2>
-              <div className="ap-steps">
-                {SEVERITY_STEPS.map((key, i) => (
-                  <div key={key} className={`ap-step${selectedAlert.agentWorkflow[key] ? ' ap-step--done' : ''}`}>
-                    <div className="ap-step-node" />
-                    <span className="ap-step-name">{STEP_LABELS[i]}</span>
-                    <span className="ap-step-state">{selectedAlert.agentWorkflow[key] ? 'Done' : 'Pending'}</span>
-                  </div>
-                ))}
-              </div>
+              <h2 className="ap-section-title">Alert Detail & Agent Reasoning</h2>
+              <AlertCard
+                id={selected.raw.id}
+                alert_type={(selected.raw.alert_type as AlertType) || 'tariff_change'}
+                severity={selected.severity}
+                summary={selected.raw.summary ?? 'Trade risk detected.'}
+                agent_output={selected.raw.agent_output ?? undefined}
+                created_at={selected.raw.created_at}
+                onDismiss={pendingId === selected.id ? undefined : handleDismiss}
+                onResolve={pendingId === selected.id ? undefined : handleResolve}
+              />
             </section>
           </div>
         ) : (
