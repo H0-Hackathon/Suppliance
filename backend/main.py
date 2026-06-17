@@ -13,6 +13,13 @@ from api.v2.demo_routes import router as demo_router
 from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
+<<<<<<< Updated upstream
+=======
+from api.v2.disruption_routes import router as disruption_router
+from api.v2.geo_routes import router as geo_router
+from api.v2.news_routes import router as news_router
+from api.v2.global_supplier_routes import router as global_supplier_router
+>>>>>>> Stashed changes
 
 settings = get_settings()
 
@@ -46,6 +53,13 @@ app.include_router(demo_router)
 app.include_router(supplier_router)
 app.include_router(alert_router)
 app.include_router(monitor_router)
+<<<<<<< Updated upstream
+=======
+app.include_router(disruption_router)
+app.include_router(geo_router)
+app.include_router(news_router)
+app.include_router(global_supplier_router)
+>>>>>>> Stashed changes
 
 
 @app.get("/", tags=["Health"])

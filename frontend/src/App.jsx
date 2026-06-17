@@ -8,6 +8,7 @@ import { CommonHeader } from './components/CommonHeader';
 import { AlertsDashboard } from './pages/AlertsDashboard';
 import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
+import { SuppliersPage } from './pages/SuppliersPage';
 
 /**
  * CoastGuard — App Router
@@ -30,6 +31,11 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<AlertsDashboard />} />
+<<<<<<< Updated upstream
+=======
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/suppliers" element={<SuppliersPage />} />
+>>>>>>> Stashed changes
           <Route path="/demo" element={<DemoPage />} />
           <Route path="/admin" element={<AdminPage />} />
           {/* Catch-all: redirect unknown routes to dashboard */}

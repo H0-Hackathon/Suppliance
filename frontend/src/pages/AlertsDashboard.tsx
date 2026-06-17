@@ -12,6 +12,7 @@ import { AlertCard, AlertSeverity, AlertType } from '../components/AlertCard';
  *          GET /api/v2/alerts?customer_id=1
  */
 
+<<<<<<< Updated upstream
 // ── Hardcoded mock alerts for Phase 1 demo ──────────────────
 const MOCK_ALERTS = [
   {
@@ -60,6 +61,67 @@ const MOCK_ALERTS = [
     agent_output: null,
     created_at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), // 1d ago
   },
+=======
+const CUSTOMER_ID = 1;
+
+type Severity = 'critical' | 'high' | 'medium' | 'low';
+
+interface ApiAlert {
+  id: number;
+  alert_type: string;
+  severity: Severity;
+  summary: string | null;
+  agent_output: string | null;
+  status: string;
+  created_at: string;
+}
+
+interface ApiSupplier {
+  id: number;
+  name: string;
+  country: string;
+  product_category: string | null;
+  reliability_score: number;
+  is_active: boolean;
+}
+
+interface GeoCoords {
+  country: string;
+  code: string | null;
+  latitude: number;
+  longitude: number;
+  location_name: string;
+}
+
+interface SupplierWithGeo extends ApiSupplier {
+  latitude: number | null;
+  longitude: number | null;
+  countryCode: string | null;
+  count?: number;
+}
+
+export interface MonitorTarget {
+  supplier_country: string;
+  country_name: string;
+  hs_code: string;
+  supplier_name: string | null;
+  product_category: string | null;
+}
+
+interface DebugState {
+  target: AgentDebugTarget;
+  targetIndex: number;
+  totalTargets: number;
+  agentStates: Record<string, AgentState>;
+  logs: string[];
+}
+
+const MAP_LAYERS = [
+  { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
+  { id: 'routes',      label: 'Exposure Routes', color: '#f59e0b' },
+  { id: 'risk',        label: 'Risk Zones',      color: '#dc2626' },
+  { id: 'alt',         label: 'Alternatives',    color: '#14b8a6' },
+>>>>>>> Stashed changes
 ];
 
 type FilterSeverity = 'all' | AlertSeverity;
@@ -83,6 +145,84 @@ export const AlertsDashboard: React.FC = () => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   }
 
+<<<<<<< Updated upstream
+=======
+  async function fetchSuppliers() {
+    const res = await api.get<{country: string, count: number}[]>('/v2/global-suppliers/globe-data');
+    const withGeo = await Promise.all(
+      res.data.map(async (s, i): Promise<SupplierWithGeo> => {
+        try {
+          const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: s.country } });
+          return { 
+            id: i,
+            name: `${s.country} (${s.count.toLocaleString()} suppliers)`,
+            country: s.country,
+            product_category: 'Various',
+            reliability_score: 80,
+            is_active: true,
+            latitude: geo.data.latitude, 
+            longitude: geo.data.longitude, 
+            countryCode: geo.data.code,
+            count: s.count
+          };
+        } catch {
+          return { 
+            id: i, name: s.country, country: s.country, product_category: '', reliability_score: 0, is_active: true, 
+            latitude: null, longitude: null, countryCode: null, count: s.count 
+          };
+        }
+      })
+    );
+    setSuppliers(withGeo);
+  }
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers()]);
+      } catch (err) {
+        // backend offline — globe falls back to its built-in demo data
+        console.error('Failed to load dashboard data', err);
+      }
+    })();
+  }, []);
+
+  // Surface the most recent persisted agent run (TariffAlert.agent_output) so
+  // real Agent 1/2 data is visible on page load without re-running. Skipped
+  // while a live run is streaming (SSE updates take precedence).
+  React.useEffect(() => {
+    if (isRunning) return;
+    for (const a of alerts) {
+      if (!a.agent_output) continue;
+      try {
+        const parsed = JSON.parse(a.agent_output);
+        if (parsed && (parsed.tariff_monitor || parsed.impact_calculator)) {
+          setAgentResults(parsed);
+          setAgentsUpdatedAt(a.created_at);
+          setAgentSupplier(parsed.tariff_monitor?.country ?? null);
+          break;
+        }
+      } catch {
+        // non-JSON agent_output — skip
+      }
+    }
+  }, [alerts, isRunning]);
+
+  // ── Alert actions (backend integration) ──────────────────────────────────
+  async function handleDismiss(id: number) {
+    await api.put(`/v2/alerts/${id}/dismiss`);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'dismissed' } : a)));
+  }
+
+  async function handleResolve(id: number) {
+    await api.put(`/v2/alerts/${id}/resolve`);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
+  }
+
+  // ── Monitor run via SSE 5-agent pipeline (backend integration) ───────────
+  // Real-time progress streams into the AgentDebugPanel as each agent emits
+  // start/done/log events.
+>>>>>>> Stashed changes
   async function handleRunMonitor() {
     setIsRunning(true);
     // Phase 1: simulate a 2s delay then show a new mock alert
@@ -102,11 +242,97 @@ export const AlertsDashboard: React.FC = () => {
     setIsRunning(false);
   }
 
+<<<<<<< Updated upstream
   const stats = {
     active: alerts.length,
     critical: alerts.filter((a) => a.severity === 'critical').length,
     high: alerts.filter((a) => a.severity === 'high').length,
   };
+=======
+  function toggleLayer(id: string) {
+    setActiveLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const active = alerts.filter((a) => a.status === 'active');
+  const critical = active.filter((a) => a.severity === 'critical').length;
+  const countryCount = new Set(suppliers.map((s) => s.country)).size;
+
+  // Real direct-cost figure from Agent 2 (ImpactCalculator); null until a run.
+  const agentMonitor = agentResults.tariff_monitor;
+  const agentImpact = agentResults.impact_calculator;
+  const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
+
+  // ── KPI cards derived from real monitor results (no hardcoded values) ──────
+  // Cumulative direct-cost exposure across active alerts' ImpactCalculator output.
+  const activeParsed = active.map((a) => {
+    try { return a.agent_output ? JSON.parse(a.agent_output) : {}; } catch { return {}; }
+  });
+  const totalExposure = activeParsed.reduce(
+    (sum, p) => sum + (p?.impact_calculator?.direct_cost ?? p?.impact_calculator?.extra_cost_usd ?? 0),
+    0
+  );
+  const criticalEvents = active.filter((a) => a.severity === 'critical' || a.severity === 'high').length;
+  const affectedCodes = new Set(disruptions.flatMap((d) => d.countries_affected ?? []));
+  const highRiskSuppliers = suppliers
+    .filter((s) => s.countryCode && affectedCodes.has(s.countryCode))
+    .reduce((sum, s) => sum + (s.count || 0), 0);
+  const totalSuppliersCount = suppliers.reduce((sum, s) => sum + (s.count || 0), 0);
+
+  const fmtMoney = (n: number) =>
+    n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`;
+
+  // Each card is only shown when its underlying real data exists; otherwise it
+  // is hidden (no placeholder values).
+  const kpiCards = [
+    {
+      key: 'exposure',
+      available: totalExposure > 0,
+      label: 'Trade Exposure',
+      value: fmtMoney(totalExposure),
+      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
+      icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
+    },
+    {
+      key: 'highrisk',
+      available: suppliers.length > 0,
+      label: 'High Risk Suppliers',
+      value: String(highRiskSuppliers.toLocaleString()),
+      sub: `of ${totalSuppliersCount.toLocaleString()} tracked`,
+      icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
+    },
+    {
+      key: 'events',
+      available: active.length > 0,
+      label: 'Critical Trade Events',
+      value: String(criticalEvents),
+      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
+      icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)',
+    },
+    {
+      key: 'countries',
+      available: suppliers.length > 0,
+      label: 'Countries Monitored',
+      value: String(countryCount),
+      sub: `${totalSuppliersCount.toLocaleString()} supplier${totalSuppliersCount !== 1 ? 's' : ''}`,
+      icon: MapPin, color: '#10b981', bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)',
+    },
+  ].filter((c) => c.available);
+
+  // Suppliers with resolved coordinates feed the globe (backend-driven risk).
+  const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
+    .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
+    .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
+
+  const syncTime = new Date(lastSync).toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+>>>>>>> Stashed changes
 
   return (
     <main className="page-with-sidebar">
@@ -131,9 +357,40 @@ export const AlertsDashboard: React.FC = () => {
           >
             Supply Chain Alerts
           </h1>
+<<<<<<< Updated upstream
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
             business_id = 1 · mock mode · Phase 1
           </p>
+=======
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'rgba(130,120,90,0.8)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{
+                width: 5, height: 5, borderRadius: '50%',
+                background: '#10b981',
+                boxShadow: '0 0 5px #10b981',
+                display: 'inline-block',
+                animation: 'pulse-dot 2s ease-in-out infinite',
+              }} />
+              Monitoring {totalSuppliersCount.toLocaleString()} supplier{totalSuppliersCount !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
+            </span>
+            <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
+              Updated {syncTime}
+            </span>
+            {critical > 0 && (
+              <>
+                <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  color: '#dc2626', fontWeight: 600,
+                }}>
+                  <AlertTriangle size={11} />
+                  {critical} critical alert{critical !== 1 ? 's' : ''}
+                </span>
+              </>
+            )}
+          </div>
+>>>>>>> Stashed changes
         </div>
 
         <button
