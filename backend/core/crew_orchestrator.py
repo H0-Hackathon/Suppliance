@@ -13,7 +13,6 @@ Pipelines:
 """
 
 import logging
-import queue as stdlib_queue
 from typing import Optional
 from sqlalchemy.orm import Session
 from config import get_settings
@@ -59,30 +58,16 @@ class CrewAIOrchestrator:
     def run_monitor(
         self,
         customer_id: int,
-        hs_code: str,
-        supplier_country: str,
         db: Optional[Session] = None,
-        articles: Optional[list] = None,
-        progress_queue: Optional[stdlib_queue.Queue] = None,
     ) -> dict:
         """
-        Run the 5-agent tariff monitoring pipeline.
-
-        articles: pre-collected article dicts (cache + targeted query) from
-                  monitor_routes.py. When None (e.g. scheduler-triggered runs),
-                  MonitorPipeline falls back to the in-memory cache then JSONL.
+        Run the 5-agent tariff monitoring pipeline for the given customer.
+        hs_code and supplier_country are derived automatically from the customer's BusinessProfile.
 
         Returns:
             run_id, customer_id, alerts_generated, agent_outputs
         """
-        return self._monitor.run(
-            customer_id=customer_id,
-            hs_code=hs_code,
-            supplier_country=supplier_country,
-            db=db,
-            articles=articles,
-            progress_queue=progress_queue,
-        )
+        return self._monitor.run(customer_id=customer_id, db=db)
 
     def check_compliance(self, hs_code: str, alternatives: list) -> dict:
         """

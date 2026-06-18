@@ -2,38 +2,27 @@
 CoastGuard — SQLAlchemy Models
 
 Tables:
-  customers         — SMB business accounts (linked to Clerk auth)
-  business_profiles — per-customer sourcing footprint + risk config, used to
-                       decide which countries/HS codes the monitor pipeline
-                       scans for this customer
-  suppliers         — each customer's import suppliers
-  products          — products tracked per customer (with HS code)
-  import_orders     — pending/in-transit orders
-  tariff_alerts     — AI-generated risk alerts per customer
-  disruption_events — structured/queryable record of every risk event the
-                       Monitor agent detects (powers the globe visualization)
+  customers               — SMB business accounts (linked to Clerk auth)
+  business_profiles       — rich AI personalization data per customer
+  suppliers               — each customer's import suppliers
+  products                — products tracked per customer (with HS code)
+  import_orders           — pending/in-transit orders
+  tariff_alerts           — AI-generated risk alerts per customer
+  disruption_events       — structured/queryable record of every risk event
+  historical_impacts      — past disruption outcomes for the Impact Agent (enriched)
+  agent_runs              — permanent log of every pipeline run
+  rss_articles            — temporary RSS buffer per run (deleted after pipeline)
+  supplier_recommendations— extracted AlternativesFinder outputs per alert
+  global_suppliers        — 25,000 synthetic global exporter directory
 """
 
 from datetime import datetime
-from typing import Optional
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
     Integer, JSON, String, Text
 )
 from sqlalchemy.orm import relationship
 from database import Base
-
-# pgvector gives us a Postgres column type that stores an embedding (a list of
-# floats). We add the column so the schema matches our "we use vector search"
-# story, but per team decision we do NOT run any similarity search with it —
-# that would mean calling the Gemini embeddings API on every single monitor
-# run just to dedupe, which costs money for very little demo value. The column
-# is simply left NULL for now and can be backfilled later if dedup is needed.
-try:
-    from pgvector.sqlalchemy import Vector
-    HAS_PGVECTOR = True
-except ImportError:
-    HAS_PGVECTOR = False
 
 
 class Customer(Base):
@@ -45,50 +34,14 @@ class Customer(Base):
     email = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     industry = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    business_profile = relationship("BusinessProfile", back_populates="customer", uselist=False)
     suppliers = relationship("Supplier", back_populates="customer")
     products = relationship("Product", back_populates="customer")
     orders = relationship("ImportOrder", back_populates="customer")
     alerts = relationship("TariffAlert", back_populates="customer")
-    business_profile = relationship(
-        "BusinessProfile", back_populates="customer", uselist=False
-    )
-
-
-class BusinessProfile(Base):
-    """
-    Per-customer sourcing footprint and risk configuration.
-
-    This is the data a business owner fills in once during onboarding. It
-    determines which countries/HS codes the monitor pipeline scans for this
-    customer, so that e.g. a customer sourcing from India + South Africa sees
-    alerts for those countries, while a customer sourcing from the
-    Netherlands sees alerts for the Netherlands instead. One row per customer.
-    """
-    __tablename__ = "business_profiles"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), unique=True, nullable=False, index=True)
-
-    business_type = Column(String(100), nullable=True)
-    annual_import_volume_usd = Column(Float, nullable=True)
-
-    # primary_hs_codes: ["6109.10", "8708.29"]
-    primary_hs_codes = Column(JSON, nullable=True)
-    # primary_origin_countries: ISO-2 codes, e.g. ["VN", "BD", "IN", "ZA"]
-    primary_origin_countries = Column(JSON, nullable=True)
-
-    destination_country = Column(String(100), default="US")
-    destination_port = Column(String(255), nullable=True)
-    import_region = Column(String(255), nullable=True)
-
-    # risk_tolerance: low | medium | high
-    risk_tolerance = Column(String(50), default="medium")
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    customer = relationship("Customer", back_populates="business_profile")
 
 
 class Supplier(Base):
@@ -133,7 +86,6 @@ class ImportOrder(Base):
     order_value_usd = Column(Float, nullable=False)
     quantity = Column(Integer, default=1)
     expected_delivery_date = Column(DateTime, nullable=True)
-    # status: pending | in_transit | delayed | cancelled | delivered
     status = Column(String(50), default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -149,17 +101,12 @@ class TariffAlert(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("import_orders.id"), nullable=True)
-    # Links to the structured event row (lat/long, etc.) that this alert was
-    # generated from. Nullable because older alerts won't have one.
     disruption_event_id = Column(Integer, ForeignKey("disruption_events.id"), nullable=True)
-    # alert_type: tariff_change | port_disruption | geopolitical | shipping_delay
     alert_type = Column(String(100), nullable=False)
-    # severity: low | medium | high | critical
     severity = Column(String(50), nullable=False)
     summary = Column(Text, nullable=True)
-    agent_output = Column(Text, nullable=True)   # JSON string from the 5-agent pipeline
+    agent_output = Column(Text, nullable=True)
     data_source = Column(String(100), nullable=True)
-    # status: active | dismissed | resolved
     status = Column(String(50), default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
@@ -170,58 +117,23 @@ class TariffAlert(Base):
 
 
 class DisruptionEvent(Base):
-    """
-    A structured, queryable record of a single risk event (tariff change,
-    port disruption, geopolitical incident, etc.) detected by the Monitor
-    agent.
-
-    Why this table exists alongside `tariff_alerts`:
-      `TariffAlert.agent_output` is a big JSON blob meant for the alert feed
-      UI (AlertCard). It's great for showing "what did each agent say?" but
-      terrible for querying "show me every event near Vietnam" or "plot all
-      active events on a map". This table holds just the fields the globe
-      and any future analytics need, in normal queryable columns.
-
-    Coordinates are looked up from a small hardcoded country -> (lat, lon)
-    table (see services/coordinates.py) rather than asked from the LLM —
-    far more reliable for a live demo than hoping Gemini returns valid
-    coordinates in its JSON.
-    """
+    """Structured, queryable record of a single risk event. Powers the globe visualization."""
     __tablename__ = "disruption_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # Short unique id (uuid4 hex) used to correlate this event with a
-    # TariffAlert / agent run without exposing the internal integer PK.
     incident_id = Column(String(64), unique=True, index=True)
-
-    # event_type: tariff_change | port_disruption | geopolitical | weather
     event_type = Column(String(50), nullable=False)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
-
-    # ── Globe visualization fields (hardcoded lookup, see services/coordinates.py) ──
     location_name = Column(String(255), nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-
-    # hs_codes: ["6109.10"]   countries_affected: ["VN"]
     hs_codes = Column(JSON, nullable=True)
     countries_affected = Column(JSON, nullable=True)
-
-    # severity: low | medium | high | critical
     severity = Column(String(50), nullable=True)
     confidence = Column(Float, nullable=True)
-    # source: gdelt | usitc | mock | sentinelhub
     source = Column(String(100), nullable=True)
-
-    # Raw payload snippet from the data source, kept for debugging only.
     raw_data = Column(JSON, nullable=True)
-
-    # Embedding column — present for the schema/talking-point, intentionally
-    # unused. See the HAS_PGVECTOR note at the top of this file.
-    if HAS_PGVECTOR:
-        embedding = Column(Vector(768), nullable=True)
-
     detected_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -230,32 +142,182 @@ class DisruptionEvent(Base):
 
 class HistoricalImpact(Base):
     """
-    Past disruption outcomes (real or seeded) used by the Impact Agent
-    (core/impact_engine.py) to ground its expected/best/worst-case loss
-    estimates in historical data instead of an LLM guess.
-
-    Historical similarity is matched on event_type + country (and later,
-    via `embedding`, semantic similarity over `event_text`) — see
-    services/impact_service.py.
+    Past disruption outcomes used by the ImpactCalculator Agent for grounding estimates.
+    Written at the end of every successful pipeline run.
+    Enriched with signal metadata so future runs can calibrate by pattern, not just dollar amount.
     """
     __tablename__ = "historical_impacts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-
-    # event_type: TARIFF | PORT_DISRUPTION | GEOPOLITICAL | WEATHER
+    # Original columns (kept for backward compat)
     event_type = Column(String(100), nullable=False)
     country = Column(String(100), nullable=False, index=True)
     product = Column(String(255), nullable=True)
-
-    actual_loss = Column(Float, nullable=False)
+    actual_loss = Column(Float, nullable=False)       # = extra_cost_usd from ImpactCalculator
     delay_days = Column(Integer, nullable=True)
-    confidence = Column(Float, nullable=True)
+    confidence = Column(Float, nullable=True)         # TariffMonitor confidence score
+    event_text = Column(Text, nullable=True)          # TariffMonitor event description
+    created_at = Column(DateTime, default=datetime.utcnow)
+    # Pipeline linkage
+    run_id = Column(String(64), nullable=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
+    # Severity + verdict context
+    severity = Column(String(50), nullable=True)
+    adversarial_verdict = Column(String(20), nullable=True)   # CLEAR / CAUTION / BLOCK
+    # Affected trade dimensions
+    affected_hs_codes = Column(JSON, nullable=True)
+    affected_countries = Column(JSON, nullable=True)          # full list (country = primary)
+    # RSS signal metadata
+    articles_matched = Column(Integer, default=0)
+    source_credibility = Column(String(500), nullable=True)   # e.g. "usda,ustr" — authoritative feeds that fired
+    signal_age_hours = Column(Float, nullable=True)           # age of newest matching article at alert time
+    risk_source = Column(String(100), nullable=True)          # rss / usitc / gemini_knowledge
+    # Alternative supplier context
+    supplier_alternatives_found = Column(Integer, default=0)
+    best_alternative_lead_time_weeks = Column(Integer, nullable=True)
+    # Resolution (filled in later when alert is dismissed/resolved)
+    resolution_days = Column(Integer, nullable=True)
 
-    event_text = Column(Text, nullable=True)
 
-    # Embedding column — present for future semantic similarity search
-    # (ticket 7, pgvector). Left NULL until that work is picked up.
-    if HAS_PGVECTOR:
-        embedding = Column(Vector(768), nullable=True)
+class BusinessProfile(Base):
+    """Rich company profile used to personalize agent prompts per customer."""
+    __tablename__ = "business_profiles"
 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), unique=True, nullable=False)
+    business_type = Column(String(100), nullable=True)
+    annual_import_volume_usd = Column(Float, nullable=True)
+    primary_hs_codes = Column(JSON, nullable=True)
+    primary_origin_countries = Column(JSON, nullable=True)
+    destination_country = Column(String(100), nullable=True)
+    destination_port = Column(String(255), nullable=True)
+    import_region = Column(String(255), nullable=True)
+    risk_tolerance = Column(String(50), nullable=True)
+    # Agent training context
+    product_categories = Column(JSON, nullable=True)
+    product_descriptions = Column(JSON, nullable=True)
+    rss_keywords = Column(JSON, nullable=True)
+    typical_order_value_usd = Column(Float, nullable=True)
+    avg_lead_time_days = Column(Integer, nullable=True)
+    compliance_notes = Column(Text, nullable=True)
+    preferred_alternative_regions = Column(JSON, nullable=True)
+    min_supplier_rating = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="business_profile")
+
+
+class AgentRun(Base):
+    """
+    Permanent log of every pipeline execution. One row per run.
+    Read by the Adversarial agent to detect patterns across runs (repeat BLOCKs, severity trends).
+    """
+    __tablename__ = "agent_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), unique=True, index=True, nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String(50), default="running")          # running / completed / failed
+    model_used = Column(String(100), nullable=True)
+    articles_matched = Column(Integer, default=0)
+    alerts_generated = Column(Integer, default=0)
+    adversarial_verdict = Column(String(20), nullable=True)
+    severity = Column(String(50), nullable=True)
+    extra_cost_usd = Column(Float, nullable=True)
+    event_type = Column(String(100), nullable=True)
+    affected_countries = Column(JSON, nullable=True)
+
+
+class RssArticle(Base):
+    """
+    Temporary Aurora buffer for scored RSS articles during a pipeline run.
+    Written at pipeline start, deleted at pipeline end.
+    Shows Aurora as an active data buffer in the pipeline flow (not just a result store).
+    """
+    __tablename__ = "rss_articles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    title = Column(String(500), nullable=True)
+    url = Column(String(1000), nullable=True)
+    source = Column(String(255), nullable=True)
+    published_at = Column(String(100), nullable=True)
+    body = Column(Text, nullable=True)
+    relevance_score = Column(Integer, default=0)
+    country_mentioned = Column(String(100), nullable=True)
+    agent_target = Column(String(50), nullable=True)   # tariff_monitor | alternatives_finder | import_compliance
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SupplierRecommendation(Base):
+    """
+    Extracted AlternativesFinder outputs stored per alert.
+    Read by the AlternativesFinder on future runs to build on past suggestions
+    instead of rediscovering the same suppliers every time.
+    """
+    __tablename__ = "supplier_recommendations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    run_id = Column(String(64), nullable=False)
+    supplier_name = Column(String(255), nullable=False)
+    country = Column(String(100), nullable=False)
+    lead_time_weeks = Column(Integer, nullable=True)
+    cost_delta_pct = Column(Integer, nullable=True)
+    source = Column(String(100), nullable=True)             # global_suppliers_db / gemini
+    adversarial_verdict = Column(String(20), nullable=True) # verdict from the run that generated this
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AgentRunLog(Base):
+    """
+    Per-agent log row — one row per agent per pipeline run.
+    Stores the input context each agent received and its raw output JSON.
+    Linked to both the run (run_id) and the resulting alert (tariff_alert_id).
+    """
+    __tablename__ = "agent_run_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    agent_name = Column(String(100), nullable=False)
+    input_context = Column(Text, nullable=True)
+    output_json = Column(Text, nullable=True)
+    ran_at = Column(DateTime, default=datetime.utcnow)
+    tariff_alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
+
+
+class GlobalSupplier(Base):
+    """
+    Global exporter directory — 25,000 rows seeded from global_exporters_dataset.csv.
+    Powers the Supplier Panel (Region → Country → Category → Suppliers).
+    """
+    __tablename__ = "global_suppliers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_id = Column(String(20), unique=True, index=True, nullable=False)
+    business_name = Column(String(255), nullable=False, index=True)
+    country = Column(String(100), nullable=False, index=True)
+    city = Column(String(100), nullable=True)
+    address = Column(String(500), nullable=True)
+    phone = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=True)
+    website = Column(String(255), nullable=True)
+    product_category = Column(String(150), nullable=False, index=True)
+    product_list = Column(Text, nullable=True)
+    business_type = Column(String(100), nullable=True)
+    year_established = Column(Integer, nullable=True)
+    employee_count = Column(Integer, nullable=True)
+    annual_export_volume_usd = Column(Float, nullable=True)
+    min_order_quantity = Column(String(100), nullable=True)
+    export_markets = Column(Text, nullable=True)
+    certifications = Column(Text, nullable=True)
+    supplier_rating = Column(Float, nullable=True)
+    payment_terms = Column(String(255), nullable=True)
+    lead_time_days = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

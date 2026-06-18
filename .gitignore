@@ -120,7 +120,7 @@ package-lock.json
 # ============================================
 # Databases & Vector Store
 # ============================================
-# Note: pre-built knowledge base vector DB files should be committed to git
+# Note: pre-built knowledge base vector database files should be committed to git
 # - backend/data/vectordb/ (pre-built knowledge base, kept in git)
 # - backend/scripts/data/vectordb/ (pre-built knowledge base, kept in git)
 
@@ -133,7 +133,7 @@ package-lock.json
 !backend/data/vectordb/**
 !backend/scripts/data/vectordb/**
 
-
+# Ignore database directories in other locations
 chroma_db/
 backend/chroma_db/
 

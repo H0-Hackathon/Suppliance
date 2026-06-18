@@ -1,116 +1,108 @@
 """
-CoastGuard — Expand Acme Imports (customer id=1) to a global supplier footprint.
+CoastGuard — Seed Global Suppliers from CSV into Aurora PostgreSQL.
 
-Run after seed_business_profile.py:
-  python scripts/seed_global_suppliers.py
+Usage (from backend/ directory with venv active):
+    python scripts/seed_global_suppliers.py
 
-This script is additive and idempotent — it only inserts rows that don't
-already exist (checked by customer_id / supplier name), and reuses the same
-_get_or_create_* helpers/shape as scripts/seed_business_profile.py.
-
-What this adds:
-  - 9 new suppliers (Textiles -> HS 6109.10, Automotive -> HS 8708.29) across
-    major manufacturing/export hubs not yet represented: China, Japan,
-    Germany, Mexico, South Korea, Canada, plus three Middle Eastern hubs
-    (UAE, Saudi Arabia, Turkey).
-  - A matching Product + pending ImportOrder for each, so the Impact agent
-    has real spend to calculate exposure against.
-  - Extends BusinessProfile(Acme Imports).primary_origin_countries with the
-    corresponding ISO-2 codes so /monitor/targets and the supplier map pick
-    them up automatically.
+Reads:  ../global_exporters_dataset.csv  (10,001 data rows + header)
+Writes: global_suppliers table in Aurora (skips duplicates via supplier_id)
 """
 
-import sys
-import os
+import sys, os, csv, pathlib, logging
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
 
-from database import SessionLocal, engine, Base
-import models  # noqa: F401
-from scripts.seed_business_profile import (
-    _get_or_create_supplier,
-    _get_or_create_product,
-    _get_or_create_order,
-)
+from database import SessionLocal, engine
+from models import Base, GlobalSupplier
 
-Base.metadata.create_all(bind=engine)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
-NEW_SUPPLIERS = [
-    # name, country, product_category, reliability, hs_code, description, unit_value, order_value, quantity, days_out
-    ("Shenzhen Apparel Exports", "China", "Textiles", 80.0, "6109.10", "Knit T-Shirt Fabric", 5.50, 75000.0, 13636, 35),
-    ("Yokohama Precision Parts", "Japan", "Automotive", 88.0, "8708.29", "Automotive Sensor Assemblies", 60.00, 55000.0, 917, 50),
-    ("Bavaria Auto Components GmbH", "Germany", "Automotive", 90.0, "8708.29", "Engine Control Modules", 120.00, 84000.0, 700, 70),
-    ("Monterrey AutoParts SA", "Mexico", "Automotive", 76.0, "8708.29", "Stamped Body Panels", 35.00, 52500.0, 1500, 25),
-    ("Busan Motion Systems", "South Korea", "Automotive", 84.0, "8708.29", "Transmission Components", 95.00, 66500.0, 700, 40),
-    ("Ontario Drivetrain Supply", "Canada", "Automotive", 87.0, "8708.29", "Drivetrain Assemblies", 150.00, 90000.0, 600, 55),
-    ("Dubai Textile Trading LLC", "United Arab Emirates", "Textiles", 72.0, "6109.10", "Cotton Apparel Re-Export", 7.00, 35000.0, 5000, 20),
-    ("Riyadh Garment Works", "Saudi Arabia", "Textiles", 68.0, "6109.10", "Workwear Garments", 9.00, 27000.0, 3000, 30),
-    ("Istanbul Textile Mills", "Turkey", "Textiles", 81.0, "6109.10", "Cotton Knitwear", 6.50, 48750.0, 7500, 40),
-]
-
-NEW_ORIGIN_COUNTRIES = ["CN", "JP", "DE", "MX", "KR", "CA", "AE", "SA", "TR"]
+CSV_PATH = BACKEND_DIR.parent / "global_exporters_dataset.csv"
+BATCH_SIZE = 500
 
 
-def seed():
+def _safe_int(val):
+    try: return int(val.strip()) if val and val.strip() else None
+    except: return None
+
+def _safe_float(val):
+    try: return float(val.strip()) if val and val.strip() else None
+    except: return None
+
+
+def run():
+    if not CSV_PATH.exists():
+        logger.error("CSV not found at %s", CSV_PATH)
+        sys.exit(1)
+
+    logger.info("Creating tables if they don't exist…")
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
     try:
-        created = []
+        existing_ids = set(row[0] for row in db.query(GlobalSupplier.supplier_id).all())
+        logger.info("Existing rows in global_suppliers: %d", len(existing_ids))
 
-        acme = db.query(models.Customer).filter(models.Customer.id == 1).first()
-        if acme is None:
-            print("Customer id=1 (Acme Imports) not found — run scripts/seed_data.py first.")
-            return
+        batch, inserted, skipped, total = [], 0, 0, 0
 
-        profile = (
-            db.query(models.BusinessProfile)
-            .filter(models.BusinessProfile.customer_id == acme.id)
-            .first()
-        )
-        if profile is None:
-            print("BusinessProfile for customer id=1 not found — run scripts/seed_business_profile.py first.")
-            return
+        with open(CSV_PATH, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                total += 1
+                sid = row.get("Supplier_ID", "").strip()
+                if not sid or sid in existing_ids:
+                    skipped += 1
+                    continue
 
-        existing_origins = list(profile.primary_origin_countries or [])
-        added_origins = [c for c in NEW_ORIGIN_COUNTRIES if c not in existing_origins]
-        if added_origins:
-            profile.primary_origin_countries = existing_origins + added_origins
-            created.append(f"BusinessProfile.primary_origin_countries += {added_origins}")
+                batch.append(GlobalSupplier(
+                    supplier_id=sid,
+                    business_name=row.get("Business_Name", "").strip(),
+                    country=row.get("Country", "").strip(),
+                    city=row.get("City", "").strip() or None,
+                    address=row.get("Address", "").strip() or None,
+                    phone=row.get("Phone", "").strip() or None,
+                    email=row.get("Email", "").strip() or None,
+                    website=row.get("Website", "").strip() or None,
+                    product_category=row.get("Category", "").strip(),
+                    product_list=row.get("Main_Products", "").strip() or None,
+                    business_type=row.get("Business_Type", "").strip() or None,
+                    year_established=_safe_int(row.get("Year_Established")),
+                    employee_count=_safe_int(row.get("Employees")),
+                    annual_export_volume_usd=_safe_float(row.get("Annual_Export_Volume_USD")),
+                    min_order_quantity=row.get("Min_Order_Quantity", "").strip() or None,
+                    export_markets=row.get("Export_Markets", "").strip() or None,
+                    certifications=row.get("Certifications", "").strip() or None,
+                    supplier_rating=_safe_float(row.get("Rating")),
+                    payment_terms=row.get("Payment_Terms", "").strip() or None,
+                    lead_time_days=_safe_int(row.get("Lead_Time_Days")),
+                ))
+                existing_ids.add(sid)
 
-        for name, country, category, reliability, hs_code, description, unit_value, order_value, quantity, days_out in NEW_SUPPLIERS:
-            supplier, c1 = _get_or_create_supplier(db, acme.id, name, country, category, reliability_score=reliability)
-            if c1:
-                created.append(f"Supplier({name}, {country})")
+                if len(batch) >= BATCH_SIZE:
+                    db.bulk_save_objects(batch)
+                    db.commit()
+                    inserted += len(batch)
+                    logger.info("Committed %d rows (total: %d)", len(batch), inserted)
+                    batch = []
 
-            product, c2 = _get_or_create_product(db, acme.id, hs_code, description, unit_value_usd=unit_value, import_country=country)
-            if c2:
-                created.append(f"Product({description}, {country})")
+        if batch:
+            db.bulk_save_objects(batch)
+            db.commit()
+            inserted += len(batch)
 
-            _, c3 = _get_or_create_order(db, acme.id, supplier.id, product.id, order_value_usd=order_value, quantity=quantity, days_out=days_out)
-            if c3:
-                created.append(f"ImportOrder({country}, ${order_value:,.0f})")
+        logger.info("=" * 55)
+        logger.info("Seed complete. Read: %d | Inserted: %d | Skipped: %d", total, inserted, skipped)
+        logger.info("=" * 55)
 
-        db.commit()
-
-        if created:
-            print("Created:")
-            for item in created:
-                print(f"  - {item}")
-        else:
-            print("Nothing new to create — already seeded.")
-
-        print()
-        print(f"  Suppliers:        {db.query(models.Supplier).filter(models.Supplier.customer_id == acme.id).count()}")
-        print(f"  Products:         {db.query(models.Product).filter(models.Product.customer_id == acme.id).count()}")
-        print(f"  Orders:           {db.query(models.ImportOrder).filter(models.ImportOrder.customer_id == acme.id).count()}")
-        print(f"  Origin countries: {profile.primary_origin_countries}")
-
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Error seeding database: {e}")
-        raise
+        logger.exception("Seed failed — rolled back.")
+        sys.exit(1)
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    seed()
+    run()

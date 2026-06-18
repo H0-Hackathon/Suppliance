@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     max_upload_size_mb: int = 50
 
+    # ── Active session (temporary until Clerk auth is wired) ─────────────────
+    # Change this to switch which company is "logged in". Replace with Clerk
+    # user lookup once auth is implemented.
+    active_customer_id: int = 71
+
     # ── Auth ──────────────────────────────────────────────────────────────────
     clerk_issuer_url: Optional[str] = None
     admin_whitelist: Optional[str] = None

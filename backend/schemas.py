@@ -156,9 +156,9 @@ class DisruptionEventResponse(BaseModel):
 # ── Monitor pipeline ──────────────────────────────────────────────────────────
 
 class MonitorRunRequest(BaseModel):
-    customer_id: int
-    hs_code: str
-    supplier_country: str
+    # customer_id is optional — if omitted the server uses ACTIVE_CUSTOMER_ID from config.
+    # Once Clerk auth is wired, this will be derived from the auth token instead.
+    customer_id: Optional[int] = None
 
 
 class MonitorRunResponse(BaseModel):
