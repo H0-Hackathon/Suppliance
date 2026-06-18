@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import enUS from 'antd/locale/en_US';
 import './App.css';
-
+import SuppliersPage from './pages/SuppliersPage';
 import { CommonHeader } from './components/CommonHeader';
 import { AlertsDashboard } from './pages/AlertsDashboard';
 import { AlertsPage } from './pages/AlertsPage';
@@ -35,6 +35,7 @@ function App() {
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/demo" element={<DemoPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/suppliers" element={<SuppliersPage />} />
           {/* Catch-all: redirect unknown routes to dashboard */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
