@@ -37,7 +37,7 @@ startup_pipeline_status = {
     "errors": [],
 }
 
-STARTUP_PIPELINE_RUNS = 3
+STARTUP_PIPELINE_RUNS = 1
 
 
 def _run_startup_pipelines_thread():

@@ -106,8 +106,6 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
   const [dims, setDims] = useState({ width: 1200, height: 800 });
   const [hoveredSupplier, setHoveredSupplier] = useState<Supplier | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const [animTick, setAnimTick] = useState(0);
-
   // Responsive sizing via ResizeObserver
   useEffect(() => {
     const el = containerRef.current;
@@ -127,13 +125,6 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
     return () => ro.disconnect();
   }, []);
 
-  // Animate exposure pulses along routes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setAnimTick((t) => (t + 1) % 360);
-    }, 50);
-    return () => clearInterval(interval);
-  }, []);
 
   // Globe initialization with starfield background
   useEffect(() => {
@@ -268,31 +259,6 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
   // Memoized arc data
   const arcsData = useMemo(() => effectiveArcs, [effectiveArcs]);
 
-  // Generate animated exposure pulse points along arcs
-  const pulseData = useMemo(() => {
-    const pulses = [];
-    effectiveArcs.forEach((arc, arcIdx) => {
-      const pulsesPerRoute = arc.exposureTier === 3 ? 4 : arc.exposureTier === 2 ? 3 : 2;
-      for (let i = 0; i < pulsesPerRoute; i++) {
-        // Each pulse has a base offset, then moves along the arc based on animTick
-        const baseT = i / pulsesPerRoute;
-        const progress = (animTick / 360 + baseT) % 1;
-        
-        // Linear interpolation for pulse position
-        const lat = arc.startLat + (arc.endLat - arc.startLat) * progress;
-        const lng = arc.startLng + (arc.endLng - arc.startLng) * progress;
-        
-        pulses.push({
-          lat,
-          lng,
-          routeStatus: arc.routeStatus,
-          exposureTier: arc.exposureTier,
-        });
-      }
-    });
-    return pulses;
-  }, [animTick, effectiveArcs]);
-
   // Get point size based on exposure tier (+30% increase)
   const getPointRadius = useCallback((d: any) => {
     if (d.status === 'customer') return 0.85;
@@ -359,18 +325,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
         arcDashGap={getArcDashGap}
         arcDashAnimateTime={(d: any) => ARC_DASH_SPEED[d.exposureTier]}
         arcCurveResolution={64}
-        
-        // ── Animated exposure pulses (representing financial exposure flow) ─
-        pointsData={pulseData}
-        pointLat={(d: any) => d.lat}
-        pointLng={(d: any) => d.lng}
-        pointAltitude={(d: any) => 0.008}
-        pointRadius={(d: any) => d.exposureTier === 3 ? 0.35 : d.exposureTier === 2 ? 0.28 : 0.22}
-        pointColor={(d: any) => ARC_COLOR[d.routeStatus]}
-        pointResolution={6}
-        pointMerge={false}
-        onPointHover={undefined}
-        
+
         // ── Labels ────────────────────────────────────────────────────────
         labelsData={effectiveSuppliers.filter((s) => s.status !== 'customer')}
         labelLat={(d: any) => d.lat}
@@ -383,30 +338,6 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
         labelResolution={2}
       />
 
-      {/* ── Critical alert banner ── */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 14,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(220,38,38,0.1)',
-          border: '1px solid rgba(220,38,38,0.35)',
-          borderRadius: 6,
-          padding: '5px 18px',
-          fontSize: 11,
-          fontWeight: 700,
-          color: '#fca5a5',
-          letterSpacing: '0.05em',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          zIndex: 10,
-          whiteSpace: 'nowrap',
-          backdropFilter: 'blur(8px)',
-          boxShadow: '0 2px 12px rgba(220,38,38,0.15)',
-        }}
-      >
-        {bannerText}
-      </div>
 
       {/* ── Legend ── */}
       <div

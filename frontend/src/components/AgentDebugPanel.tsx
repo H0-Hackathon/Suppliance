@@ -13,11 +13,11 @@ export interface AgentDebugTarget {
 }
 
 export interface AgentDebugPanelProps {
-  target: AgentDebugTarget;
+  target?: AgentDebugTarget | null;
   agentStates: Record<string, AgentState>;
   logs: string[];
-  targetIndex: number;
-  totalTargets: number;
+  targetIndex?: number;
+  totalTargets?: number;
 }
 
 const AGENT_META: { key: string; label: string; color: string; subtitle: string }[] = [
@@ -63,7 +63,7 @@ function agentSummary(key: string, output: Record<string, unknown> | undefined):
 }
 
 export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
-  target,
+  target = null,
   agentStates,
   logs,
   targetIndex,
@@ -101,11 +101,13 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
           </span>
           <span style={{ fontSize: 11, color: '#64748b' }}>—</span>
           <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
-            Scanning {target.country_name} ({target.hs_code})
+            {target ? `Scanning ${target.country_name} (${target.hs_code})` : 'Pipeline Run'}
           </span>
         </div>
         <span style={{ fontSize: 11, color: '#475569' }}>
-          Target {targetIndex + 1} of {totalTargets}
+          {target && targetIndex != null && totalTargets != null
+            ? `Target ${targetIndex + 1} of ${totalTargets}`
+            : '5 agents'}
         </span>
       </div>
 
