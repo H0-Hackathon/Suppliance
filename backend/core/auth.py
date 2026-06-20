@@ -2,119 +2,96 @@
 CoastGuard — Auth utilities.
 
 Provides:
-  - FastAPI dependency `get_current_user` using Auth0
+  - create_access_token   — issues a signed HS256 JWT
+  - get_current_user      — FastAPI dependency: validates JWT → Customer row
+  - get_subscribed_user   — like get_current_user but also checks subscription/trial status
 """
-
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import jwt
-from jwt import PyJWKClient
 
-from config import get_settings
 from database import get_db
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 security = HTTPBearer(auto_error=True)
+
+# ── JWT config ────────────────────────────────────────────────────────────────
+SECRET_KEY = "COASTGUARD_SUPER_SECRET_KEY_CHANGE_IN_PROD"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _decode_token(token: str) -> str:
+    """Decode JWT and return the email (sub claim). Raises HTTPException on failure."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        return email
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired. Please log in again.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token.")
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
-    """
-    FastAPI dependency that verifies the Auth0 JWT and returns the Customer row.
-    """
+    """Validates JWT and returns the Customer row. Does NOT check subscription."""
     from models import Customer
 
-    if not credentials or not credentials.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    email = _decode_token(credentials.credentials)
 
-    # ── Verify Auth0 JWT ──────────────────────────────────────────────────
-    token = credentials.credentials
-
-    jwks_url = f"https://{settings.auth0_domain}/.well-known/jwks.json"
-    jwks_client = PyJWKClient(jwks_url)
-
-    try:
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=settings.auth0_algorithms,
-            audience=settings.auth0_api_audience,
-            issuer=f"https://{settings.auth0_domain}/"
-        )
-    except jwt.exceptions.PyJWKClientError as error:
-        logger.warning(f"Auth0 JWKS error: {error}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
-    except jwt.exceptions.DecodeError as error:
-        logger.warning(f"Auth0 Decode error: {error}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
-    except jwt.exceptions.ExpiredSignatureError:
-        logger.warning("Auth0 token expired")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-    except Exception as e:
-        logger.warning(f"Auth0 generic error: {e}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
-
-    auth0_id = payload.get("sub")
-    if not auth0_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-
-    # Fetch customer from local DB
-    customer = db.query(Customer).filter(Customer.auth0_id == auth0_id).first()
-
+    customer = db.query(Customer).filter(Customer.email == email).first()
     if not customer:
-        email = payload.get("email", "demo@example.com")
-        name = payload.get("name", "Demo User")
-        
-        # Map the first real Auth0 user to the pre-seeded Customer 1
-        # so they instantly see a populated dashboard with the demo data.
-        seeded_customer = (
-            db.query(Customer)
-            .filter(Customer.id == settings.active_customer_id)
-            .first()
-        )
-        if seeded_customer and (
-            seeded_customer.auth0_id.startswith("auth0|mock")
-            or seeded_customer.auth0_id == "seed"
-        ):
-            logger.info(
-                f"Mapping new auth0_id {auth0_id} to pre-seeded "
-                f"Customer {seeded_customer.id}"
-            )
-            seeded_customer.auth0_id = auth0_id
-            if email: seeded_customer.email = email
-            if name: seeded_customer.name = name
-            db.commit()
-            db.refresh(seeded_customer)
-            customer = seeded_customer
-        else:
-            # Lazy create customer on subsequent logins
-            customer = Customer(
-                auth0_id=auth0_id,
-                name=name,
-                email=email,
-                company_name="Acme Corp",
-            )
-            db.add(customer)
-            db.commit()
-            db.refresh(customer)
-            logger.info(f"Lazily created new customer for auth0_id: {auth0_id}")
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
     if not customer.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated.")
 
     return customer
+
+
+def get_subscribed_user(
+    customer=Depends(get_current_user),
+):
+    """
+    Like get_current_user but additionally checks subscription/trial status.
+    Returns 402 if trial has expired and no active subscription exists.
+    Use this dependency on dashboard routes that should be gated.
+    """
+    now = datetime.utcnow()
+
+    # Active paid subscription (no expiry = lifetime)
+    if customer.subscription_plan and (
+        customer.subscription_expires_at is None
+        or customer.subscription_expires_at > now
+    ):
+        return customer
+
+    # Within free trial
+    if customer.trial_expires_at and customer.trial_expires_at > now:
+        return customer
+
+    # No active access
+    raise HTTPException(
+        status_code=402,
+        detail="subscription_required",
+        headers={"X-Subscription-Status": "expired"},
+    )

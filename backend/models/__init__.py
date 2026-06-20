@@ -29,11 +29,25 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    auth0_id = Column(String(255), unique=True, index=True, nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)  # nullable for migration compat
     name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     industry = Column(String(100), nullable=True)
+    
+    # OTP Verification
+    is_verified = Column(Boolean, default=False)
+    otp_code = Column(String(6), nullable=True)
+    
+    # Enterprise Onboarding Context
+    location = Column(String(255), nullable=True)
+    years_in_business = Column(Integer, nullable=True)
+    average_revenue = Column(String(100), nullable=True)
+
+    # Subscription & trial
+    trial_expires_at = Column(DateTime, nullable=True)       # set to now+24h on signup
+    subscription_plan = Column(String(50), nullable=True)    # null | "starter" | "pro"
+    subscription_expires_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

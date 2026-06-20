@@ -19,7 +19,7 @@ from models import DisruptionEvent, TariffAlert
 from schemas import DisruptionEventResponse
 
 router = APIRouter(prefix="/api/v2", tags=["Disruptions"])
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 
 @router.get("/disruptions", response_model=List[DisruptionEventResponse])

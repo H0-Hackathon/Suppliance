@@ -118,6 +118,7 @@ from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.global_supplier_routes import router as global_supplier_router
+from api.v2.auth_routes import router as auth_router
 
 app.include_router(demo_router)
 app.include_router(supplier_router)
@@ -127,6 +128,7 @@ app.include_router(disruption_router)
 app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
+app.include_router(auth_router)
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
