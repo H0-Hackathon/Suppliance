@@ -56,6 +56,44 @@ def list_suppliers(customer_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/suppliers/global")
+def list_global_suppliers(db: Session = Depends(get_db)):
+    """Fetch all 25k master global suppliers with pseudo-coordinates for the globe."""
+    from models import GlobalSupplier
+    from services.coordinates import get_country_coordinates
+    import random
+    
+    suppliers = db.query(GlobalSupplier.id, GlobalSupplier.business_name, GlobalSupplier.country).all()
+    results = []
+    
+    # Pre-fetch and cache coordinate lookups to avoid repeating the dict lookup 25,000 times
+    coord_cache = {}
+    from services.coordinates import get_country_code
+    
+    for s in suppliers:
+        if s.country not in coord_cache:
+            coord_cache[s.country] = {
+                "coords": get_country_coordinates(s.country),
+                "code": get_country_code(s.country)
+            }
+            
+        data = coord_cache[s.country]
+        coords = data["coords"]
+        if coords:
+            # Jitter by +/- 1.5 degrees so the 25k points form beautiful dense clusters around major cities!
+            lat_jitter = random.uniform(-1.5, 1.5)
+            lng_jitter = random.uniform(-1.5, 1.5)
+            results.append({
+                "id": s.id,
+                "name": s.business_name,
+                "country": s.country,
+                "countryCode": data["code"],
+                "lat": coords["latitude"] + lat_jitter,
+                "lng": coords["longitude"] + lng_jitter
+            })
+    return results
+
+
 # ── Products ──────────────────────────────────────────────────────────────────
 
 @router.post("/products", response_model=ProductResponse, status_code=201)

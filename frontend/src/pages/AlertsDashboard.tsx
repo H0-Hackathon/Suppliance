@@ -30,7 +30,6 @@ import api from '../services/api';
  * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
  * Replace with the auth token's customer id once Clerk is wired.
  */
-
 const ACTIVE_CUSTOMER_ID = 69;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
@@ -327,7 +326,14 @@ export const AlertsDashboard: React.FC = () => {
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
-    .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
+    .map((s) => ({ 
+      name: s.name, 
+      country: s.country, 
+      countryCode: s.countryCode, 
+      latitude: s.latitude, 
+      longitude: s.longitude,
+      reliabilityScore: s.reliability_score 
+    }));
 
   const syncTime = new Date(lastSync).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
