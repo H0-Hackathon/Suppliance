@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -9,6 +10,7 @@ import {
   Anchor,
   TrendingUp,
   Globe,
+  LogOut,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -24,6 +26,7 @@ type DbStatus = 'checking' | 'ok' | 'error';
 export const CommonHeader: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth0();
   const [dbStatus, setDbStatus] = useState<DbStatus>('checking');
   const [dbBackend, setDbBackend] = useState<string>('');
 
@@ -238,6 +241,46 @@ export const CommonHeader: React.FC = () => {
           );
         })}
       </nav>
+
+      {/* User info */}
+      {user && (
+        <div style={{
+          padding: '12px 16px',
+          borderTop: '1px solid rgba(245,158,11,0.07)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700, color: '#0e0e10',
+            fontFamily: 'Inter, sans-serif', overflow: 'hidden'
+          }}>
+            {user.picture ? <img src={user.picture} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👤'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#e8e3d8', fontFamily: 'Inter, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user.name || user.email || 'User'}
+            </p>
+          </div>
+          <button
+            onClick={() => logout({ logoutParams: { returnTo: `${window.location.origin}/login` } })}
+            title="Sign out"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'rgba(160,150,120,0.55)', padding: 4, borderRadius: 6,
+              display: 'flex', alignItems: 'center', flexShrink: 0,
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(160,150,120,0.55)')}
+          >
+            <LogOut size={15} /> 
+          </button>
+        </div>
+      )}
 
       {/* Footer */}
       <div style={{

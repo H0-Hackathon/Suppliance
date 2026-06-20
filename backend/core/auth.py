@@ -2,7 +2,7 @@
 CoastGuard — Auth utilities.
 
 Provides:
-  - FastAPI dependency `get_current_user` using clerk-backend-api
+  - FastAPI dependency `get_current_user` using Auth0
 """
 
 from __future__ import annotations
@@ -13,7 +13,8 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from clerk_backend_api import Clerk
+import jwt
+from jwt import PyJWKClient
 
 from config import get_settings
 from database import get_db
@@ -21,59 +22,99 @@ from database import get_db
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=True)
+
 
 def get_current_user(
-    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
     """
-    FastAPI dependency that verifies the Clerk JWT and returns the User row.
-    Raises 401 if the token is invalid / expired / user not found.
+    FastAPI dependency that verifies the Auth0 JWT and returns the Customer row.
     """
-    from models.user import User
+    from models import Customer
 
-    if not settings.clerk_secret_key:
-        # In case we're developing without Clerk config, you might want to bypass
-        # or raise a specific error.
-        raise HTTPException(status_code=500, detail="Clerk secret key not configured")
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    sdk = Clerk(bearer_auth=settings.clerk_secret_key)
-    
-    # Authenticate the request
+    # ── Verify Auth0 JWT ──────────────────────────────────────────────────
+    token = credentials.credentials
+
+    jwks_url = f"https://{settings.auth0_domain}/.well-known/jwks.json"
+    jwks_client = PyJWKClient(jwks_url)
+
     try:
-        request_state = sdk.authenticate_request(request)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=settings.auth0_algorithms,
+            audience=settings.auth0_api_audience,
+            issuer=f"https://{settings.auth0_domain}/"
+        )
+    except jwt.exceptions.PyJWKClientError as error:
+        logger.warning(f"Auth0 JWKS error: {error}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
+    except jwt.exceptions.DecodeError as error:
+        logger.warning(f"Auth0 Decode error: {error}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
+    except jwt.exceptions.ExpiredSignatureError:
+        logger.warning("Auth0 token expired")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except Exception as e:
-        logger.error(f"Clerk authentication error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    if not request_state.is_signed_in:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not signed in",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        logger.warning(f"Auth0 generic error: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
 
-    clerk_id = request_state.payload.get("sub")
-    if clerk_id is None:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+    auth0_id = payload.get("sub")
+    if not auth0_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-    # Fetch user from local DB, lazily create if they don't exist
-    user = db.query(User).filter(User.clerk_id == clerk_id).first()
-    
-    if user is None:
-        user = User(clerk_id=clerk_id)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        logger.info(f"Lazily created new user for clerk_id: {clerk_id}")
+    # Fetch customer from local DB
+    customer = db.query(Customer).filter(Customer.auth0_id == auth0_id).first()
+
+    if not customer:
+        email = payload.get("email", "demo@example.com")
+        name = payload.get("name", "Demo User")
         
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="User account is inactive")
-        
-    return user
+        # Map the first real Auth0 user to the pre-seeded Customer 1
+        # so they instantly see a populated dashboard with the demo data.
+        seeded_customer = (
+            db.query(Customer)
+            .filter(Customer.id == settings.active_customer_id)
+            .first()
+        )
+        if seeded_customer and (
+            seeded_customer.auth0_id.startswith("auth0|mock")
+            or seeded_customer.auth0_id == "seed"
+        ):
+            logger.info(
+                f"Mapping new auth0_id {auth0_id} to pre-seeded "
+                f"Customer {seeded_customer.id}"
+            )
+            seeded_customer.auth0_id = auth0_id
+            if email: seeded_customer.email = email
+            if name: seeded_customer.name = name
+            db.commit()
+            db.refresh(seeded_customer)
+            customer = seeded_customer
+        else:
+            # Lazy create customer on subsequent logins
+            customer = Customer(
+                auth0_id=auth0_id,
+                name=name,
+                email=email,
+                company_name="Acme Corp",
+            )
+            db.add(customer)
+            db.commit()
+            db.refresh(customer)
+            logger.info(f"Lazily created new customer for auth0_id: {auth0_id}")
+
+    if not customer.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
+
+    return customer

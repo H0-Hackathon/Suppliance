@@ -69,7 +69,6 @@ class Settings(BaseSettings):
 
     # ── External data sources (Phase 2+) ──────────────────────────────────────
     usitc_api_key: Optional[str] = None
-    gdelt_api_key: Optional[str] = None
     sentinelhub_api_key: Optional[str] = None
     google_maps_api_key: Optional[str] = None
 
@@ -84,10 +83,12 @@ class Settings(BaseSettings):
     # ── Active session (temporary until Clerk auth is wired) ─────────────────
     # Change this to switch which company is "logged in". Replace with Clerk
     # user lookup once auth is implemented.
-    active_customer_id: int = 71
+    active_customer_id: int = 1
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    clerk_issuer_url: Optional[str] = None
+    # ── Auth (Auth0) ──────────────────────────────────────────────────────────
+    auth0_domain: str = "dev-u567o418jqffuhhh.us.auth0.com"
+    auth0_api_audience: str = "https://dev-u567o418jqffuhhh.us.auth0.com/api/v2/"
+    auth0_algorithms: list[str] = ["RS256"]
     admin_whitelist: Optional[str] = None
 
     # ── Logging ───────────────────────────────────────────────────────────────

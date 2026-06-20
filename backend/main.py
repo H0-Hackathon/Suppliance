@@ -37,7 +37,7 @@ startup_pipeline_status = {
     "errors": [],
 }
 
-STARTUP_PIPELINE_RUNS = 3
+STARTUP_PIPELINE_RUNS = 1
 
 
 def _run_startup_pipelines_thread():
@@ -152,7 +152,7 @@ def _on_startup():
     # Scrape RSS feeds in a background thread so the server is immediately
     # ready to accept requests. /monitor/run calls that arrive before the
     # scrape finishes fall back to the in-memory cache (empty → JSONL datasets).
-    threading.Thread(target=_run_rss_scrape, daemon=True, name="rss-startup-scrape").start()
+    # DISABLED for memory limits: threading.Thread(target=_run_rss_scrape, daemon=True, name="rss-startup-scrape").start()
 
     # Warm the news-ticker cache in the background so the first /api/v2/news
     # request is instant.

@@ -21,6 +21,7 @@ from schemas import (
     ProductCreate, ProductResponse,
     ImportOrderCreate, ImportOrderResponse,
 )
+from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v2", tags=["Suppliers & Orders"])
 
@@ -37,8 +38,8 @@ def _require_customer(customer_id: int, db: Session) -> Customer:
 # ── Suppliers ─────────────────────────────────────────────────────────────────
 
 @router.post("/suppliers", response_model=SupplierResponse, status_code=201)
-def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
-    _require_customer(payload.customer_id, db)
+def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+    payload.customer_id = current_customer.id
     supplier = Supplier(**payload.model_dump())
     db.add(supplier)
     db.commit()
@@ -47,10 +48,10 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
-def list_suppliers(customer_id: int, db: Session = Depends(get_db)):
+def list_suppliers(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
     return (
         db.query(Supplier)
-        .filter(Supplier.customer_id == customer_id, Supplier.is_active == True)
+        .filter(Supplier.customer_id == current_customer.id, Supplier.is_active == True)
         .order_by(Supplier.created_at.desc())
         .all()
     )
@@ -59,8 +60,8 @@ def list_suppliers(customer_id: int, db: Session = Depends(get_db)):
 # ── Products ──────────────────────────────────────────────────────────────────
 
 @router.post("/products", response_model=ProductResponse, status_code=201)
-def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
-    _require_customer(payload.customer_id, db)
+def create_product(payload: ProductCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+    payload.customer_id = current_customer.id
     product = Product(**payload.model_dump())
     db.add(product)
     db.commit()
@@ -69,10 +70,10 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/products", response_model=List[ProductResponse])
-def list_products(customer_id: int, db: Session = Depends(get_db)):
+def list_products(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
     return (
         db.query(Product)
-        .filter(Product.customer_id == customer_id)
+        .filter(Product.customer_id == current_customer.id)
         .order_by(Product.created_at.desc())
         .all()
     )
@@ -81,8 +82,8 @@ def list_products(customer_id: int, db: Session = Depends(get_db)):
 # ── Orders ────────────────────────────────────────────────────────────────────
 
 @router.post("/orders", response_model=ImportOrderResponse, status_code=201)
-def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db)):
-    _require_customer(payload.customer_id, db)
+def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+    payload.customer_id = current_customer.id
     supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -97,10 +98,10 @@ def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/orders", response_model=List[ImportOrderResponse])
-def list_orders(customer_id: int, db: Session = Depends(get_db)):
+def list_orders(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
     return (
         db.query(ImportOrder)
-        .filter(ImportOrder.customer_id == customer_id)
+        .filter(ImportOrder.customer_id == current_customer.id)
         .order_by(ImportOrder.created_at.desc())
         .all()
     )

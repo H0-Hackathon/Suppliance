@@ -14,19 +14,21 @@ from database import get_db
 from schemas import MonitorRunRequest, MonitorRunResponse
 from core.crew_orchestrator import CrewAIOrchestrator
 from config import get_settings
+from core.auth import get_current_user
+from models import Customer
 
 router = APIRouter(prefix="/api/v2/monitor", tags=["Monitor"])
 settings = get_settings()
 
 
 @router.post("/run", response_model=MonitorRunResponse)
-def run_monitor(payload: MonitorRunRequest = MonitorRunRequest(), db: Session = Depends(get_db)):
+def run_monitor(payload: MonitorRunRequest = MonitorRunRequest(), db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
     """
-    Trigger one 5-agent pipeline run for the active customer.
+    Trigger one 5-agent pipeline run for the authenticated customer.
     The pipeline derives hs_code and supplier_country from the customer's BusinessProfile.
     Adds one alert; oldest alerts are pruned automatically to keep max 10 per customer.
     """
-    customer_id = payload.customer_id or settings.active_customer_id
+    customer_id = current_customer.id
     from core.crew_monitor_pipeline import clear_pipeline_log
     clear_pipeline_log()
     orchestrator = CrewAIOrchestrator()
