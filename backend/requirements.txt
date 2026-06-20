@@ -55,3 +55,4 @@ uvloop>=0.22.0; platform_system != "Windows"
 # langchain-chroma>=0.2.0
 # chromadb>=0.5.0
 # sentence-transformers>=3.3.0
+stripe

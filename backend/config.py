@@ -91,10 +91,12 @@ class Settings(BaseSettings):
     auth0_algorithms: list[str] = ["RS256"]
     admin_whitelist: Optional[str] = None
 
+    # ── Stripe ────────────────────────────────────────────────────────────────
+    stripe_secret_key: Optional[str] = None
+
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     debug: bool = True
-
 
 @lru_cache()
 def get_settings() -> Settings:

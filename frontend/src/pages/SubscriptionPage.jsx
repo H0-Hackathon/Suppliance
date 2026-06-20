@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 // ── Pricing data ──────────────────────────────────────────────────────────────
 const PRICING = {
   standard: { monthly: 49, yearly: 39 },
@@ -28,14 +30,13 @@ const PRO_EXTRA_FEATURES = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SubscriptionPage() {
-  const { user, subscription, logout } = useAuth();
+  const { user, subscription, login, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const upgradeIntent = searchParams.get('upgrade') === 'pro';
 
   const [billing, setBilling] = useState('monthly'); // 'monthly' | 'yearly'
   const [selected, setSelected] = useState(null);
-  const [submitted, setSubmitted] = useState(false);
   const [countdown, setCountdown] = useState('');
 
   const isOnTrial = subscription?.status === 'trial';
@@ -62,8 +63,12 @@ export default function SubscriptionPage() {
   }, [subscription?.expires_at]);
 
   const handleChoosePlan = (planId) => {
-    setSelected(planId);
-    setSubmitted(true);
+    // Calculate display amount
+    const amount = PRICING[planId][billing];
+    const totalAmount = billing === 'yearly' ? amount * 12 : amount;
+
+    // Redirect to the dedicated payment page
+    navigate('/payment', { state: { planId, billing, amount: totalAmount } });
   };
 
   const price = (planId) => {
@@ -91,12 +96,12 @@ export default function SubscriptionPage() {
         </button>
 
         {/* ── Pro-upgrade notice ── */}
-        {upgradeIntent && !submitted && (
+        {upgradeIntent && (
           <div style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', borderRadius:10, padding:'14px 20px', marginBottom:32, display:'flex', alignItems:'center', gap:12 }}>
             <span style={{ fontSize:20 }}>🔒</span>
             <div>
               <p style={{ margin:0, fontWeight:700, color:'#FDE68A', fontSize:13 }}>Pro Plan required</p>
-              <p style={{ margin:0, color:'rgba(255,255,255,0.45)', fontSize:12 }}>The Global Supplier Panel is exclusive to Pro subscribers. Upgrade below to unlock access.</p>
+              <p style={{ margin:0, color:'rgba(255,255,255,0.45)', fontSize:12 }}>The feature you tried to access is exclusive to Pro subscribers. Upgrade below to unlock access.</p>
             </div>
           </div>
         )}
@@ -128,13 +133,6 @@ export default function SubscriptionPage() {
               ? 'Your trial has ended. Choose a plan below to restore access.'
               : 'Manage or upgrade your plan anytime.'}
           </p>
-
-          {isOnTrial && (
-            <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginTop:14, padding:'8px 16px', background:'rgba(16,185,129,0.07)', border:'1px solid rgba(16,185,129,0.18)', borderRadius:8 }}>
-              <span>🎯</span>
-              <span style={{ fontSize:12, color:'#6ee7b7' }}>Subscribe today → <strong>no charge until trial ends</strong></span>
-            </div>
-          )}
         </div>
 
         {/* ── Billing toggle ── */}
@@ -150,21 +148,6 @@ export default function SubscriptionPage() {
           </button>
         </div>
 
-        {/* ── Confirmation banner ── */}
-        {submitted && selected && (
-          <div style={{ background:'rgba(16,185,129,0.07)', border:'1px solid rgba(16,185,129,0.25)', borderRadius:12, padding:'22px 28px', marginBottom:32, textAlign:'center', animation:'fadeIn 0.3s ease' }}>
-            <div style={{ fontSize:26, marginBottom:8 }}>🎉</div>
-            <h3 style={{ color:'#6ee7b7', margin:'0 0 6px', fontSize:16, fontWeight:700 }}>
-              {selected === 'standard' ? 'Standard' : 'Pro'} Plan Selected ({billing === 'yearly' ? 'Annual' : 'Monthly'})!
-            </h3>
-            <p style={{ color:'rgba(255,255,255,0.4)', margin:0, fontSize:13 }}>
-              {isOnTrial
-                ? `Your plan activates automatically when your trial ends. A confirmation will be sent to ${user?.email}.`
-                : `To complete activation, email us at billing@coastguard.ai — we'll set you up within 24 hours.`}
-            </p>
-          </div>
-        )}
-
         {/* ── Plan cards ── */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:56 }}>
 
@@ -174,7 +157,7 @@ export default function SubscriptionPage() {
             { id:'pro',      name:'Pro',      tagline:'Standard + Global Supplier Panel', color:'#F59E0B', gradient:'linear-gradient(135deg,#d97706,#f59e0b)', badge:'Most Popular' },
           ].map((plan) => {
             const isCurrent = isActive && currentPlan === plan.id;
-            const isChosen  = submitted && selected === plan.id;
+            const isChosen  = selected === plan.id;
             const isPro     = plan.id === 'pro';
 
             return (
@@ -247,16 +230,14 @@ export default function SubscriptionPage() {
                 >
                   {isCurrent
                     ? '✓ Current Plan'
-                    : isChosen
-                    ? `✓ ${plan.name} Scheduled`
-                    : isOnTrial
-                    ? `Start ${plan.name} After Trial`
-                    : `Get ${plan.name}`}
+                    : `Get ${plan.name} Now`}
                 </button>
               </div>
             );
           })}
         </div>
+        
+
 
         {/* ── Feature comparison table ── */}
         <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:14, overflow:'hidden', marginBottom:56 }}>
@@ -292,4 +273,3 @@ export default function SubscriptionPage() {
     </div>
   );
 }
-

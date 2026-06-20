@@ -37,7 +37,7 @@ startup_pipeline_status = {
     "errors": [],
 }
 
-STARTUP_PIPELINE_RUNS = 1
+STARTUP_PIPELINE_RUNS = 0
 
 
 def _run_startup_pipelines_thread():
@@ -119,6 +119,7 @@ from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.global_supplier_routes import router as global_supplier_router
 from api.v2.auth_routes import router as auth_router
+from api.v2.payment_routes import router as payment_router
 
 app.include_router(demo_router)
 app.include_router(supplier_router)
@@ -129,6 +130,7 @@ app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
 app.include_router(auth_router)
+app.include_router(payment_router)
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
