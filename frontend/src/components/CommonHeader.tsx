@@ -1,22 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Bell,
-  Building2,
-  ShieldCheck,
-  Settings,
-  Anchor,
-  TrendingUp,
-  Globe,
-} from 'lucide-react';
+import { LayoutDashboard, Bell, Building2, Play, Anchor } from 'lucide-react';
+
+/**
+ * CoastGuard — Fixed vertical sidebar navigation.
+ *
+ * 240px wide, always visible on the left.
+ * No auth required — all nav items are always visible.
+ * Phase 2 will add a "Suppliers" management page.
+ */
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',   path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Alerts',      path: '/alerts',    icon: Bell },
-  { label: 'Suppliers',   path: '/suppliers', icon: Building2 },
-  { label: 'Compliance',  path: '/compliance',icon: ShieldCheck },
-  { label: 'Settings',    path: '/settings',  icon: Settings },
+  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { label: 'Alerts',    path: '/dashboard', icon: Bell },        // same page, filter TBD
+  { label: 'Suppliers', path: '/dashboard', icon: Building2 },   // Phase 2
+  { label: 'Demo',      path: '/demo',      icon: Play },
 ];
 
 type DbStatus = 'checking' | 'ok' | 'error';
@@ -46,139 +44,61 @@ export const CommonHeader: React.FC = () => {
     return () => clearInterval(id);
   }, []);
 
-  const statusColor =
-    dbStatus === 'ok' ? '#10b981' :
-    dbStatus === 'error' ? '#dc2626' : '#f59e0b';
-
   return (
-    <aside style={{
-      position: 'fixed',
-      top: 0, left: 0,
-      width: 'var(--sidebar-w, 224px)',
-      height: '100vh',
-      background: 'linear-gradient(180deg, #0e0e10 0%, #111108 100%)',
-      borderRight: '1px solid rgba(245,158,11,0.1)',
-      display: 'flex',
-      flexDirection: 'column',
-      zIndex: 1000,
-    }}>
+    <aside
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: 'var(--sidebar-w, 240px)',
+        height: '100vh',
+        background: 'var(--primary, #1E3A5F)',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 1000,
+        boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
+      }}
+    >
       {/* Brand */}
       <div
         style={{
-          padding: '22px 20px 18px',
-          borderBottom: '1px solid rgba(245,158,11,0.08)',
+          padding: '28px 24px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
           cursor: 'pointer',
         }}
         onClick={() => navigate('/dashboard')}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          {/* Anchor icon in warm amber ring */}
-          <div style={{
-            width: 34, height: 34, borderRadius: 9,
-            background: 'rgba(245,158,11,0.12)',
-            border: '1px solid rgba(245,158,11,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-            boxShadow: '0 0 12px rgba(245,158,11,0.15)',
-          }}>
-            <Anchor size={17} color="#f59e0b" />
-          </div>
-          <div>
-            <div style={{
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Anchor size={24} style={{ color: '#F59E0B', flexShrink: 0 }} />
+          <span
+            style={{
               fontFamily: 'Inter, sans-serif',
-              fontSize: 16,
+              fontSize: 18,
               fontWeight: 800,
-              color: '#e8e3d8',
-              letterSpacing: '-0.4px',
-              lineHeight: 1,
-            }}>
-              Coast<span style={{ color: '#f59e0b' }}>Guard</span>
-            </div>
-            <div style={{
-              fontSize: 9,
-              color: 'rgba(180,170,140,0.55)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-              marginTop: 3,
-            }}>
-              Trade Risk Intel
-            </div>
-          </div>
-        </div>
-
-        {/* Risk snapshot bar */}
-        <div style={{
-          marginTop: 10,
-          background: 'rgba(220,38,38,0.07)',
-          border: '1px solid rgba(220,38,38,0.15)',
-          borderRadius: 6,
-          padding: '5px 10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-        }}>
-          <TrendingUp size={10} color="#dc2626" />
-          <span style={{ fontSize: 10, color: 'rgba(220,100,100,0.9)', fontWeight: 600 }}>
-            4 high-risk suppliers
-          </span>
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: 9,
-            color: 'rgba(220,38,38,0.6)',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}>
-            LIVE
+              color: 'white',
+              letterSpacing: '-0.5px',
+            }}
+          >
+            Coast<span style={{ color: '#F59E0B' }}>Guard</span>
           </span>
         </div>
-      </div>
-
-      {/* System status bar */}
-      <div style={{
-        margin: '10px 12px 2px',
-        background: dbStatus === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(220,38,38,0.06)',
-        border: `1px solid ${dbStatus === 'ok' ? 'rgba(16,185,129,0.15)' : 'rgba(220,38,38,0.15)'}`,
-        borderRadius: 6,
-        padding: '5px 10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 7,
-      }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: statusColor,
-          boxShadow: `0 0 6px ${statusColor}`,
-          flexShrink: 0,
-          animation: dbStatus === 'ok' ? 'pulse-dot 2s ease-in-out infinite' : 'none',
-        }} />
-        <span style={{
-          fontSize: 10, color: 'rgba(180,170,140,0.7)',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontWeight: 500,
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {dbStatus === 'checking' && 'Connecting…'}
-          {dbStatus === 'ok' && `SYS: ${dbBackend || 'ONLINE'}`}
-          {dbStatus === 'error' && 'SYS: OFFLINE'}
-        </span>
-        <Globe size={10} color={statusColor} />
+        <p
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.5)',
+            marginTop: 4,
+            fontWeight: 400,
+          }}
+        >
+          Supply Chain Monitor
+        </p>
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <div style={{
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-          color: 'rgba(150,140,110,0.55)', textTransform: 'uppercase',
-          padding: '10px 10px 5px',
-        }}>
-          Platform
-        </div>
+      <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
-          const isActive = location.pathname === path ||
-            (path === '/dashboard' && location.pathname === '/');
+          const isActive = location.pathname === path && label !== 'Suppliers';
           return (
             <button
               key={label}
@@ -186,70 +106,76 @@ export const CommonHeader: React.FC = () => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                padding: '9px 12px',
-                borderRadius: 7,
+                gap: 12,
+                padding: '10px 12px',
+                borderRadius: 8,
                 border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'Inter, sans-serif',
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#e8e3d8' : 'rgba(160,150,120,0.55)',
-                background: isActive
-                  ? 'linear-gradient(90deg, rgba(245,158,11,0.14) 0%, rgba(245,158,11,0.04) 100%)'
-                  : 'transparent',
+                color: isActive ? 'white' : 'rgba(255,255,255,0.65)',
+                background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
                 textAlign: 'left',
                 width: '100%',
-                transition: 'all 0.15s',
-                borderLeft: isActive ? '2px solid #f59e0b' : '2px solid transparent',
-                boxShadow: isActive ? 'inset 0 0 0 1px rgba(245,158,11,0.08)' : 'none',
+                transition: 'background 0.15s, color 0.15s',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(245,158,11,0.05)';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,227,216,0.85)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.07)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.9)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(160,150,120,0.55)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.65)';
                 }
               }}
             >
-              <Icon size={15} style={{ flexShrink: 0 }} />
+              <Icon size={16} />
               {label}
-              {label === 'Alerts' && (
-                <span style={{
-                  marginLeft: 'auto',
-                  background: '#dc2626',
-                  color: 'white',
-                  fontSize: 9,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  padding: '1px 5px',
-                  minWidth: 16,
-                  textAlign: 'center',
-                }}>
-                  3
-                </span>
-              )}
             </button>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div style={{
-        padding: '12px 20px',
-        borderTop: '1px solid rgba(245,158,11,0.07)',
-      }}>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
+      {/* Footer — DB status indicator */}
+      <div
+        style={{
+          padding: '16px 24px',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          {/* pulse dot */}
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              flexShrink: 0,
+              backgroundColor:
+                dbStatus === 'ok' ? '#22c55e' :
+                dbStatus === 'error' ? '#ef4444' : '#f59e0b',
+              boxShadow:
+                dbStatus === 'ok' ? '0 0 0 2px rgba(34,197,94,0.3)' :
+                dbStatus === 'error' ? '0 0 0 2px rgba(239,68,68,0.3)' :
+                '0 0 0 2px rgba(245,158,11,0.3)',
+            }}
+          />
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontFamily: 'Inter, sans-serif' }}>
+            {dbStatus === 'checking' && 'Connecting to DB…'}
+            {dbStatus === 'ok' && `DB: ${dbBackend}`}
+            {dbStatus === 'error' && 'DB: unreachable'}
+          </span>
+        </div>
+        <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontFamily: 'Inter, sans-serif', margin: 0 }}>
           CoastGuard v0.1.0
-        </div>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
-          Trade Risk Intelligence Platform
-        </div>
+        </p>
       </div>
     </aside>
   );

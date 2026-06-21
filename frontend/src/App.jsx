@@ -6,7 +6,6 @@ import './App.css';
 
 import { CommonHeader } from './components/CommonHeader';
 import { AlertsDashboard } from './pages/AlertsDashboard';
-import { AlertsPage } from './pages/AlertsPage';
 import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
 
@@ -16,7 +15,6 @@ import { AdminPage } from './pages/AdminPage';
  * Routes:
  *   /            → redirect to /dashboard
  *   /dashboard   → main alert dashboard (sidebar + alert list + map)
- *   /alerts      → dedicated alerts investigation page
  *   /demo        → demo coming soon placeholder
  *   /admin       → admin panel (internal use)
  *
@@ -32,7 +30,6 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<AlertsDashboard />} />
-          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/demo" element={<DemoPage />} />
           <Route path="/admin" element={<AdminPage />} />
           {/* Catch-all: redirect unknown routes to dashboard */}

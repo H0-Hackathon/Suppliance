@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DashboardCharts } from '../components/Admin/DashboardCharts';
+import { DashboardCharts } from '../components/admin/DashboardCharts';
 
 /**
  * AdminPage — Internal admin panel.
