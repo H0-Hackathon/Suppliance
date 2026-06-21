@@ -1,12 +1,8 @@
 {
   "name": "coastguard-frontend",
-  "version": "1.0.0",
   "private": true,
-  "description": "",
-  "license": "ISC",
-  "author": "",
+  "version": "1.0.0",
   "type": "module",
-  "main": "vite.config.js",
   "scripts": {
     "predev": "node scripts/free-port.mjs 5173",
     "dev": "vite",
