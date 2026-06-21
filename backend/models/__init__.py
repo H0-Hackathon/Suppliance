@@ -29,25 +29,11 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=True)  # nullable for migration compat
+    clerk_id = Column(String(255), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     industry = Column(String(100), nullable=True)
-    
-    # OTP Verification
-    is_verified = Column(Boolean, default=False)
-    otp_code = Column(String(6), nullable=True)
-    
-    # Enterprise Onboarding Context
-    location = Column(String(255), nullable=True)
-    years_in_business = Column(Integer, nullable=True)
-    average_revenue = Column(String(100), nullable=True)
-
-    # Subscription & trial
-    trial_expires_at = Column(DateTime, nullable=True)       # set to now+24h on signup
-    subscription_plan = Column(String(50), nullable=True)    # null | "starter" | "pro"
-    subscription_expires_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -216,7 +202,6 @@ class BusinessProfile(Base):
     avg_lead_time_days = Column(Integer, nullable=True)
     compliance_notes = Column(Text, nullable=True)
     preferred_alternative_regions = Column(JSON, nullable=True)
-    preferred_alternative_countries = Column(JSON, nullable=True)
     min_supplier_rating = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -305,29 +290,6 @@ class AgentRunLog(Base):
     output_json = Column(Text, nullable=True)
     ran_at = Column(DateTime, default=datetime.utcnow)
     tariff_alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
-
-
-class PipelineHeadline(Base):
-    """
-    Persistent store for RSS headlines surfaced during each pipeline run.
-    Keeps the last 3 runs per customer (older runs pruned at pipeline end).
-    Powers the NewsTicker 'Live Trade Wire' with customer-relevant articles.
-    """
-    __tablename__ = "pipeline_headlines"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(String(64), nullable=False, index=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
-    title = Column(String(500), nullable=True)
-    url = Column(String(1000), nullable=True)
-    source = Column(String(255), nullable=True)
-    published_at = Column(String(100), nullable=True)
-    published_ts = Column(Float, nullable=True)
-    agent_target = Column(String(50), nullable=True)  # tariff_monitor | alternatives_finder | import_compliance
-    category = Column(String(50), nullable=True)       # Tariffs | Supply Chain | Customs
-    country_mentioned = Column(String(100), nullable=True)
-    relevance_score = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class GlobalSupplier(Base):

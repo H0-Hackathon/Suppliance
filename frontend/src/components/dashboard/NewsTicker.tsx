@@ -11,11 +11,6 @@ interface NewsItem {
   published_ts: number;
 }
 
-interface NewsTickerProps {
-  customerId: number;
-  lastRunAt: string | null;
-}
-
 const CATEGORY_COLOR: Record<string, string> = {
   Tariffs: '#f59e0b',
   Trade: '#fbbf24',
@@ -41,7 +36,7 @@ function relativeTime(ts: number): string {
 
 const SCROLL_PX_PER_SEC = 70; // constant, readable ticker speed
 
-export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt }) => {
+export const NewsTicker: React.FC = () => {
   const [items, setItems] = React.useState<NewsItem[]>([]);
   const [paused, setPaused] = React.useState(false);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
@@ -49,22 +44,6 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
   const trackRef = React.useRef<HTMLDivElement>(null);
 
   const fetchNews = React.useCallback(async () => {
-    // First try pipeline-specific headlines for this customer
-    try {
-      const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>(
-        '/v2/news/pipeline',
-        { params: { customer_id: customerId } },
-      );
-      if (Array.isArray(res.data.items) && res.data.items.length >= 3) {
-        setItems(res.data.items);
-        setUpdatedAt(res.data.fetched_at ?? Date.now() / 1000);
-        return;
-      }
-    } catch {
-      // fall through to generic news
-    }
-
-    // Fallback: generic trade/supply-chain RSS feed
     try {
       const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>('/v2/news');
       if (Array.isArray(res.data.items) && res.data.items.length) {
@@ -74,19 +53,13 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
     } catch {
       // backend offline — ticker simply stays empty/hidden
     }
-  }, [customerId]);
+  }, []);
 
-  // Fetch on mount and auto-refresh every 5 min
   React.useEffect(() => {
     fetchNews();
     const id = setInterval(fetchNews, REFRESH_MS);
     return () => clearInterval(id);
   }, [fetchNews]);
-
-  // Re-fetch pipeline articles whenever a new pipeline run completes
-  React.useEffect(() => {
-    if (lastRunAt) fetchNews();
-  }, [lastRunAt, fetchNews]);
 
   // Measure the rendered track and derive a duration that yields a constant
   // scroll speed regardless of how many headlines are present. The track holds

@@ -37,7 +37,7 @@ startup_pipeline_status = {
     "errors": [],
 }
 
-STARTUP_PIPELINE_RUNS = 0
+STARTUP_PIPELINE_RUNS = 3
 
 
 def _run_startup_pipelines_thread():
@@ -118,8 +118,6 @@ from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.global_supplier_routes import router as global_supplier_router
-from api.v2.auth_routes import router as auth_router
-from api.v2.payment_routes import router as payment_router
 
 app.include_router(demo_router)
 app.include_router(supplier_router)
@@ -129,8 +127,6 @@ app.include_router(disruption_router)
 app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
-app.include_router(auth_router)
-app.include_router(payment_router)
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
@@ -156,7 +152,7 @@ def _on_startup():
     # Scrape RSS feeds in a background thread so the server is immediately
     # ready to accept requests. /monitor/run calls that arrive before the
     # scrape finishes fall back to the in-memory cache (empty → JSONL datasets).
-    # DISABLED for memory limits: threading.Thread(target=_run_rss_scrape, daemon=True, name="rss-startup-scrape").start()
+    threading.Thread(target=_run_rss_scrape, daemon=True, name="rss-startup-scrape").start()
 
     # Warm the news-ticker cache in the background so the first /api/v2/news
     # request is instant.

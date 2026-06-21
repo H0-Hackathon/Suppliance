@@ -9,55 +9,36 @@ import { AlertsDashboard } from './pages/AlertsDashboard';
 import { AlertsPage } from './pages/AlertsPage';
 import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
-import LoginPage from './pages/LoginPage';
-import SubscriptionPage from './pages/SubscriptionPage';
-import PlaceholderPage from './pages/PlaceholderPage';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { AuthInterceptor } from './components/AuthInterceptor';
-import { ProtectedRoute } from './components/ProtectedRoute';
 
-import DummyPaymentPage from './pages/DummyPaymentPage';
-
-function AppRoutes() {
-  const { isAuthenticated } = useAuth();
-
-  return (
-    <>
-      {/* Only show sidebar when logged in */}
-      {isAuthenticated && <CommonHeader />}
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        {/* Unrestricted read-only access to dashboard/alerts even if trial expires */}
-        <Route path="/dashboard" element={<ProtectedRoute component={AlertsDashboard} requireSubscription={false} />} />
-        <Route path="/alerts" element={<ProtectedRoute component={AlertsPage} requireSubscription={false} />} />
-        
-        {/* Strictly gated pipeline execution and supplier panel */}
-        <Route path="/demo" element={<ProtectedRoute component={DemoPage} requireSubscription={true} />} />
-        <Route path="/suppliers" element={<ProtectedRoute component={SuppliersPage} requirePro={true} />} />
-        
-        <Route path="/admin" element={<ProtectedRoute component={AdminPage} requireSubscription={false} />} />
-        <Route path="/compliance" element={<ProtectedRoute component={() => <PlaceholderPage title="Compliance" />} requireSubscription={false} />} />
-        <Route path="/settings" element={<ProtectedRoute component={() => <PlaceholderPage title="Settings" />} requireSubscription={false} />} />
-        
-        {/* Subscription page — auth required but no subscription check */}
-        <Route path="/subscription" element={<ProtectedRoute component={SubscriptionPage} requireSubscription={false} />} />
-        <Route path="/payment" element={<ProtectedRoute component={DummyPaymentPage} requireSubscription={false} />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </>
-  );
-}
+/**
+ * CoastGuard — App Router
+ *
+ * Routes:
+ *   /            → redirect to /dashboard
+ *   /dashboard   → main alert dashboard (sidebar + alert list + map)
+ *   /alerts      → dedicated alerts investigation page
+ *   /demo        → demo coming soon placeholder
+ *   /admin       → admin panel (internal use)
+ *
+ * Auth removed entirely. business_id=1 is hardcoded for Phase 1.
+ * Phase 2 will add onboarding flow and per-business data.
+ */
 
 function App() {
   return (
     <ConfigProvider locale={enUS}>
       <BrowserRouter>
-        <AuthProvider>
-          <AuthInterceptor>
-            <AppRoutes />
-          </AuthInterceptor>
-        </AuthProvider>
+        <CommonHeader />
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<AlertsDashboard />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/demo" element={<DemoPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/suppliers" element={<SuppliersPage />} />
+          {/* Catch-all: redirect unknown routes to dashboard */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </BrowserRouter>
     </ConfigProvider>
   );

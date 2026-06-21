@@ -21,7 +21,6 @@ from schemas import (
     ProductCreate, ProductResponse,
     ImportOrderCreate, ImportOrderResponse,
 )
-from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v2", tags=["Suppliers & Orders"])
 
@@ -38,8 +37,8 @@ def _require_customer(customer_id: int, db: Session) -> Customer:
 # ── Suppliers ─────────────────────────────────────────────────────────────────
 
 @router.post("/suppliers", response_model=SupplierResponse, status_code=201)
-def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
-    payload.customer_id = current_customer.id
+def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
+    _require_customer(payload.customer_id, db)
     supplier = Supplier(**payload.model_dump())
     db.add(supplier)
     db.commit()
@@ -48,58 +47,20 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db), curr
 
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
-def list_suppliers(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+def list_suppliers(customer_id: int, db: Session = Depends(get_db)):
     return (
         db.query(Supplier)
-        .filter(Supplier.customer_id == current_customer.id, Supplier.is_active == True)
+        .filter(Supplier.customer_id == customer_id, Supplier.is_active == True)
         .order_by(Supplier.created_at.desc())
         .all()
     )
 
 
-@router.get("/suppliers/global")
-def list_global_suppliers(db: Session = Depends(get_db)):
-    """Fetch all 25k master global suppliers with pseudo-coordinates for the globe."""
-    from models import GlobalSupplier
-    from services.coordinates import get_country_coordinates
-    import random
-    
-    suppliers = db.query(GlobalSupplier.id, GlobalSupplier.business_name, GlobalSupplier.country).all()
-    results = []
-    
-    # Pre-fetch and cache coordinate lookups to avoid repeating the dict lookup 25,000 times
-    coord_cache = {}
-    from services.coordinates import get_country_code
-    
-    for s in suppliers:
-        if s.country not in coord_cache:
-            coord_cache[s.country] = {
-                "coords": get_country_coordinates(s.country),
-                "code": get_country_code(s.country)
-            }
-            
-        data = coord_cache[s.country]
-        coords = data["coords"]
-        if coords:
-            # Jitter by +/- 1.5 degrees so the 25k points form beautiful dense clusters around major cities!
-            lat_jitter = random.uniform(-1.5, 1.5)
-            lng_jitter = random.uniform(-1.5, 1.5)
-            results.append({
-                "id": s.id,
-                "name": s.business_name,
-                "country": s.country,
-                "countryCode": data["code"],
-                "lat": coords["latitude"] + lat_jitter,
-                "lng": coords["longitude"] + lng_jitter
-            })
-    return results
-
-
 # ── Products ──────────────────────────────────────────────────────────────────
 
 @router.post("/products", response_model=ProductResponse, status_code=201)
-def create_product(payload: ProductCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
-    payload.customer_id = current_customer.id
+def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
+    _require_customer(payload.customer_id, db)
     product = Product(**payload.model_dump())
     db.add(product)
     db.commit()
@@ -108,10 +69,10 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db), curren
 
 
 @router.get("/products", response_model=List[ProductResponse])
-def list_products(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+def list_products(customer_id: int, db: Session = Depends(get_db)):
     return (
         db.query(Product)
-        .filter(Product.customer_id == current_customer.id)
+        .filter(Product.customer_id == customer_id)
         .order_by(Product.created_at.desc())
         .all()
     )
@@ -120,8 +81,8 @@ def list_products(customer_id: int = None, db: Session = Depends(get_db), curren
 # ── Orders ────────────────────────────────────────────────────────────────────
 
 @router.post("/orders", response_model=ImportOrderResponse, status_code=201)
-def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
-    payload.customer_id = current_customer.id
+def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db)):
+    _require_customer(payload.customer_id, db)
     supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -136,10 +97,10 @@ def create_order(payload: ImportOrderCreate, db: Session = Depends(get_db), curr
 
 
 @router.get("/orders", response_model=List[ImportOrderResponse])
-def list_orders(customer_id: int = None, db: Session = Depends(get_db), current_customer: Customer = Depends(get_current_user)):
+def list_orders(customer_id: int, db: Session = Depends(get_db)):
     return (
         db.query(ImportOrder)
-        .filter(ImportOrder.customer_id == current_customer.id)
+        .filter(ImportOrder.customer_id == customer_id)
         .order_by(ImportOrder.created_at.desc())
         .all()
     )

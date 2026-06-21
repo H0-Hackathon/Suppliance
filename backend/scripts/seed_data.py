@@ -99,7 +99,7 @@ def seed():
 
         # Customer
         customer = models.Customer(
-            auth0_id="seed",
+            clerk_id="test_123",
             name="Acme Imports",
             email="test@acme.com",
             company_name="Acme Imports LLC",

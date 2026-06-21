@@ -20,17 +20,17 @@ import api from '../services/api';
  *
  * Visual design / layout: frontend redesign (map-centric command center).
  * Backend integration preserved from the Samved branch:
- *   - GET  /api/v2/alerts?customer_id=N            alert feed
- *   - GET  /api/v2/disruptions?customer_id=N       globe markers
+ *   - GET  /api/v2/alerts?customer_id=1            alert feed
+ *   - GET  /api/v2/disruptions?customer_id=1       globe markers
  *   - GET  /api/v2/suppliers + /api/v2/geo/...     suppliers with coordinates
- *   - POST /api/v2/monitor/run                     trigger pipeline run
- *   - GET  /api/v2/monitor/pipeline-log?since=N    poll live log during run
+ *   - GET  /api/v2/monitor/targets                 countries/HS codes to scan
+ *   - SSE  /api/v2/monitor/stream                  live 5-agent pipeline run
  *   - PUT  /api/v2/alerts/{id}/dismiss|resolve     alert actions
  *
- * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
- * Replace with the auth token's customer id once Clerk is wired.
+ * Auth is removed; CUSTOMER_ID is hardcoded to the seeded demo customer (id=1).
  */
-const ACTIVE_CUSTOMER_ID = 69;
+
+const CUSTOMER_ID = 1;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -76,9 +76,9 @@ export interface MonitorTarget {
 }
 
 interface DebugState {
-  target?: AgentDebugTarget | null;
-  targetIndex?: number;
-  totalTargets?: number;
+  target: AgentDebugTarget;
+  targetIndex: number;
+  totalTargets: number;
   agentStates: Record<string, AgentState>;
   logs: string[];
 }
@@ -108,21 +108,20 @@ export const AlertsDashboard: React.FC = () => {
   const [agentStatus, setAgentStatus] = React.useState<Record<string, 'running' | 'done'>>({});
   const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
   const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
-  const [lastRunAt, setLastRunAt] = React.useState<string | null>(null);
 
   // ── Data fetching (backend integration) ──────────────────────────────────
   async function fetchAlerts() {
-    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
     setAlerts(res.data);
   }
 
   async function fetchDisruptions() {
-    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: CUSTOMER_ID } });
     setDisruptions(res.data);
   }
 
   async function fetchSuppliers() {
-    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: CUSTOMER_ID } });
     const withGeo = await Promise.all(
       res.data.map(async (s): Promise<SupplierWithGeo> => {
         try {
@@ -179,74 +178,106 @@ export const AlertsDashboard: React.FC = () => {
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
   }
 
-  // ── Monitor run: POST /monitor/run + poll /monitor/pipeline-log ──────────
-  // Fires the synchronous pipeline endpoint and polls the live log every
-  // 1.5 s so the user sees text progress during the 1–3 min run.
-  // Structured `agent_result` events (emitted by the pipeline after parsing)
-  // are picked up by the poller and surface in LiveAgentResults + AgentDebugPanel.
+  // ── Monitor run via SSE 5-agent pipeline (backend integration) ───────────
+  // Real-time progress streams into the AgentDebugPanel as each agent emits
+  // start/done/log events.
   async function handleRunMonitor() {
     setIsRunning(true);
-    setDebugState({ agentStates: {}, logs: [] });
+    setDebugState(null);
     setAgentResults({});
     setAgentStatus({});
-    setAgentsUpdatedAt(null);
-    setAgentSupplier(null);
-
-    let pollSince = 0;
-
-    const poll = async () => {
-      try {
-        const res = await api.get<{
-          events: Array<{ event: string; msg: string; ts: string }>;
-          total: number;
-        }>('/v2/monitor/pipeline-log', { params: { since: pollSince } });
-        const { events, total } = res.data;
-        pollSince = total;
-        for (const ev of events) {
-          if (ev.event === 'agent_result') {
-            try {
-              const payload = JSON.parse(ev.msg) as { agent: string; output: Record<string, unknown> };
-              const { agent, output } = payload;
-              setAgentResults((prev) => ({ ...prev, [agent]: output }));
-              setAgentStatus((prev) => ({ ...prev, [agent]: 'done' }));
-              setDebugState((prev) =>
-                prev
-                  ? { ...prev, agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } } }
-                  : prev,
-              );
-              setAgentsUpdatedAt(new Date().toISOString());
-              if (agent === 'tariff_monitor') {
-                setAgentSupplier((output as { country?: string }).country ?? null);
-              }
-            } catch {
-              // malformed agent_result payload — skip
-            }
-          } else {
-            // Text log event — surface in the debug log panel
-            const text = `[${ev.event}] ${ev.msg}`;
-            setDebugState((prev) =>
-              prev ? { ...prev, logs: [...prev.logs.slice(-300), text] } : prev,
-            );
-          }
-        }
-      } catch {
-        // Poll failure — ignore, will retry on next interval
-      }
-    };
-
-    const pollInterval = setInterval(poll, 1500);
 
     try {
-      await api.post('/v2/monitor/run', { customer_id: ACTIVE_CUSTOMER_ID });
-      // Final poll to catch any events emitted in the last interval window
-      await poll();
+      const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
+        params: { customer_id: CUSTOMER_ID },
+      });
+      const targets = targetsRes.data;
+
+      for (let i = 0; i < targets.length; i++) {
+        const target = targets[i];
+
+        setDebugState({
+          target: { ...target },
+          targetIndex: i,
+          totalTargets: targets.length,
+          agentStates: {},
+          logs: [],
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          const params = new URLSearchParams({
+            customer_id: String(CUSTOMER_ID),
+            hs_code: target.hs_code,
+            supplier_country: target.supplier_country,
+          });
+          const es = new EventSource(`/api/v2/monitor/stream?${params}`);
+
+          es.onmessage = (e: MessageEvent) => {
+            try {
+              const event = JSON.parse(e.data as string) as Record<string, unknown>;
+              const type = event.type as string;
+
+              if (type === 'agent_start') {
+                const agent = event.agent as string;
+                setDebugState((prev) =>
+                  prev ? {
+                    ...prev,
+                    agentStates: { ...prev.agentStates, [agent]: { status: 'running' } },
+                  } : prev
+                );
+                if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'running' }));
+              } else if (type === 'agent_done') {
+                const agent = event.agent as string;
+                const output = event.output as Record<string, unknown> | undefined;
+                setDebugState((prev) =>
+                  prev ? {
+                    ...prev,
+                    agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
+                  } : prev
+                );
+                if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'done' }));
+                // Surface each real agent output in the Live Agent Results panel.
+                if (agent && output) {
+                  setAgentResults((prev) => ({ ...prev, [agent]: output }));
+                  setAgentsUpdatedAt(new Date().toISOString());
+                  if (agent === 'tariff_monitor') {
+                    setAgentSupplier(
+                      (output as { country?: string }).country ?? target.supplier_name ?? null
+                    );
+                  }
+                }
+              } else if (type === 'log') {
+                const text = event.text as string;
+                setDebugState((prev) =>
+                  prev ? { ...prev, logs: [...prev.logs.slice(-300), text] } : prev
+                );
+              } else if (type === 'done') {
+                es.close();
+                resolve();
+              } else if (type === 'error') {
+                es.close();
+                reject(new Error(event.message as string));
+              }
+              // heartbeat: ignore
+            } catch {
+              // malformed event — ignore
+            }
+          };
+
+          es.onerror = () => {
+            es.close();
+            reject(new Error('SSE connection lost'));
+          };
+        });
+      }
+
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
-      setLastRunAt(new Date().toISOString());
     } catch (err) {
-      console.error('Run Analysis failed', err);
+      console.error('Run Monitor failed', err);
     } finally {
-      clearInterval(pollInterval);
       setIsRunning(false);
+      // Leave debugState visible so the final agent output stays on screen;
+      // it clears on the next run.
     }
   }
 
@@ -279,9 +310,8 @@ export const AlertsDashboard: React.FC = () => {
     0
   );
   const criticalEvents = active.filter((a) => a.severity === 'critical' || a.severity === 'high').length;
-  const latestAo = activeParsed[0] ?? {};
-  const proposedOptions: any[] = latestAo?.alternatives_finder?.options ?? latestAo?.alternatives_finder?.alternatives ?? [];
-  const proposedSuppliersCount = proposedOptions.length;
+  const affectedCodes = new Set(disruptions.flatMap((d) => d.countries_affected ?? []));
+  const highRiskSuppliers = suppliers.filter((s) => s.countryCode && affectedCodes.has(s.countryCode)).length;
 
   const fmtMoney = (n: number) =>
     n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`;
@@ -298,11 +328,11 @@ export const AlertsDashboard: React.FC = () => {
       icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
     },
     {
-      key: 'proposed',
-      available: proposedSuppliersCount > 0,
-      label: 'Proposed Suppliers',
-      value: String(proposedSuppliersCount),
-      sub: 'before compliance review',
+      key: 'highrisk',
+      available: suppliers.length > 0,
+      label: 'High Risk Suppliers',
+      value: String(highRiskSuppliers),
+      sub: `of ${suppliers.length} tracked`,
       icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
     },
     {
@@ -326,14 +356,7 @@ export const AlertsDashboard: React.FC = () => {
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
-    .map((s) => ({ 
-      name: s.name, 
-      country: s.country, 
-      countryCode: s.countryCode, 
-      latitude: s.latitude, 
-      longitude: s.longitude,
-      reliabilityScore: s.reliability_score 
-    }));
+    .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
 
   const syncTime = new Date(lastSync).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -503,11 +526,36 @@ export const AlertsDashboard: React.FC = () => {
               })}
             </div>
 
+            {/* Exposure callout overlay — bottom left of map */}
+            <div style={{
+              position: 'absolute',
+              bottom: 14, left: 14,
+              background: 'rgba(14,14,10,0.88)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(220,38,38,0.2)',
+              borderRadius: 8,
+              padding: '8px 14px',
+              zIndex: 20,
+            }}>
+              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>
+                Direct Cost Impact {agentImpact ? '(ImpactCalculator)' : ''}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                {exposureValue != null
+                  ? `$${Math.round(exposureValue).toLocaleString('en-US')}`
+                  : '—'}
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(220,38,38,0.7)', marginTop: 3 }}>
+                {agentMonitor?.tariff_rate != null
+                  ? `${agentMonitor.tariff_rate}% tariff · ${agentMonitor.country ?? ''}`
+                  : 'Run Analysis to calculate exposure'}
+              </div>
+            </div>
           </div>
 
           {/* Bottom: live trade/supply-chain news ticker */}
           <div style={{ height: 56, flexShrink: 0 }}>
-            <NewsTicker customerId={ACTIVE_CUSTOMER_ID} lastRunAt={lastRunAt} />
+            <NewsTicker />
           </div>
         </div>
 
@@ -594,8 +642,11 @@ export const AlertsDashboard: React.FC = () => {
             {debugState && (
               <div style={{ marginTop: 10 }}>
                 <AgentDebugPanel
+                  target={debugState.target}
                   agentStates={debugState.agentStates}
                   logs={debugState.logs}
+                  targetIndex={debugState.targetIndex}
+                  totalTargets={debugState.totalTargets}
                 />
               </div>
             )}

@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # ── External data sources (Phase 2+) ──────────────────────────────────────
     usitc_api_key: Optional[str] = None
+    gdelt_api_key: Optional[str] = None
     sentinelhub_api_key: Optional[str] = None
     google_maps_api_key: Optional[str] = None
 
@@ -83,20 +84,16 @@ class Settings(BaseSettings):
     # ── Active session (temporary until Clerk auth is wired) ─────────────────
     # Change this to switch which company is "logged in". Replace with Clerk
     # user lookup once auth is implemented.
-    active_customer_id: int = 1
+    active_customer_id: int = 71
 
-    # ── Auth (Auth0) ──────────────────────────────────────────────────────────
-    auth0_domain: str = "dev-u567o418jqffuhhh.us.auth0.com"
-    auth0_api_audience: str = "https://dev-u567o418jqffuhhh.us.auth0.com/api/v2/"
-    auth0_algorithms: list[str] = ["RS256"]
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    clerk_issuer_url: Optional[str] = None
     admin_whitelist: Optional[str] = None
-
-    # ── Stripe ────────────────────────────────────────────────────────────────
-    stripe_secret_key: Optional[str] = None
 
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     debug: bool = True
+
 
 @lru_cache()
 def get_settings() -> Settings:

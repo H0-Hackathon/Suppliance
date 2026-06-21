@@ -101,29 +101,23 @@ function headerSummary(key: string, agents: AgentResults, status: StepStatus): R
   const d = agents[key];
   if (!d) return null;
   switch (key) {
-    case 'tariff_monitor': {
-      const country = (d.affected_countries?.[0] ?? d.country) as string | null;
+    case 'tariff_monitor':
       return <>
         {d.tariff_rate != null && <Badge text={`+${d.tariff_rate}%`} color="#ef4444" />}
-        {d.event_type && <Badge text={d.event_type} color="#f59e0b" />}
-        {country && <Badge text={country} color="#94a3b8" />}
+        <Badge text={sev(d.severity)} color={sevColor(d.severity)} />
       </>;
-    }
     case 'impact_calculator':
       return <>
         <Badge text={money(d.direct_cost ?? d.extra_cost_usd)} color="#dc2626" />
         <Badge text={sev(d.severity)} color={sevColor(d.severity)} />
       </>;
     case 'alternatives_finder': {
-      // Backend returns d.options[] — frontend previously looked for d.alternatives[]
-      const n = Array.isArray(d.options) ? d.options.length : Array.isArray(d.alternatives) ? d.alternatives.length : 0;
+      const n = Array.isArray(d.alternatives) ? d.alternatives.length : 0;
       return n ? <Badge text={`${n} option${n !== 1 ? 's' : ''}`} color="#14b8a6" /> : null;
     }
     case 'import_compliance': {
-      if (d.no_viable_option) return <Badge text="BLOCKED" color="#dc2626" />;
-      return d.recommended_country
-        ? <Badge text={d.recommended_country} color="#10b981" />
-        : null;
+      const n = d.compliance_by_country ? Object.keys(d.compliance_by_country).length : 0;
+      return n ? <Badge text={`${n} countr${n !== 1 ? 'ies' : 'y'}`} color="#10b981" /> : null;
     }
     case 'adversarial':
       return d.verdict ? <Badge text={d.verdict} color={sevColor(d.verdict)} /> : null;
@@ -138,22 +132,17 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
   if (!d) return null;
 
   if (key === 'tariff_monitor') {
-    const country = (d.affected_countries?.[0] ?? d.country) as string | null;
-    const product = (d.affected_product_name ?? d.product) as string | null;
     return (
       <>
         {d.event && (
           <div style={{ fontSize: 10.5, color: '#f1f5f9', fontWeight: 600, lineHeight: 1.35, marginBottom: 7 }}>{d.event}</div>
         )}
-        {country && <Row label="Country">{country}</Row>}
+        <Row label="Country">{d.country || '—'}</Row>
         {supplier && <Row label="Supplier">{supplier}</Row>}
-        {product && <Row label="Product">{product}</Row>}
-        {Array.isArray(d.affected_hs_codes) && d.affected_hs_codes.length > 0 && (
-          <Row label="HS codes">{d.affected_hs_codes.join(', ')}</Row>
-        )}
+        {d.product && <Row label="Product">{d.product}</Row>}
         <Row label="Tariff change">{d.tariff_rate != null ? <span style={{ color: '#ef4444' }}>+{d.tariff_rate}%</span> : '—'}</Row>
         {d.confidence != null && <Row label="Confidence">{Math.round(d.confidence * 100)}%</Row>}
-        <Row label="Source">{d.source || d.risk_source || '—'}</Row>
+        <Row label="Source">{d.source || '—'}</Row>
         {d.source_url && (
           <a href={d.source_url} target="_blank" rel="noreferrer"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 9.5, color: '#60a5fa', textDecoration: 'none' }}>
@@ -177,137 +166,76 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
         {d.risk_score != null && <Row label="Risk score">{d.risk_score}</Row>}
         {d.eta_risk && <Row label="ETA risk">{d.eta_risk}</Row>}
         {d.supplier_dependency != null && <Row label="Supplier dependency">{Math.round(d.supplier_dependency * 100)}%</Row>}
-        {d.historical_basis && (
-          <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.75)', marginTop: 5, lineHeight: 1.4 }}>{d.historical_basis}</div>
-        )}
         <Reasons items={d.reasons} />
       </>
     );
   }
 
   if (key === 'alternatives_finder') {
-    // Backend returns d.options[]; legacy shape used d.alternatives[]
-    const altList: any[] = Array.isArray(d.options) ? d.options : Array.isArray(d.alternatives) ? d.alternatives : [];
+    const altList: any[] = Array.isArray(d.alternatives) ? d.alternatives : [];
     return (
       <>
-        {altList.length === 0 && (
-          <div style={{ fontSize: 10, color: 'rgba(150,140,100,0.7)' }}>No alternatives returned.</div>
-        )}
         {altList.slice(0, 3).map((alt, i) => (
           <div key={i} style={{ marginBottom: 7, paddingBottom: 7, borderBottom: i < Math.min(altList.length, 3) - 1 ? '1px solid rgba(245,158,11,0.08)' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e8e3d8' }}>
-                #{i + 1} {alt.supplier ?? alt.supplier_name ?? 'Alternative'}
-              </span>
-              {(alt.country ?? alt.country_full) && (
-                <Badge text={alt.country ?? alt.country_full} color="#14b8a6" />
-              )}
-              {alt.source === 'global_suppliers_db' && (
-                <Badge text="verified" color="#10b981" />
-              )}
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e8e3d8' }}>#{alt.rank ?? i + 1} {alt.supplier_name || 'Alternative'}</span>
+              {alt.country_full || alt.country ? <Badge text={alt.country_full || alt.country} color="#14b8a6" /> : null}
             </div>
             <div style={{ display: 'flex', gap: 12, fontSize: 9.5, color: 'rgba(180,170,140,0.85)' }}>
               {alt.lead_time_weeks != null && <span>{alt.lead_time_weeks}w lead</span>}
               {alt.cost_delta_pct != null && (
-                <span style={{ color: alt.cost_delta_pct <= 0 ? '#10b981' : '#ef4444' }}>
+                <span style={{ color: alt.cost_delta_pct < 0 ? '#10b981' : '#ef4444' }}>
                   {alt.cost_delta_pct > 0 ? '+' : ''}{alt.cost_delta_pct}% cost
                 </span>
               )}
+              {alt.can_meet_deadline != null && <span>{alt.can_meet_deadline ? '✓ on time' : '✗ late'}</span>}
             </div>
-            {(alt.stability_note ?? alt.selection_reasoning) && (
-              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.75)', marginTop: 3, lineHeight: 1.35 }}>
-                {alt.stability_note ?? alt.selection_reasoning}
-              </div>
+            {alt.selection_reasoning && (
+              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.75)', marginTop: 3, lineHeight: 1.35 }}>{alt.selection_reasoning}</div>
             )}
           </div>
         ))}
+        {d.recommendation_summary && (
+          <div style={{ fontSize: 9.5, color: '#6ee7b7', marginTop: 4, lineHeight: 1.4 }}>{d.recommendation_summary}</div>
+        )}
       </>
     );
   }
 
   if (key === 'import_compliance') {
-    if (d.no_viable_option) {
-      return (
-        <div style={{ fontSize: 10.5, color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
-          BLOCKED — {d.reason ?? 'No viable alternative found.'}
-        </div>
-      );
-    }
-    const docs: string[] = Array.isArray(d.required_documents) ? d.required_documents : [];
-    const risks: string[] = Array.isArray(d.risk_factors) ? d.risk_factors : [];
+    const byCountry: Record<string, any> = d.compliance_by_country || {};
     return (
       <>
-        {d.recommended_supplier && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e8e3d8' }}>{d.recommended_supplier}</span>
-            {d.recommended_country && <Badge text={d.recommended_country} color="#10b981" />}
-            {d.compliance_feasibility && <Badge text={`${d.compliance_feasibility} feasibility`} color="#10b981" />}
+        {Object.entries(byCountry).slice(0, 4).map(([code, info]: [string, any]) => (
+          <div key={code} style={{ marginBottom: 5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#e8e3d8' }}>{code}</span>
+              <Badge text={`${sev(info?.overall_compliance_risk)} risk`} color={sevColor(info?.overall_compliance_risk)} />
+              {info?.compliance_timeline_days != null && (
+                <span style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(150,140,100,0.7)' }}>{info.compliance_timeline_days}d</span>
+              )}
+            </div>
+            {Array.isArray(info?.mandatory_documents) && info.mandatory_documents.length > 0 && (
+              <div style={{ fontSize: 9, color: 'rgba(180,170,140,0.8)', marginTop: 2 }}>
+                Docs: {info.mandatory_documents.map((x: any) => x.document || x).slice(0, 3).join(', ')}
+              </div>
+            )}
           </div>
-        )}
-        {d.lead_time_weeks != null && <Row label="Lead time">{d.lead_time_weeks}w</Row>}
-        {d.cost_delta_pct != null && (
-          <Row label="Cost delta">
-            <span style={{ color: d.cost_delta_pct <= 0 ? '#10b981' : '#ef4444' }}>
-              {d.cost_delta_pct > 0 ? '+' : ''}{d.cost_delta_pct}%
-            </span>
-          </Row>
-        )}
-        {d.rationale && (
-          <div style={{ fontSize: 9, color: 'rgba(180,170,140,0.85)', marginTop: 5, lineHeight: 1.4 }}>{d.rationale}</div>
-        )}
-        {docs.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Required docs</div>
-            {docs.slice(0, 4).map((doc, i) => (
-              <div key={i} style={{ fontSize: 9, color: 'rgba(180,170,140,0.8)', lineHeight: 1.4 }}>· {doc}</div>
-            ))}
-            {docs.length > 4 && <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.6)' }}>+{docs.length - 4} more</div>}
-          </div>
-        )}
-        {risks.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(220,38,38,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Risk factors</div>
-            {risks.slice(0, 2).map((r, i) => (
-              <div key={i} style={{ fontSize: 9, color: 'rgba(220,38,38,0.75)', lineHeight: 1.4 }}>· {r}</div>
-            ))}
-          </div>
-        )}
+        ))}
+        {d.summary && <div style={{ fontSize: 9.5, color: 'rgba(150,140,100,0.8)', marginTop: 4, lineHeight: 1.4 }}>{d.summary}</div>}
       </>
     );
   }
 
   if (key === 'adversarial') {
     const flags: any[] = Array.isArray(d.flags) ? d.flags : [];
-    const challenged: any[] = Array.isArray(d.challenged_assumptions) ? d.challenged_assumptions : [];
-    // Backend: d.recommendation, d.confidence; legacy shape: d.recommended_action, d.confidence_in_recommendation
-    const recommendation = d.recommendation ?? d.recommended_action;
-    const confidence = d.confidence ?? d.confidence_in_recommendation;
-    const verdictColor = sevColor(d.verdict);
     return (
       <>
-        {d.verdict && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: verdictColor, letterSpacing: '0.05em' }}>{d.verdict}</span>
-            {confidence != null && (
-              <span style={{ fontSize: 9, color: 'rgba(150,140,100,0.7)' }}>{Math.round(confidence * 100)}% confidence</span>
-            )}
-          </div>
+        {d.recommended_action && (
+          <div style={{ fontSize: 10, color: '#f1f5f9', fontWeight: 600, lineHeight: 1.4, marginBottom: 6 }}>{d.recommended_action}</div>
         )}
-        {recommendation && (
-          <div style={{ fontSize: 10, color: '#f1f5f9', fontWeight: 500, lineHeight: 1.45, marginBottom: 7 }}>{recommendation}</div>
-        )}
-        {flags.length > 0 && (
-          <div style={{ marginBottom: 5 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(220,38,38,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Flags</div>
-            <Reasons items={flags.map((f: any) => (typeof f === 'string' ? f : f.flag || JSON.stringify(f)))} />
-          </div>
-        )}
-        {challenged.length > 0 && (
-          <div>
-            <div style={{ fontSize: 8.5, color: 'rgba(167,139,250,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Challenged assumptions</div>
-            <Reasons items={challenged.map((c: any) => (typeof c === 'string' ? c : JSON.stringify(c)))} />
-          </div>
-        )}
+        {d.confidence_in_recommendation != null && <Row label="Confidence">{Math.round(d.confidence_in_recommendation * 100)}%</Row>}
+        <Reasons items={flags.map((f: any) => (typeof f === 'string' ? f : f.flag || JSON.stringify(f)))} />
       </>
     );
   }
