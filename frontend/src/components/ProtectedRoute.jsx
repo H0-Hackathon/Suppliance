@@ -1,5 +1,5 @@
-import React from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 /**
@@ -12,10 +12,44 @@ export function ProtectedRoute({
   requirePro = false,
   ...args
 }) {
-  const { isAuthenticated, isLoading, subscription } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const location = useLocation();
+  const [subStatus, setSubStatus] = useState(null);
+  const [isLoadingSub, setIsLoadingSub] = useState(true);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      if (isLoaded) setIsLoadingSub(false);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchSub = async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/v2/auth/me', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (res.status === 404) {
+          // User not found in DB -> they need to finish onboarding!
+          setSubStatus({ notFound: true });
+        } else if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setSubStatus(data.subscription);
+        }
+      } catch (e) {
+        console.error("Failed to fetch subscription", e);
+      } finally {
+        if (isMounted) setIsLoadingSub(false);
+      }
+    };
+    
+    fetchSub();
+    return () => { isMounted = false; };
+  }, [isLoaded, isSignedIn, getToken]);
+
+  if (!isLoaded || isLoadingSub) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -36,19 +70,23 @@ export function ProtectedRoute({
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isSignedIn) {
+    return <Navigate to="/sign-in" state={{ from: location }} replace />;
+  }
+
+  if (subStatus?.notFound) {
+    // If Clerk says they are signed in but our DB doesn't have them, go to onboarding
+    return <Navigate to="/onboarding" replace />;
   }
 
   // Expired trial/subscription → go to subscription page
-  if (requireSubscription && subscription?.status === 'expired') {
+  if (requireSubscription && subStatus?.status === 'expired') {
     return <Navigate to="/subscription" replace />;
   }
 
   // Pro-gated route: only actual pro subscribers get through
-  // trial users, standard plan users, and expired users are all redirected
   if (requirePro) {
-    const isPro = subscription?.plan === 'pro' && subscription?.status === 'active';
+    const isPro = subStatus?.plan === 'pro' && subStatus?.status === 'active';
     if (!isPro) {
       return <Navigate to="/subscription?upgrade=pro" replace />;
     }

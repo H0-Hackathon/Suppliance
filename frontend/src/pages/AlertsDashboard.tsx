@@ -27,10 +27,11 @@ import api from '../services/api';
  *   - GET  /api/v2/monitor/pipeline-log?since=N    poll live log during run
  *   - PUT  /api/v2/alerts/{id}/dismiss|resolve     alert actions
  *
+ *
  * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
  * Replace with the auth token's customer id once Clerk is wired.
  */
-const ACTIVE_CUSTOMER_ID = 69;
+import { useUser } from '@clerk/clerk-react';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -100,6 +101,8 @@ export const AlertsDashboard: React.FC = () => {
     new Set(['suppliers', 'routes', 'risk'])
   );
   const [lastSync] = React.useState(() => new Date().toISOString());
+  const { user } = useUser() as any;
+  const activeCustomerId = user?.id;
 
   // Real agent outputs (TariffMonitor, ImpactCalculator, AlternativesFinder,
   // ImportCompliance, Adversarial), surfaced live from the SSE stream during a
@@ -112,17 +115,20 @@ export const AlertsDashboard: React.FC = () => {
 
   // ── Data fetching (backend integration) ──────────────────────────────────
   async function fetchAlerts() {
-    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    if (!activeCustomerId) return;
+    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
     setAlerts(res.data);
   }
 
   async function fetchDisruptions() {
-    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    if (!activeCustomerId) return;
+    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: activeCustomerId } });
     setDisruptions(res.data);
   }
 
   async function fetchSuppliers() {
-    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    if (!activeCustomerId) return;
+    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: activeCustomerId } });
     const withGeo = await Promise.all(
       res.data.map(async (s): Promise<SupplierWithGeo> => {
         try {
@@ -137,6 +143,7 @@ export const AlertsDashboard: React.FC = () => {
   }
 
   React.useEffect(() => {
+    if (!activeCustomerId) return;
     (async () => {
       try {
         await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers()]);
@@ -145,7 +152,7 @@ export const AlertsDashboard: React.FC = () => {
         console.error('Failed to load dashboard data', err);
       }
     })();
-  }, []);
+  }, [activeCustomerId]);
 
   // Surface the most recent persisted agent run (TariffAlert.agent_output) so
   // real Agent 1/2 data is visible on page load without re-running. Skipped
@@ -237,7 +244,9 @@ export const AlertsDashboard: React.FC = () => {
     const pollInterval = setInterval(poll, 1500);
 
     try {
-      await api.post('/v2/monitor/run', { customer_id: ACTIVE_CUSTOMER_ID });
+      if (activeCustomerId) {
+        await api.post('/v2/monitor/run', { customer_id: activeCustomerId });
+      }
       // Final poll to catch any events emitted in the last interval window
       await poll();
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
@@ -502,12 +511,13 @@ export const AlertsDashboard: React.FC = () => {
                 );
               })}
             </div>
+            <div style={{ position: 'absolute', top: 16, right: 16, width: 340, display: 'flex', flexDirection: 'column', gap: 16, pointerEvents: 'none', zIndex: 20 }}>
+              {/* Top right module 1: News Ticker */}
+              <div style={{ pointerEvents: 'auto' }}>
+                {activeCustomerId && <NewsTicker customerId={activeCustomerId} lastRunAt={lastRunAt} />}
+              </div>
+            </div>
 
-          </div>
-
-          {/* Bottom: live trade/supply-chain news ticker */}
-          <div style={{ height: 56, flexShrink: 0 }}>
-            <NewsTicker customerId={ACTIVE_CUSTOMER_ID} lastRunAt={lastRunAt} />
           </div>
         </div>
 

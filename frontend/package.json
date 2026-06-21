@@ -16,6 +16,7 @@
   "dependencies": {
     "@ant-design/charts": "^2.6.7",
     "@ant-design/icons": "^5.2.6",
+    "@clerk/clerk-react": "^5.61.8",
     "@deck.gl/core": "^9.2.5",
     "@deck.gl/extensions": "^9.2.6",
     "@deck.gl/geo-layers": "^9.2.6",

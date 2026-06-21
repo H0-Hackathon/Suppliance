@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { CheckoutForm } from '../components/CheckoutForm';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useUser } from '@clerk/clerk-react';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "pk_test_51TkWQk3SyU0h0lURPkkzvH3Qv43F7J7bTQmB4oid3QulxjamqirhKJEqhb4T8qACVfeeJyYHDl0ToUzLKQWlsSS200IjK6WGE5");
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
@@ -11,7 +11,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 export default function DummyPaymentPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, login } = useAuth();
+  const { user } = useUser();
+  const { getToken } = useAuth();
   
   const [clientSecret, setClientSecret] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,11 +26,12 @@ export default function DummyPaymentPage() {
   useEffect(() => {
     async function initPayment() {
       try {
+        const token = await getToken();
         const res = await fetch(`${API_URL}/api/v2/payment/create-intent`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token || localStorage.getItem('coastguard_token')}`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({ plan_id: `${planId}-${billing}` })
         });
@@ -50,10 +52,11 @@ export default function DummyPaymentPage() {
     }
 
     initPayment();
-  }, [planId, billing, token]);
+  }, [planId, billing, getToken]);
 
   const handlePaymentSuccess = (updatedSubscription) => {
-    login(token || localStorage.getItem('coastguard_token'), user, updatedSubscription);
+    // With Clerk, we no longer need to call login() locally.
+    // The subscription status is fetched dynamically via ProtectedRoute.
     navigate('/dashboard');
   };
 

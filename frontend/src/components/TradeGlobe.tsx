@@ -229,8 +229,11 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
     });
 
     // 3. Combine live + demo, then add customer
-    const liveNames = new Set(liveMapped.map(s => s.name));
-    const combined = [...liveMapped, ...demoMapped.filter(s => !liveNames.has(s.name))];
+    let combined = [...liveMapped];
+    if (combined.length === 0) {
+      const liveNames = new Set(liveMapped.map(s => s.name));
+      combined = [...combined, ...demoMapped.filter(s => !liveNames.has(s.name))];
+    }
     combined.push({
       name: LIVE_DESTINATION.name,
       country: LIVE_DESTINATION.country,

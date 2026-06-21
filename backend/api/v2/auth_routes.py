@@ -15,7 +15,7 @@ from passlib.context import CryptContext
 
 from database import get_db
 from models import Customer
-from core.auth import create_access_token, get_current_user
+from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v2/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -25,26 +25,14 @@ TRIAL_HOURS = 24
 
 # ── Pydantic Schemas ─────────────────────────────────────────────────────────
 
-class SignupInitRequest(BaseModel):
+class OnboardingRequest(BaseModel):
+    email: EmailStr
     name: str
-    email: EmailStr
-    password: str
-
-class SignupVerifyRequest(BaseModel):
-    email: EmailStr
-    otp: str
-
-class SignupCompleteRequest(BaseModel):
-    email: EmailStr
     company_name: str
     industry: str
     location: str
     years_in_business: int
     average_revenue: str
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -99,144 +87,100 @@ def _user_response(customer: Customer, token: str) -> dict:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/signup/init", status_code=status.HTTP_200_OK)
-def signup_init(data: SignupInitRequest, db: Session = Depends(get_db)):
-    """Step 1: Create an unverified user account and generate an OTP."""
+@router.post("/onboarding", status_code=status.HTTP_201_CREATED)
+def complete_onboarding(data: OnboardingRequest, db: Session = Depends(get_db)):
+    """Creates the Customer, BusinessProfile, Supplier, and Product in Aurora after Clerk auth."""
+    
     email = data.email.lower().strip()
-
-    existing = db.query(Customer).filter(Customer.email == email).first()
-    if existing:
-        if existing.is_verified:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists. Please log in instead."
-            )
-        # Allow re-sending OTP for unverified accounts (e.g., user lost the code)
-        # But block if the account was created less than 60 seconds ago to prevent spam
-        customer = existing
-        customer.password_hash = pwd_context.hash(data.password)
-        customer.name = data.name.strip()
-    else:
-        hashed = pwd_context.hash(data.password)
+    
+    # Check if they already exist
+    customer = db.query(Customer).filter(Customer.email == email).first()
+    
+    if not customer:
         customer = Customer(
             email=email,
             name=data.name.strip(),
-            password_hash=hashed,
-            is_verified=False,
+            company_name=data.company_name.strip(),
+            industry=data.industry.strip(),
+            location=data.location.strip(),
+            years_in_business=data.years_in_business,
+            average_revenue=data.average_revenue.strip(),
+            is_verified=True, # Verified by Clerk
         )
         db.add(customer)
-
-    # Generate 6-digit OTP
-    otp = f"{random.randint(0, 999999):06d}"
-    customer.otp_code = otp
-    db.commit()
-    db.refresh(customer)
-
-    # Mock email sending
-    print(f"\n[{datetime.utcnow().isoformat()}] EMAIL SENT")
-    print(f"To: {email}")
-    print(f"Subject: Verify your CoastGuard account")
-    print(f"Body: Your verification code is: {otp}\n")
-
-    return {"message": "Verification code sent to email."}
-
-
-@router.post("/signup/verify", status_code=status.HTTP_200_OK)
-def signup_verify(data: SignupVerifyRequest, db: Session = Depends(get_db)):
-    """Step 2: Verify the OTP sent to the user."""
-    email = data.email.lower().strip()
-
-    customer = db.query(Customer).filter(Customer.email == email).first()
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found. Please restart signup."
-        )
-
-    if customer.is_verified:
-        return {"message": "Account already verified."}
-
-    if not customer.otp_code or customer.otp_code != data.otp.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid verification code."
-        )
-
-    # Success
-    customer.is_verified = True
-    customer.otp_code = None
-    db.commit()
-
-    return {"message": "Email verified successfully."}
-
-
-@router.post("/signup/complete", status_code=status.HTTP_201_CREATED)
-def signup_complete(data: SignupCompleteRequest, db: Session = Depends(get_db)):
-    """Step 3: Complete the enterprise onboarding context and return JWT."""
-    email = data.email.lower().strip()
-
-    customer = db.query(Customer).filter(Customer.email == email).first()
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found. Please restart signup."
-        )
-
-    if not customer.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before completing signup."
-        )
-
-    # Update company details
-    customer.company_name = data.company_name.strip()
-    customer.industry = data.industry.strip()
-    customer.location = data.location.strip()
-    customer.years_in_business = data.years_in_business
-    customer.average_revenue = data.average_revenue.strip()
+        db.commit()
+        db.refresh(customer)
+    else:
+        # Update existing
+        customer.name = data.name.strip()
+        customer.company_name = data.company_name.strip()
+        customer.industry = data.industry.strip()
+        customer.location = data.location.strip()
+        customer.years_in_business = data.years_in_business
+        customer.average_revenue = data.average_revenue.strip()
+        customer.is_verified = True
 
     # Start 24h free trial
     customer.trial_expires_at = datetime.utcnow() + timedelta(hours=TRIAL_HOURS)
+
+    # Automatically create BusinessProfile for personalized Agent output
+    from models import BusinessProfile
+    import re
+    existing_profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer.id).first()
+    if not existing_profile:
+        # Heuristic to parse revenue into an annual volume numeric
+        vol = 500000
+        try:
+            nums = re.findall(r'\d+', data.average_revenue)
+            if nums:
+                num = int(nums[-1])
+                if "M" in data.average_revenue.upper() or "MILLION" in data.average_revenue.upper():
+                    vol = num * 1000000
+                elif "K" in data.average_revenue.upper():
+                    vol = num * 1000
+                elif "B" in data.average_revenue.upper() or "BILLION" in data.average_revenue.upper():
+                    vol = num * 1000000000
+                else:
+                    vol = num
+        except:
+            pass
+
+        profile = BusinessProfile(
+            customer_id=customer.id,
+            business_type=data.industry.strip(),
+            annual_import_volume_usd=vol,
+            primary_origin_countries=[data.location.strip()],
+            destination_country="United States",
+            import_region=data.location.strip(),
+            primary_hs_codes=["8500.00"], # Default fallback
+            product_descriptions=[data.industry.strip()],
+        )
+        db.add(profile)
+        
+        # Create a default Supplier so the map is instantly personalized
+        from models import Supplier, Product
+        supplier = Supplier(
+            customer_id=customer.id,
+            name=f"Primary {data.location.strip()} Partner",
+            country=data.location.strip(),
+            product_category=data.industry.strip(),
+            reliability_score=85.0
+        )
+        db.add(supplier)
+        
+        product = Product(
+            customer_id=customer.id,
+            hs_code="8500.00",
+            description=f"{data.industry.strip()} Goods",
+            import_country=data.location.strip(),
+            unit_value_usd=150.0
+        )
+        db.add(product)
     
     db.commit()
     db.refresh(customer)
 
-    token = create_access_token({"sub": customer.email})
-    return _user_response(customer, token)
-
-
-@router.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
-    email = data.email.lower().strip()
-
-    customer = db.query(Customer).filter(Customer.email == email).first()
-
-    if not customer or not customer.password_hash:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
-        )
-
-    if not pwd_context.verify(data.password, customer.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
-        )
-
-    if not customer.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in."
-        )
-
-    if not customer.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account has been deactivated."
-        )
-
-    token = create_access_token({"sub": customer.email})
-    return _user_response(customer, token)
+    return {"message": "Onboarding complete"}
 
 
 @router.get("/me")

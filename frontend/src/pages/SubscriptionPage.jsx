@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useUser, useAuth } from '@clerk/clerk-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -30,10 +30,33 @@ const PRO_EXTRA_FEATURES = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SubscriptionPage() {
-  const { user, subscription, login, logout } = useAuth();
+  const { user } = useUser();
+  const { getToken, signOut } = useAuth();
+  const [subscription, setSubscription] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const upgradeIntent = searchParams.get('upgrade') === 'pro';
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSub = async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_URL}/api/v2/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setSubscription(data.subscription);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchSub();
+    return () => { isMounted = false; };
+  }, [getToken]);
 
   const [billing, setBilling] = useState('monthly'); // 'monthly' | 'yearly'
   const [selected, setSelected] = useState(null);

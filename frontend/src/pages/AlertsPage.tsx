@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import './AlertsPage.css';
+import { useUser } from '@clerk/clerk-react';
 import api from '../services/api';
-
-const ACTIVE_CUSTOMER_ID = 69;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -130,7 +129,9 @@ const EVENT_COLOR: Record<string, string> = {
   hs_correction: '#f59e0b', crew_error: '#ef4444',
 };
 
-export function AlertsPage() {
+export const AlertsPage: React.FC = () => {
+  const { user } = useUser() as any;
+  const activeCustomerId = user?.id;
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -147,23 +148,25 @@ export function AlertsPage() {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const fetchAlerts = useCallback(async () => {
+    if (!activeCustomerId) return;
     try {
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
       setAlerts(res.data.filter((a) => a.status === 'active'));
     } catch {
       setAlerts([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCustomerId]);
 
   useEffect(() => {
     fetchAlerts();
-    api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: ACTIVE_CUSTOMER_ID } })
+    if (!activeCustomerId) return;
+    api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: activeCustomerId } })
       .then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
     api.get<{ items: NewsItem[] }>('/v2/news')
       .then((r) => setNews(r.data.items || [])).catch(() => setNews([]));
-  }, [fetchAlerts]);
+  }, [fetchAlerts, activeCustomerId]);
 
   // Auto-scroll log to bottom
   useEffect(() => {
@@ -171,6 +174,7 @@ export function AlertsPage() {
   }, [pipelineLogs, runPhase]);
 
   const handleRunAnalysis = useCallback(async () => {
+    if (!activeCustomerId) return;
     setRunPhase('running');
     setPipelineLogs([]);
     setAgentResults({});
@@ -197,12 +201,12 @@ export function AlertsPage() {
 
     const interval = setInterval(poll, 1500);
     try {
-      await api.post('/v2/monitor/run', { customer_id: ACTIVE_CUSTOMER_ID });
+      await api.post('/v2/monitor/run', { customer_id: activeCustomerId });
       await poll();
       await fetchAlerts();
       setRunPhase('done');
       // Auto-select the most recent alert
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
       const active = res.data.filter((a) => a.status === 'active');
       setAlerts(active);
       if (active.length > 0) setSelectedId(active[0].id);
