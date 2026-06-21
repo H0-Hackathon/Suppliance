@@ -9,10 +9,14 @@ import { AlertsDashboard } from './pages/AlertsDashboard';
 import { AlertsPage } from './pages/AlertsPage';
 import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
+<<<<<<< HEAD
 import SubscriptionPage from './pages/SubscriptionPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import DummyPaymentPage from './pages/DummyPaymentPage';
+=======
+import SettingsPage from './pages/SettingsPage';
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk-react';
 import OnboardingPage from './pages/OnboardingPage';
@@ -84,6 +88,7 @@ function AppRoutes() {
 
 function App() {
   return (
+<<<<<<< HEAD
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
       <ConfigProvider locale={enUS}>
         <BrowserRouter>
@@ -91,6 +96,24 @@ function App() {
         </BrowserRouter>
       </ConfigProvider>
     </ClerkProvider>
+=======
+    <ConfigProvider locale={enUS}>
+      <BrowserRouter>
+        <CommonHeader />
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<AlertsDashboard />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/demo" element={<DemoPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/suppliers" element={<SuppliersPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          {/* Catch-all: redirect unknown routes to dashboard */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ConfigProvider>
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
   );
 }
 

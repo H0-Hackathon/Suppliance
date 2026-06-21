@@ -3,6 +3,11 @@ import './AlertsPage.css';
 import { useUser } from '@clerk/clerk-react';
 import api from '../services/api';
 
+<<<<<<< HEAD
+=======
+const ACTIVE_CUSTOMER_ID = 240;
+
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 interface ApiAlert {

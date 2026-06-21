@@ -31,7 +31,12 @@ import api from '../services/api';
  * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
  * Replace with the auth token's customer id once Clerk is wired.
  */
+<<<<<<< HEAD
 import { useUser } from '@clerk/clerk-react';
+=======
+
+const ACTIVE_CUSTOMER_ID = 240;
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 

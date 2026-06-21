@@ -19,11 +19,19 @@ from api.v2.monitor_routes import router as monitor_router
 from api.v2.disruption_routes import router as disruption_router
 from api.v2.geo_routes import router as geo_router
 from api.v2.news_routes import router as news_router
+from api.v2.settings_routes import router as settings_router
 
 settings = get_settings()
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
+
+# Quiet noisy third-party loggers — they spam at INFO but carry no useful signal
+for _noisy in ("sqlalchemy.engine", "sqlalchemy.pool", "sqlalchemy.dialects",
+               "httpx", "httpcore", "google_genai", "google.auth",
+               "crewai", "crewai.crew", "crewai.agent", "crewai.task",
+               "opentelemetry", "litellm"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 import models  # noqa: F401 — registers all models with SQLAlchemy before create_all
 
@@ -129,8 +137,12 @@ app.include_router(disruption_router)
 app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
+<<<<<<< HEAD
 app.include_router(auth_router)
 app.include_router(payment_router)
+=======
+app.include_router(settings_router)
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────

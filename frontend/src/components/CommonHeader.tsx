@@ -16,7 +16,11 @@ const NAV_ITEMS = [
   { label: 'Settings',     path: '/settings',     icon: Settings },
 ];
 
+<<<<<<< HEAD
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+=======
+const ACTIVE_CUSTOMER_ID = 240;
+>>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 type DbStatus = 'checking' | 'ok' | 'error';
 
