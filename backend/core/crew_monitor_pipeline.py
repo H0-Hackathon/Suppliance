@@ -34,11 +34,6 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Google-maintained alias that always points at the current flash-tier model.
-# Used as a fallback when the configured GEMINI_MODEL is retired/unavailable.
-FALLBACK_GEMINI_MODEL = "gemini/gemini-flash-latest"
-
-
 class _QueueWriter:
     """Tee stdout to a progress queue as log events during CrewAI kickoff."""
     def __init__(self, q: stdlib_queue.Queue, original):
@@ -90,39 +85,20 @@ def _init_gemini_llm() -> "LLM":
     import os
     os.environ.setdefault("GOOGLE_API_KEY", api_key)
 
-    # Validate the key before building the full crew, and pick a model that the
-    # account/API version actually serves. CrewAI's LLM expects "gemini/<model>"
-    # (LiteLLM provider-prefixed form); the raw google.genai SDK ping wants just
-    # "<model>" — strip the "gemini/" prefix so both stay in sync.
-    #
-    # If the configured GEMINI_MODEL is unavailable (e.g. a retired dated model
-    # like gemini-1.5-flash → 404 NOT_FOUND), fall back to the Google-maintained
-    # "flash-latest" alias so a stale model setting can't break the pipeline.
-    from google import genai as _genai
-    client = _genai.Client(api_key=api_key)
+    # Validate the key before building the full crew. CrewAI's LLM expects
+    # "gemini/<model>" (LiteLLM provider-prefixed form). The raw google.genai
+    # SDK used here for the validation ping wants just "<model>" — strip the
+    # "gemini/" prefix so both stay in sync.
+    validation_model = settings.gemini_model.removeprefix("gemini/")
+    try:
+        from google import genai as _genai
+        client = _genai.Client(api_key=api_key)
+        client.models.generate_content(model=validation_model, contents="ping")
+        logger.info("Gemini API key validated successfully")
+    except Exception as exc:
+        raise RuntimeError(f"Gemini API key validation failed: {exc}") from exc
 
-    candidate_models = [settings.gemini_model]
-    if FALLBACK_GEMINI_MODEL not in candidate_models:
-        candidate_models.append(FALLBACK_GEMINI_MODEL)
-
-    last_exc: Optional[Exception] = None
-    for model in candidate_models:
-        validation_model = model.removeprefix("gemini/")
-        try:
-            client.models.generate_content(model=validation_model, contents="ping")
-        except Exception as exc:
-            last_exc = exc
-            logger.warning("Gemini model %s unavailable: %s", model, str(exc)[:200])
-            continue
-        if model != settings.gemini_model:
-            logger.warning(
-                "Configured GEMINI_MODEL '%s' unavailable — using fallback '%s'",
-                settings.gemini_model, model,
-            )
-        logger.info("Gemini API key validated successfully (model=%s)", model)
-        return LLM(model=model, api_key=api_key)
-
-    raise RuntimeError(f"Gemini API key validation failed for all candidate models: {last_exc}")
+    return LLM(model=settings.gemini_model, api_key=api_key)
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────

@@ -12,7 +12,11 @@ import {
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
 import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import { EventFeed } from '../components/dashboard/EventFeed';
-import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
+import {
+  LiveAgentResults,
+  TariffMonitorOutput,
+  ImpactCalculatorOutput,
+} from '../components/dashboard/LiveAgentResults';
 import api from '../services/api';
 
 /**
@@ -141,10 +145,11 @@ export const AlertsDashboard: React.FC = () => {
   );
   const [lastSync] = React.useState(() => new Date().toISOString());
 
-  // Real agent outputs (TariffMonitor, ImpactCalculator, AlternativesFinder,
-  // ImportCompliance, Adversarial), surfaced live from the SSE stream during a
-  // run and from the latest persisted alert (TariffAlert.agent_output) on load.
-  const [agentResults, setAgentResults] = React.useState<AgentResults>({});
+  // Real Agent 1 (TariffMonitor) + Agent 2 (ImpactCalculator) outputs, surfaced
+  // live from the SSE stream during a run and from the latest persisted alert
+  // (TariffAlert.agent_output) on load.
+  const [agentMonitor, setAgentMonitor] = React.useState<TariffMonitorOutput | null>(null);
+  const [agentImpact, setAgentImpact] = React.useState<ImpactCalculatorOutput | null>(null);
   const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
   const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
 
@@ -195,7 +200,8 @@ export const AlertsDashboard: React.FC = () => {
       try {
         const parsed = JSON.parse(a.agent_output);
         if (parsed && (parsed.tariff_monitor || parsed.impact_calculator)) {
-          setAgentResults(parsed);
+          setAgentMonitor(parsed.tariff_monitor ?? null);
+          setAgentImpact(parsed.impact_calculator ?? null);
           setAgentsUpdatedAt(a.created_at);
           setAgentSupplier(parsed.tariff_monitor?.country ?? null);
           break;
@@ -223,7 +229,6 @@ export const AlertsDashboard: React.FC = () => {
   async function handleRunMonitor() {
     setIsRunning(true);
     setDebugState(null);
-    setAgentResults({});
 
     try {
       const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
@@ -272,15 +277,14 @@ export const AlertsDashboard: React.FC = () => {
                     agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
                   } : prev
                 );
-                // Surface each real agent output in the Live Agent Results panel.
-                if (agent && output) {
-                  setAgentResults((prev) => ({ ...prev, [agent]: output }));
+                // Surface real Agent 1/2 output in the Live Agent Results panel.
+                if (agent === 'tariff_monitor' && output) {
+                  setAgentMonitor(output as TariffMonitorOutput);
                   setAgentsUpdatedAt(new Date().toISOString());
-                  if (agent === 'tariff_monitor') {
-                    setAgentSupplier(
-                      (output as { country?: string }).country ?? target.supplier_name ?? null
-                    );
-                  }
+                  setAgentSupplier((output as TariffMonitorOutput).country ?? target.supplier_name ?? null);
+                } else if (agent === 'impact_calculator' && output) {
+                  setAgentImpact(output as ImpactCalculatorOutput);
+                  setAgentsUpdatedAt(new Date().toISOString());
                 }
               } else if (type === 'log') {
                 const text = event.text as string;
@@ -332,8 +336,6 @@ export const AlertsDashboard: React.FC = () => {
   const countryCount = new Set(suppliers.map((s) => s.country)).size;
 
   // Real direct-cost figure from Agent 2 (ImpactCalculator); null until a run.
-  const agentMonitor = agentResults.tariff_monitor;
-  const agentImpact = agentResults.impact_calculator;
   const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
 
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
@@ -608,10 +610,10 @@ export const AlertsDashboard: React.FC = () => {
               Live Agent Results
             </div>
 
-            {/* Real agent output: TariffMonitor, ImpactCalculator, and (real
-                LLM mode) AlternativesFinder, ImportCompliance, Adversarial */}
+            {/* Real Agent 1 (TariffMonitor) + Agent 2 (ImpactCalculator) output */}
             <LiveAgentResults
-              agents={agentResults}
+              tariffMonitor={agentMonitor}
+              impact={agentImpact}
               supplier={agentSupplier}
               updatedAt={agentsUpdatedAt}
               live={isRunning}
