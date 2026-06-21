@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
 import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
-import { NewsTicker } from '../components/dashboard/NewsTicker';
+import { EventFeed } from '../components/dashboard/EventFeed';
 import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
 import api from '../services/api';
 
@@ -82,6 +82,46 @@ interface DebugState {
   agentStates: Record<string, AgentState>;
   logs: string[];
 }
+
+// Intelligence KPI cards
+const INTEL_CARDS = [
+  {
+    label: 'Trade Exposure',
+    value: '$420K',
+    sub: '+$40K new risk',
+    icon: DollarSign,
+    color: '#dc2626',
+    bg: 'rgba(220,38,38,0.07)',
+    border: 'rgba(220,38,38,0.18)',
+  },
+  {
+    label: 'High Risk Suppliers',
+    value: '4',
+    sub: '1 critical',
+    icon: Users,
+    color: '#ea580c',
+    bg: 'rgba(234,88,12,0.07)',
+    border: 'rgba(234,88,12,0.18)',
+  },
+  {
+    label: 'Critical Trade Events',
+    value: '2',
+    sub: 'Last 24 hours',
+    icon: AlertTriangle,
+    color: '#f59e0b',
+    bg: 'rgba(245,158,11,0.07)',
+    border: 'rgba(245,158,11,0.18)',
+  },
+  {
+    label: 'Countries Monitored',
+    value: '18',
+    sub: '43 trade routes',
+    icon: MapPin,
+    color: '#10b981',
+    bg: 'rgba(16,185,129,0.07)',
+    border: 'rgba(16,185,129,0.18)',
+  },
+];
 
 const MAP_LAYERS = [
   { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
@@ -300,59 +340,6 @@ export const AlertsDashboard: React.FC = () => {
   const agentImpact = agentResults.impact_calculator;
   const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
 
-  // ── KPI cards derived from real monitor results (no hardcoded values) ──────
-  // Cumulative direct-cost exposure across active alerts' ImpactCalculator output.
-  const activeParsed = active.map((a) => {
-    try { return a.agent_output ? JSON.parse(a.agent_output) : {}; } catch { return {}; }
-  });
-  const totalExposure = activeParsed.reduce(
-    (sum, p) => sum + (p?.impact_calculator?.direct_cost ?? p?.impact_calculator?.extra_cost_usd ?? 0),
-    0
-  );
-  const criticalEvents = active.filter((a) => a.severity === 'critical' || a.severity === 'high').length;
-  const affectedCodes = new Set(disruptions.flatMap((d) => d.countries_affected ?? []));
-  const highRiskSuppliers = suppliers.filter((s) => s.countryCode && affectedCodes.has(s.countryCode)).length;
-
-  const fmtMoney = (n: number) =>
-    n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`;
-
-  // Each card is only shown when its underlying real data exists; otherwise it
-  // is hidden (no placeholder values).
-  const kpiCards = [
-    {
-      key: 'exposure',
-      available: totalExposure > 0,
-      label: 'Trade Exposure',
-      value: fmtMoney(totalExposure),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
-    },
-    {
-      key: 'highrisk',
-      available: suppliers.length > 0,
-      label: 'High Risk Suppliers',
-      value: String(highRiskSuppliers),
-      sub: `of ${suppliers.length} tracked`,
-      icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
-    },
-    {
-      key: 'events',
-      available: active.length > 0,
-      label: 'Critical Trade Events',
-      value: String(criticalEvents),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)',
-    },
-    {
-      key: 'countries',
-      available: suppliers.length > 0,
-      label: 'Countries Monitored',
-      value: String(countryCount),
-      sub: `${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`,
-      icon: MapPin, color: '#10b981', bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)',
-    },
-  ].filter((c) => c.available);
-
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
@@ -553,9 +540,9 @@ export const AlertsDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Bottom: live trade/supply-chain news ticker */}
+          {/* Bottom: Trade Intelligence Feed */}
           <div style={{ height: 56, flexShrink: 0 }}>
-            <NewsTicker />
+            <EventFeed />
           </div>
         </div>
 
@@ -567,48 +554,45 @@ export const AlertsDashboard: React.FC = () => {
           overflow: 'hidden',
           background: 'rgba(14,14,10,0.5)',
         }}>
-          {/* Intelligence KPI cards — derived from real monitor results;
-              individual cards hide when their underlying data is unavailable. */}
-          {kpiCards.length > 0 && (
+          {/* Intelligence KPI cards */}
+          <div style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid rgba(245,158,11,0.07)',
+            flexShrink: 0,
+          }}>
             <div style={{
-              padding: '12px 14px',
-              borderBottom: '1px solid rgba(245,158,11,0.07)',
-              flexShrink: 0,
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
+              marginBottom: 9,
+              display: 'flex', alignItems: 'center', gap: 5,
             }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-                marginBottom: 9,
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <Globe size={9} color="#f59e0b" />
-                Trade Intelligence
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-                {kpiCards.map(({ key, label, value, sub, icon: Icon, color, bg, border }) => (
-                  <div key={key} style={{
-                    background: bg,
-                    border: `1px solid ${border}`,
-                    borderRadius: 8,
-                    padding: '10px 11px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                      <Icon size={10} color={color} />
-                      <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
-                    </div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 800,
-                      color, fontVariantNumeric: 'tabular-nums',
-                      lineHeight: 1, marginBottom: 3,
-                    }}>
-                      {value}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
-                  </div>
-                ))}
-              </div>
+              <Globe size={9} color="#f59e0b" />
+              Trade Intelligence
             </div>
-          )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+              {INTEL_CARDS.map(({ label, value, sub, icon: Icon, color, bg, border }) => (
+                <div key={label} style={{
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  borderRadius: 8,
+                  padding: '10px 11px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+                    <Icon size={10} color={color} />
+                    <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
+                  </div>
+                  <div style={{
+                    fontSize: 20, fontWeight: 800,
+                    color, fontVariantNumeric: 'tabular-nums',
+                    lineHeight: 1, marginBottom: 3,
+                  }}>
+                    {value}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Analysis Pipeline — live agent debug stream while running, else status */}
           <div style={{

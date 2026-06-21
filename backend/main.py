@@ -17,7 +17,6 @@ from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.disruption_routes import router as disruption_router
 from api.v2.geo_routes import router as geo_router
-from api.v2.news_routes import router as news_router
 
 settings = get_settings()
 
@@ -53,7 +52,6 @@ app.include_router(alert_router)
 app.include_router(monitor_router)
 app.include_router(disruption_router)
 app.include_router(geo_router)
-app.include_router(news_router)
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
@@ -80,11 +78,6 @@ def _on_startup():
     # ready to accept requests. /monitor/run calls that arrive before the
     # scrape finishes fall back to the in-memory cache (empty → JSONL datasets).
     threading.Thread(target=_run_rss_scrape, daemon=True, name="rss-startup-scrape").start()
-
-    # Warm the news-ticker cache in the background so the first /api/v2/news
-    # request is instant.
-    from services import news_feed
-    threading.Thread(target=news_feed.prefetch, daemon=True, name="news-prefetch").start()
 
 
 @app.on_event("shutdown")
