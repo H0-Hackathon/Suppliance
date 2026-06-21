@@ -144,100 +144,11 @@ class MonitorPipeline:
         articles: Optional[list] = None,
         progress_queue: Optional[stdlib_queue.Queue] = None,
     ) -> dict:
-        # Real Gemini-backed 5-agent pipeline requires both an explicit opt-out
-        # of mock mode AND a usable API key. Otherwise run the deterministic
-        # path: Agents 1 + 2 are real (collector data + DB), no LLM, no
-        # hardcoded mock output.
-        api_key = (settings.gemini_api_key or "").strip()
-        has_real_key = bool(api_key) and api_key != "your_gemini_api_key_here"
-        if not settings.use_mock_llm and has_real_key:
-            return self._real_run(customer_id, hs_code, supplier_country, db, articles, progress_queue)
-        return self._deterministic_run(customer_id, hs_code, supplier_country, db, articles, progress_queue)
+        if settings.use_mock_llm:
+            return self._mock_run(customer_id, hs_code, supplier_country, db, progress_queue)
+        return self._real_run(customer_id, hs_code, supplier_country, db, articles, progress_queue)
 
-    # ── Deterministic mode — REAL Agents 1 + 2, no LLM, no hardcoded data ──────
-
-    def _deterministic_run(
-        self,
-        customer_id: int,
-        hs_code: str,
-        supplier_country: str,
-        db: Optional[Session],
-        articles: Optional[list] = None,
-        progress_queue: Optional[stdlib_queue.Queue] = None,
-    ) -> dict:
-        """
-        Run the two deterministic agents and surface their REAL output.
-
-        Agent 1 (TariffMonitor)    → core.monitor_agent.get_latest_event:
-            ranks real collected news (live article cache, else the bundled
-            data/*.jsonl datasets) and returns the most relevant event.
-        Agent 2 (ImpactCalculator) → services.impact_service.calculate_impact:
-            computes dollar impact against this customer's real pending orders.
-
-        No LLM is called, and no hardcoded/mock output is produced. Agents 3-5
-        (AlternativesFinder, ImportCompliance, Adversarial) are LLM-backed and
-        are skipped here (they require a Gemini key + USE_MOCK_LLM=false).
-
-        Streams the same SSE event shapes as the real pipeline so the existing
-        frontend (AgentDebugPanel + Live Agent Results) renders it unchanged.
-        """
-        def emit(event: dict):
-            if progress_queue:
-                progress_queue.put(event)
-
-        # ── Agent 1: TariffMonitor (real, deterministic) ─────────────────────
-        emit({"type": "agent_start", "agent": "tariff_monitor"})
-        from core.monitor_agent import get_latest_event
-        # Pass None (not []) when we have no collected articles so Agent 1 falls
-        # back to the bundled JSONL datasets instead of short-circuiting empty.
-        monitor_event = get_latest_event(
-            supplier_country=supplier_country,
-            hs_code=hs_code,
-            articles=articles or None,
-        )
-        emit({"type": "agent_done", "agent": "tariff_monitor", "output": monitor_event})
-
-        # ── Agent 2: ImpactCalculator (real, deterministic) ──────────────────
-        emit({"type": "agent_start", "agent": "impact_calculator"})
-        from services.impact_service import calculate_impact
-        impact_result = calculate_impact(db, customer_id, monitor_event)
-        emit({"type": "agent_done", "agent": "impact_calculator", "output": impact_result})
-
-        agent_outputs = {
-            "tariff_monitor": monitor_event,
-            "impact_calculator": impact_result,
-        }
-
-        severity = impact_result.get("severity", "medium")
-        event_label = monitor_event.get("event") or "Trade risk event detected"
-        direct_cost = impact_result.get("direct_cost", 0) or 0
-        affected_orders = impact_result.get("affected_orders", 0) or 0
-        summary = (
-            f"{event_label} — direct cost ${direct_cost:,.0f} across "
-            f"{affected_orders} pending order(s)."
-        )
-
-        run_id = str(uuid.uuid4())
-        emit({"type": "done", "run_id": run_id, "agent_outputs": agent_outputs})
-        self._save_results(
-            db=db,
-            customer_id=customer_id,
-            hs_code=hs_code,
-            supplier_country=supplier_country,
-            agent_outputs=agent_outputs,
-            severity=severity,
-            summary=summary,
-            data_source="monitor_agent",
-        )
-
-        return {
-            "run_id": run_id,
-            "customer_id": customer_id,
-            "alerts_generated": 1,
-            "agent_outputs": agent_outputs,
-        }
-
-    # ── Mock mode (legacy, no longer dispatched) ───────────────────────────────
+    # ── Mock mode ─────────────────────────────────────────────────────────────
 
     def _mock_run(
         self,

@@ -11,12 +11,8 @@ import {
 } from 'lucide-react';
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
 import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
+import { AgentStatusPanel } from '../components/dashboard/AgentStatusPanel';
 import { EventFeed } from '../components/dashboard/EventFeed';
-import {
-  LiveAgentResults,
-  TariffMonitorOutput,
-  ImpactCalculatorOutput,
-} from '../components/dashboard/LiveAgentResults';
 import api from '../services/api';
 
 /**
@@ -145,14 +141,6 @@ export const AlertsDashboard: React.FC = () => {
   );
   const [lastSync] = React.useState(() => new Date().toISOString());
 
-  // Real Agent 1 (TariffMonitor) + Agent 2 (ImpactCalculator) outputs, surfaced
-  // live from the SSE stream during a run and from the latest persisted alert
-  // (TariffAlert.agent_output) on load.
-  const [agentMonitor, setAgentMonitor] = React.useState<TariffMonitorOutput | null>(null);
-  const [agentImpact, setAgentImpact] = React.useState<ImpactCalculatorOutput | null>(null);
-  const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
-  const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
-
   // ── Data fetching (backend integration) ──────────────────────────────────
   async function fetchAlerts() {
     const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
@@ -189,28 +177,6 @@ export const AlertsDashboard: React.FC = () => {
       }
     })();
   }, []);
-
-  // Surface the most recent persisted agent run (TariffAlert.agent_output) so
-  // real Agent 1/2 data is visible on page load without re-running. Skipped
-  // while a live run is streaming (SSE updates take precedence).
-  React.useEffect(() => {
-    if (isRunning) return;
-    for (const a of alerts) {
-      if (!a.agent_output) continue;
-      try {
-        const parsed = JSON.parse(a.agent_output);
-        if (parsed && (parsed.tariff_monitor || parsed.impact_calculator)) {
-          setAgentMonitor(parsed.tariff_monitor ?? null);
-          setAgentImpact(parsed.impact_calculator ?? null);
-          setAgentsUpdatedAt(a.created_at);
-          setAgentSupplier(parsed.tariff_monitor?.country ?? null);
-          break;
-        }
-      } catch {
-        // non-JSON agent_output — skip
-      }
-    }
-  }, [alerts, isRunning]);
 
   // ── Alert actions (backend integration) ──────────────────────────────────
   async function handleDismiss(id: number) {
@@ -277,15 +243,6 @@ export const AlertsDashboard: React.FC = () => {
                     agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
                   } : prev
                 );
-                // Surface real Agent 1/2 output in the Live Agent Results panel.
-                if (agent === 'tariff_monitor' && output) {
-                  setAgentMonitor(output as TariffMonitorOutput);
-                  setAgentsUpdatedAt(new Date().toISOString());
-                  setAgentSupplier((output as TariffMonitorOutput).country ?? target.supplier_name ?? null);
-                } else if (agent === 'impact_calculator' && output) {
-                  setAgentImpact(output as ImpactCalculatorOutput);
-                  setAgentsUpdatedAt(new Date().toISOString());
-                }
               } else if (type === 'log') {
                 const text = event.text as string;
                 setDebugState((prev) =>
@@ -334,9 +291,6 @@ export const AlertsDashboard: React.FC = () => {
   const active = alerts.filter((a) => a.status === 'active');
   const critical = active.filter((a) => a.severity === 'critical').length;
   const countryCount = new Set(suppliers.map((s) => s.country)).size;
-
-  // Real direct-cost figure from Agent 2 (ImpactCalculator); null until a run.
-  const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
 
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
@@ -523,17 +477,13 @@ export const AlertsDashboard: React.FC = () => {
               zIndex: 20,
             }}>
               <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>
-                Direct Cost Impact {agentImpact ? '(ImpactCalculator)' : ''}
+                Total Exposure at Risk
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {exposureValue != null
-                  ? `$${Math.round(exposureValue).toLocaleString('en-US')}`
-                  : '—'}
+                $420,000
               </div>
               <div style={{ fontSize: 9, color: 'rgba(220,38,38,0.7)', marginTop: 3 }}>
-                {agentMonitor?.tariff_rate != null
-                  ? `${agentMonitor.tariff_rate}% tariff · ${agentMonitor.country ?? ''}`
-                  : 'Run Analysis to calculate exposure'}
+                +$40K from today&apos;s tariff ruling
               </div>
             </div>
           </div>
@@ -607,29 +557,18 @@ export const AlertsDashboard: React.FC = () => {
               display: 'flex', alignItems: 'center', gap: 5,
             }}>
               <Activity size={9} color="#f59e0b" />
-              Live Agent Results
+              Analysis Pipeline
             </div>
-
-            {/* Real Agent 1 (TariffMonitor) + Agent 2 (ImpactCalculator) output */}
-            <LiveAgentResults
-              tariffMonitor={agentMonitor}
-              impact={agentImpact}
-              supplier={agentSupplier}
-              updatedAt={agentsUpdatedAt}
-              live={isRunning}
-            />
-
-            {/* Raw agent stream (start/done/log events) while a run is in flight */}
-            {debugState && (
-              <div style={{ marginTop: 10 }}>
-                <AgentDebugPanel
-                  target={debugState.target}
-                  agentStates={debugState.agentStates}
-                  logs={debugState.logs}
-                  targetIndex={debugState.targetIndex}
-                  totalTargets={debugState.totalTargets}
-                />
-              </div>
+            {debugState ? (
+              <AgentDebugPanel
+                target={debugState.target}
+                agentStates={debugState.agentStates}
+                logs={debugState.logs}
+                targetIndex={debugState.targetIndex}
+                totalTargets={debugState.totalTargets}
+              />
+            ) : (
+              <AgentStatusPanel />
             )}
           </div>
         </div>
