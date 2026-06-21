@@ -61,12 +61,15 @@ def startup_status():
 
 
 @router.get("/pipeline-log")
-def pipeline_log(since: int = 0):
+def pipeline_log(since: int = 0, display_only: bool = False):
     """
     Return live pipeline log events for the current run.
-    `since` is the number of events to skip (client sends back the count it already has).
-    Frontend polls this every 1.5s during loading to show real-time agent activity.
+    `since`        — number of events already seen by the client (skip these).
+    `display_only` — if true, return only events marked display=true (agent steps, phases, results).
+                     Omits internal db/rss/buffer events. Use this for the frontend progress view.
     """
     from core.crew_monitor_pipeline import get_pipeline_log
     events = get_pipeline_log()
+    if display_only:
+        events = [e for e in events if e.get("display")]
     return {"events": events[since:], "total": len(events)}

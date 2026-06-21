@@ -9,6 +9,7 @@ import { AlertsDashboard } from './pages/AlertsDashboard';
 import { AlertsPage } from './pages/AlertsPage';
 import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
+import SettingsPage from './pages/SettingsPage';
 
 /**
  * CoastGuard — App Router
@@ -36,6 +37,7 @@ function App() {
           <Route path="/demo" element={<DemoPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/suppliers" element={<SuppliersPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           {/* Catch-all: redirect unknown routes to dashboard */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

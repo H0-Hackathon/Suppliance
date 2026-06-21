@@ -31,7 +31,7 @@ import api from '../services/api';
  * Replace with the auth token's customer id once Clerk is wired.
  */
 
-const ACTIVE_CUSTOMER_ID = 69;
+const ACTIVE_CUSTOMER_ID = 240;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 

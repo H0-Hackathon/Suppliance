@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { label: 'Settings',    path: '/settings',  icon: Settings },
 ];
 
-const ACTIVE_CUSTOMER_ID = 69;
+const ACTIVE_CUSTOMER_ID = 240;
 
 type DbStatus = 'checking' | 'ok' | 'error';
 

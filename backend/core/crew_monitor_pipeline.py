@@ -63,13 +63,37 @@ _log_lock = threading.Lock()
 _pipeline_log: deque = deque(maxlen=1000)
 
 
+_DISPLAY_EVENTS = {
+    "pipeline_start", "profile_loaded", "profile_warning",
+    "crew_start", "agent_start", "agent_done", "agent_result",
+    "pipeline_done", "crew_error",
+}
+
+_EVENT_CATEGORY = {
+    "pipeline_start": "pipeline", "pipeline_done": "pipeline", "crew_error": "pipeline",
+    "profile_loaded": "profile", "profile_warning": "profile",
+    "crew_start": "phase",
+    "agent_start": "agent", "agent_done": "agent", "agent_result": "agent",
+    "rss_start": "data", "rss_fetched": "data", "rss_match": "data",
+    "rss_buffered": "data", "rss_read_back": "data", "rss_done": "data", "rss_error": "data",
+    "compliance_rss_start": "data", "compliance_rss_done": "data",
+    "alt_rss_start": "data", "alt_rss_done": "data",
+    "db_query": "db", "db_history": "db", "db_past_suppliers": "db",
+    "db_run_history": "db", "db_suppliers": "db", "db_write": "db", "db_error": "db",
+    "run_log": "internal", "hs_correction": "internal",
+    "headlines_saved": "internal", "rss_cleared": "internal",
+}
+
+
 def pipeline_emit(event: str, msg: str) -> None:
-    logger.info(f"[pipeline:{event}] {msg}")
+    logger.debug(f"[pipeline:{event}] {msg}")
     with _log_lock:
         _pipeline_log.append({
             "event": event,
             "msg": msg,
             "ts": datetime.now(timezone.utc).isoformat(),
+            "category": _EVENT_CATEGORY.get(event, "internal"),
+            "display": event in _DISPLAY_EVENTS,
         })
 
 
@@ -1334,6 +1358,18 @@ class MonitorPipeline:
         comp = agent_outputs.get("import_compliance", {})
         adv = agent_outputs.get("adversarial", {})
 
+        pipeline_emit("agent_done", f"2/5 · ImpactCalculator → cost=${ic.get('extra_cost_usd',0):,} severity={ic.get('severity')}")
+        options = af.get("options", [])
+        pipeline_emit("agent_done", f"3/5 · AlternativesFinder → {len(options)} candidates: " +
+                      ", ".join(f"{o.get('supplier')} ({o.get('country')})" for o in options[:3]))
+        if comp.get("no_viable_option"):
+            pipeline_emit("agent_done", f"4/5 · ImportCompliance → NO VIABLE OPTION — {comp.get('reason','')[:80]}")
+        else:
+            pipeline_emit("agent_done",
+                f"4/5 · ImportCompliance → selected {comp.get('recommended_supplier')} ({comp.get('recommended_country')}) "
+                f"feasibility={comp.get('compliance_feasibility')} | {str(comp.get('rationale',''))[:80]}"
+            )
+
         # Auto-BLOCK if compliance found no viable option
         if comp.get("no_viable_option"):
             adv = {
@@ -1348,18 +1384,6 @@ class MonitorPipeline:
             pipeline_emit("agent_done", f"5/5 · Adversarial → AUTO-BLOCK (no viable option from compliance)")
         else:
             pipeline_emit("agent_done", f"5/5 · Adversarial → verdict={adv.get('verdict')} confidence={adv.get('confidence')} | {str(adv.get('recommendation',''))[:80]}")
-
-        pipeline_emit("agent_done", f"2/5 · ImpactCalculator → cost=${ic.get('extra_cost_usd',0):,} severity={ic.get('severity')}")
-        options = af.get("options", [])
-        pipeline_emit("agent_done", f"3/5 · AlternativesFinder → {len(options)} candidates: " +
-                      ", ".join(f"{o.get('supplier')} ({o.get('country')})" for o in options[:3]))
-        if comp.get("no_viable_option"):
-            pipeline_emit("agent_done", f"4/5 · ImportCompliance → NO VIABLE OPTION — {comp.get('reason','')[:80]}")
-        else:
-            pipeline_emit("agent_done",
-                f"4/5 · ImportCompliance → selected {comp.get('recommended_supplier')} ({comp.get('recommended_country')}) "
-                f"feasibility={comp.get('compliance_feasibility')} | {str(comp.get('rationale',''))[:80]}"
-            )
 
         # Emit structured per-agent results for frontend polling (picked up by /monitor/pipeline-log)
         for _agent_key in ["tariff_monitor", "impact_calculator", "alternatives_finder", "import_compliance", "adversarial"]:

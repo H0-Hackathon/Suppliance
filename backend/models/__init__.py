@@ -164,7 +164,7 @@ class HistoricalImpact(Base):
     alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
     # Severity + verdict context
     severity = Column(String(50), nullable=True)
-    adversarial_verdict = Column(String(20), nullable=True)   # CLEAR / CAUTION / BLOCK
+    adversarial_verdict = Column(String(50), nullable=True)   # CLEAR / CAUTION / BLOCK / REJECTED_BY_COMPLIANCE
     # Affected trade dimensions
     affected_hs_codes = Column(JSON, nullable=True)
     affected_countries = Column(JSON, nullable=True)          # full list (country = primary)
@@ -225,7 +225,7 @@ class AgentRun(Base):
     model_used = Column(String(100), nullable=True)
     articles_matched = Column(Integer, default=0)
     alerts_generated = Column(Integer, default=0)
-    adversarial_verdict = Column(String(20), nullable=True)
+    adversarial_verdict = Column(String(50), nullable=True)
     severity = Column(String(50), nullable=True)
     extra_cost_usd = Column(Float, nullable=True)
     event_type = Column(String(100), nullable=True)
@@ -271,7 +271,7 @@ class SupplierRecommendation(Base):
     lead_time_weeks = Column(Integer, nullable=True)
     cost_delta_pct = Column(Integer, nullable=True)
     source = Column(String(100), nullable=True)             # global_suppliers_db / gemini
-    adversarial_verdict = Column(String(20), nullable=True) # verdict from the run that generated this
+    adversarial_verdict = Column(String(50), nullable=True) # verdict from the run that generated this
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

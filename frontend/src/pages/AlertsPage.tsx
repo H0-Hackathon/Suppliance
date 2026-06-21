@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import './AlertsPage.css';
 import api from '../services/api';
 
-const ACTIVE_CUSTOMER_ID = 69;
+const ACTIVE_CUSTOMER_ID = 240;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
