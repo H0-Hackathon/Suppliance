@@ -1,0 +1,65 @@
+flowchart TB
+    subgraph Health["Health"]
+        H1["GET /"]
+        H2["GET /api/health"]
+    end
+
+    subgraph Monitor["api/v2/monitor"]
+        M1["POST /run"]
+        M2["GET /health"]
+        M3["GET /startup-status"]
+        M4["GET /pipeline-log"]
+        M5["POST /collect"]
+    end
+
+    subgraph AlertsAPI["api/v2 alerts"]
+        A1["GET /alerts"]
+        A2["GET /alerts/id"]
+        A3["PUT /alerts/id/dismiss"]
+        A4["PUT /alerts/id/resolve"]
+        D1["GET /disruptions"]
+    end
+
+    subgraph SupplyAPI["api/v2 supply chain"]
+        S1["POST GET /suppliers"]
+        S2["POST GET /products"]
+        S3["POST GET /orders"]
+    end
+
+    subgraph GlobalAPI["api/v2/global-suppliers"]
+        G1["GET /regions"]
+        G2["GET /countries"]
+        G3["GET /categories"]
+        G4["GET /"]
+        G5["GET /globe-data"]
+    end
+
+    subgraph GeoNews["geo and news"]
+        N1["GET /geo/supplier-coords"]
+        N2["GET /news"]
+        N3["GET /news/pipeline"]
+    end
+
+    subgraph DemoAPI["api/v2/demo"]
+        DM1["POST /start"]
+        DM2["WS /ws"]
+        DM3["GET /health"]
+    end
+
+    FE1["AlertsDashboard"] --> M1
+    FE1 --> M4
+    FE1 --> A1
+    FE1 --> A3
+    FE1 --> D1
+    FE1 --> N1
+    FE2["AlertsPage"] --> M1
+    FE2 --> N2
+    FE3["SuppliersPage"] --> G1
+    FE3 --> G4
+    FE4["CommonHeader"] --> H2
+    FE4 --> A1
+    FE5["DemoPage"] -.-> DM2
+
+    M1 --> Orch["CrewAIOrchestrator.run_monitor"]
+    A1 --> ORM["TariffAlert ORM"]
+    M5 --> RSS["scrape_rss_feeds"]

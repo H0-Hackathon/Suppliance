@@ -1,0 +1,41 @@
+flowchart TB
+    subgraph Host["Developer Machine or Cloud VM"]
+        subgraph FE_Node["Frontend"]
+            Vite["Vite Dev Server :5173"]
+            React["React 18 SPA"]
+            Vite --> React
+        end
+
+        subgraph BE_Node["Backend"]
+            Uvicorn["Uvicorn start_server.py"]
+            FastAPI["FastAPI main.py"]
+            subgraph Threads["Background Threads"]
+                T1["startup-pipelines"]
+                T2["rss-startup-scrape"]
+                T3["news-prefetch"]
+                T4["APScheduler optional"]
+            end
+            Uvicorn --> FastAPI
+            FastAPI --> Threads
+        end
+
+        SQLite[("coastguard.db SQLite")]
+        subgraph Data["backend/data"]
+            JSONL1["tariff_dataset.jsonl"]
+            JSONL2["supply_chain_dataset.jsonl"]
+            VDB["vectordb Phase 3"]
+        end
+    end
+
+    subgraph Internet["Internet"]
+        RSSrc["RSS Sources"]
+        GDELTapi["GDELT API"]
+        GeminiAPI["Gemini API"]
+    end
+
+    React -->|HTTP /api proxy to :8000| FastAPI
+    FastAPI --> SQLite
+    FastAPI --> Data
+    FastAPI --> RSSrc
+    FastAPI --> GDELTapi
+    FastAPI --> GeminiAPI

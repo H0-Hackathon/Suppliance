@@ -21,11 +21,11 @@ export interface AgentDebugPanelProps {
 }
 
 const AGENT_META: { key: string; label: string; color: string; subtitle: string }[] = [
-  { key: 'tariff_monitor',      label: 'TariffMonitor',      color: '#3B82F6', subtitle: 'Scanning live trade news' },
-  { key: 'impact_calculator',   label: 'ImpactCalculator',   color: '#F97316', subtitle: 'Calculating cost exposure' },
-  { key: 'alternatives_finder', label: 'AlternativesFinder', color: '#10B981', subtitle: 'Finding backup suppliers' },
-  { key: 'import_compliance',   label: 'ImportCompliance',   color: '#8B5CF6', subtitle: 'Checking customs docs' },
-  { key: 'adversarial',         label: 'Adversarial',        color: '#EF4444', subtitle: 'Stress-testing recommendation' },
+  { key: 'tariff_monitor', label: 'Tariff check', color: '#548C92', subtitle: 'Scanning trade news' },
+  { key: 'impact_calculator', label: 'Cost exposure', color: 'var(--driftwood)', subtitle: 'Calculating duty impact' },
+  { key: 'alternatives_finder', label: 'Alternate suppliers', color: '#2B5260', subtitle: 'Finding backup origins' },
+  { key: 'import_compliance', label: 'Import compliance', color: '#548C92', subtitle: 'Checking customs requirements' },
+  { key: 'adversarial', label: 'Second review', color: '#AB9072', subtitle: 'Reviewing recommendation' },
 ];
 
 function agentSummary(key: string, output: Record<string, unknown> | undefined): string | null {
@@ -72,7 +72,6 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
   const logRef = React.useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = React.useState(true);
 
-  // Auto-scroll log area as new lines arrive
   React.useEffect(() => {
     if (logRef.current && showLogs) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -80,40 +79,37 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
   }, [logs, showLogs]);
 
   return (
-    <div style={{
-      border: '1px solid rgba(56,189,248,0.25)',
-      borderRadius: 10,
-      background: '#0c1628',
-      marginBottom: 20,
+    <div className="ws-run-log" style={{
+      border: '1px solid var(--ws-border)',
+      borderRadius: 'var(--radius-md)',
+      background: 'var(--ws-surface)',
       overflow: 'hidden',
-      fontFamily: 'system-ui, sans-serif',
+      fontFamily: 'var(--font)',
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '10px 16px',
-        background: 'rgba(56,189,248,0.07)',
-        borderBottom: '1px solid rgba(56,189,248,0.15)',
+        padding: '10px 14px',
+        background: 'var(--ws-bg-elevated)',
+        borderBottom: '1px solid var(--ws-border)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#38bdf8', textTransform: 'uppercase' }}>
-            Agent Debug
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ws-text)' }}>
+            Run log
           </span>
-          <span style={{ fontSize: 11, color: '#64748b' }}>—</span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
-            {target ? `Scanning ${target.country_name} (${target.hs_code})` : 'Pipeline Run'}
+          <span style={{ fontSize: 11, color: 'var(--ws-text-muted)' }}>·</span>
+          <span style={{ fontSize: 11, color: 'var(--ws-text-secondary)' }}>
+            {target ? `${target.country_name} (${target.hs_code})` : 'Pipeline run'}
           </span>
         </div>
-        <span style={{ fontSize: 11, color: '#475569' }}>
+        <span style={{ fontSize: 11, color: 'var(--ws-text-muted)' }}>
           {target && targetIndex != null && totalTargets != null
             ? `Target ${targetIndex + 1} of ${totalTargets}`
-            : '5 agents'}
+            : '5 steps'}
         </span>
       </div>
 
       <div style={{ display: 'flex', gap: 0 }}>
-        {/* Agent list */}
-        <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.06)', padding: '12px 0' }}>
+        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid var(--ws-border)', padding: '10px 0' }}>
           {AGENT_META.map((meta) => {
             const state = agentStates[meta.key] ?? { status: 'pending' };
             const isRunning = state.status === 'running';
@@ -124,43 +120,39 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
             return (
               <div key={meta.key} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '7px 16px',
-                opacity: state.status === 'pending' ? 0.4 : 1,
-                transition: 'opacity 0.3s',
+                padding: '6px 14px',
+                opacity: state.status === 'pending' ? 0.45 : 1,
               }}>
-                {/* Status dot */}
                 <div style={{ paddingTop: 3, flexShrink: 0 }}>
                   {isDone ? (
-                    <span style={{ fontSize: 10, color: meta.color, fontWeight: 900 }}>✓</span>
+                    <span style={{ fontSize: 10, color: '#548C92', fontWeight: 700 }}>✓</span>
                   ) : isError ? (
-                    <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 900 }}>✕</span>
+                    <span style={{ fontSize: 10, color: 'var(--critical)', fontWeight: 700 }}>✕</span>
                   ) : (
                     <div style={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: isRunning ? meta.color : '#334155',
-                      animation: isRunning ? 'agent-debug-pulse 0.9s ease-in-out infinite' : 'none',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: isRunning ? meta.color : 'var(--ws-border-strong)',
                     }} />
                   )}
                 </div>
-                {/* Label */}
                 <div style={{ minWidth: 0 }}>
                   <p style={{
-                    fontSize: 12, fontWeight: 600,
-                    color: isDone ? '#e2e8f0' : isRunning ? '#f1f5f9' : '#64748b',
+                    fontSize: 11, fontWeight: 600,
+                    color: isDone ? 'var(--ws-text)' : isRunning ? meta.color : 'var(--ws-text-muted)',
                     margin: 0,
                   }}>
                     {meta.label}
                   </p>
                   {isRunning && (
-                    <p style={{ fontSize: 10, color: '#38bdf8', margin: '2px 0 0', fontStyle: 'italic' }}>
+                    <p style={{ fontSize: 10, color: 'var(--ws-text-muted)', margin: '2px 0 0' }}>
                       {meta.subtitle}…
                     </p>
                   )}
                   {isDone && summary && (
                     <p style={{
-                      fontSize: 10, color: '#64748b', margin: '2px 0 0',
+                      fontSize: 10, color: 'var(--ws-text-muted)', margin: '2px 0 0',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      maxWidth: 160,
+                      maxWidth: 150,
                     }} title={summary}>
                       {summary}
                     </p>
@@ -171,25 +163,24 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
           })}
         </div>
 
-        {/* Log stream */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '6px 12px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid var(--ws-border)',
           }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: '#475569', textTransform: 'uppercase' }}>
-              Output Log
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ws-text-secondary)' }}>
+              Output
             </span>
             <button
               onClick={() => setShowLogs((v) => !v)}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 10, color: '#475569', padding: '2px 6px',
+                fontSize: 10, color: 'var(--ws-text-muted)', padding: '2px 6px',
                 fontFamily: 'inherit',
               }}
             >
-              {showLogs ? '▲ hide' : '▼ show'}
+              {showLogs ? 'Hide' : 'Show'}
             </button>
           </div>
 
@@ -197,24 +188,22 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
             <div
               ref={logRef}
               style={{
-                height: 180, overflowY: 'auto', padding: '8px 12px',
-                background: '#060d1f',
+                height: 160, overflowY: 'auto', padding: '8px 12px',
+                background: 'var(--ws-bg)',
               }}
             >
               {logs.length === 0 ? (
-                <p style={{ fontSize: 11, color: '#334155', fontStyle: 'italic', margin: 0 }}>
-                  Waiting for agent output…
+                <p style={{ fontSize: 11, color: 'var(--ws-text-muted)', margin: 0 }}>
+                  Waiting for run output…
                 </p>
               ) : (
                 logs.map((line, i) => (
-                  <div key={i} style={{
-                    fontSize: 11, color: '#64748b', lineHeight: 1.5,
-                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                  <div key={i} className="ap-log-line" style={{
+                    fontSize: 11, color: 'var(--ws-text-secondary)', lineHeight: 1.5,
                     whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                    padding: '1px 0',
+                    borderBottom: '1px solid var(--ws-border)',
+                    padding: '2px 0',
                   }}>
-                    <span style={{ color: '#1e3a5f', userSelect: 'none' }}>{String(i + 1).padStart(3, '0')} </span>
                     {line}
                   </div>
                 ))
@@ -223,13 +212,6 @@ export const AgentDebugPanel: React.FC<AgentDebugPanelProps> = ({
           )}
         </div>
       </div>
-
-      <style>{`
-        @keyframes agent-debug-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(0.85); }
-        }
-      `}</style>
     </div>
   );
 };

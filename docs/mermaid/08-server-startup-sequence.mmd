@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant Start as start_server.py
+    participant Main as main.py
+    participant T1 as startup-pipelines thread
+    participant T2 as rss-scrape thread
+    participant T3 as news-prefetch thread
+    participant Sched as APScheduler
+    participant Orch as CrewAIOrchestrator
+    participant DB as SQLite
+
+    Start->>Main: uvicorn.run main:app
+    Main->>DB: create_all tables
+
+    Main->>T1: start daemon thread
+    Main->>Sched: start_scheduler if enabled
+    Main->>T2: RSS scrape thread
+    Main->>T3: news prefetch thread
+
+    par Startup pipeline
+        T1->>Orch: run_monitor customer 71
+        Orch->>DB: full pipeline run
+        T1->>Main: update startup_pipeline_status
+    and RSS warm
+        T2->>T2: scrape_rss_feeds
+        T2->>T2: article_cache refresh
+    and News warm
+        T3->>T3: get_headlines cache
+    end

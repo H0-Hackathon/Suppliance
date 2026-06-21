@@ -1,0 +1,54 @@
+flowchart TB
+    subgraph Pages["Pages React Router"]
+        Home["HomePage /"]
+        Dash["AlertsDashboard /dashboard"]
+        AlertsPg["AlertsPage /alerts"]
+        DemoPg["DemoPage /demo"]
+        SuppliersPg["SuppliersPage /suppliers"]
+        SettingsPg["SettingsPage /settings"]
+        AdminPg["AdminPage /admin"]
+    end
+
+    subgraph DashUI["Dashboard UI"]
+        Globe["TradeGlobe react-simple-maps"]
+        LiveAgents["LiveAgentResults"]
+        Debug["AgentDebugPanel"]
+        Output["AgentOutputPanel"]
+        Ticker["NewsTicker"]
+        Timeline["ShipmentRouteTimeline"]
+        Header["CommonHeader"]
+    end
+
+    subgraph Svc["Services"]
+        API["api.js axios"]
+        MsgSvc["messageService.js"]
+    end
+
+    subgraph Legacy["Legacy Admin unrouted"]
+        CustList["CustomerList"]
+        Handoff["HandoffQueue"]
+        Conv["ConversationDetail"]
+    end
+
+    BE["Backend :8000"]
+
+    Home --> Header
+    Dash --> Globe
+    Dash --> LiveAgents
+    Dash --> Debug
+    Dash --> Timeline
+    Dash --> API
+    AlertsPg --> API
+    AlertsPg --> Output
+    SuppliersPg --> API
+    SuppliersPg --> Globe
+    DemoPg --> Globe
+    AdminPg --> API
+    Header --> API
+    Ticker --> API
+
+    Legacy --> API
+    Legacy -.-> Pages
+
+    API --> BE
+    MsgSvc -.-> BE

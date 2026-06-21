@@ -1,0 +1,47 @@
+flowchart LR
+    subgraph Input["Inputs"]
+        BP["BusinessProfile"]
+        Orders["import_orders"]
+        RSSin["RSS articles"]
+        Hist["historical_impacts"]
+        Global["global_suppliers"]
+    end
+
+    subgraph Agents["5-Agent Pipeline"]
+        A1["1 TariffMonitor"]
+        A2["2 ImpactCalculator"]
+        A3["3 AlternativesFinder"]
+        A4["4 ImportCompliance"]
+        A5["5 Adversarial"]
+    end
+
+    subgraph Math["Deterministic"]
+        IE["ImpactEngine"]
+    end
+
+    subgraph Output["Outputs to DB"]
+        DE["disruption_events"]
+        TA["tariff_alerts"]
+        ARL["agent_run_logs"]
+        HI["historical_impacts"]
+        SR["supplier_recommendations"]
+        PH["pipeline_headlines"]
+    end
+
+    BP --> A1
+    RSSin --> A1
+    Orders --> IE
+    Hist --> A2
+    A1 --> A2
+    A1 --> IE
+    IE --> A2
+    Global --> A3
+    A2 --> A3
+    A3 --> A4
+    A4 --> A5
+    A5 --> DE
+    A5 --> TA
+    A5 --> ARL
+    A5 --> HI
+    A5 --> SR
+    A5 --> PH

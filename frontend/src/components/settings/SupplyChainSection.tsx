@@ -5,9 +5,9 @@ import { SectionHeader, SettingsCard, FieldRow, SelectInput, TagInput, SaveButto
 interface Props { onSave: () => void; saving: boolean; }
 
 const RISK_LEVELS = [
-  { id: 'low',    label: 'Low',    color: '#10b981', desc: 'Disruptions under 10% supply impact are acceptable' },
-  { id: 'medium', label: 'Medium', color: '#f59e0b', desc: 'Alert on anything with >5% supply probability' },
-  { id: 'high',   label: 'High',   color: '#ef4444', desc: 'Maximum vigilance — alert on all upstream signals' },
+  { id: 'low',    label: 'Low',    color: 'var(--harbor)', desc: 'Disruptions under 10% supply impact are acceptable' },
+  { id: 'medium', label: 'Medium', color: 'var(--harbor-light)', desc: 'Alert on anything with >5% supply probability' },
+  { id: 'high',   label: 'High',   color: 'var(--driftwood)', desc: 'Maximum vigilance — alert on all upstream signals' },
 ] as const;
 
 export const SupplyChainSection: React.FC<Props> = ({ onSave, saving }) => {
@@ -156,7 +156,7 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving }) => {
                   cursor: 'pointer',
                   textAlign: 'center',
                   transition: 'all 0.15s',
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'var(--font)',
                 }}
               >
                 <div style={{
@@ -171,7 +171,7 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving }) => {
                 <div style={{
                   fontSize: 12.5,
                   fontWeight: isSelected ? 700 : 500,
-                  color: isSelected ? color : 'rgba(160,150,120,0.55)',
+                  color: isSelected ? color : 'var(--text-muted)',
                   marginBottom: 5,
                 }}>
                   {label}

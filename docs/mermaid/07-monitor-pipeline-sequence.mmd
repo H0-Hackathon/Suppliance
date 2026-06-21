@@ -1,0 +1,72 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant UI as AlertsDashboard
+    participant API as POST /api/v2/monitor/run
+    participant Orch as CrewAIOrchestrator
+    participant Pipe as MonitorPipeline
+    participant RSS as article_cache
+    participant Impact as ImpactEngine
+    participant Agents as CrewAI or Mock
+    participant DB as SQLite Aurora
+    participant Log as pipeline_log
+
+    User->>UI: Click Run Monitor
+    UI->>API: POST /monitor/run
+    API->>Pipe: clear_pipeline_log
+    API->>Orch: run_monitor
+    Orch->>Pipe: run
+
+    Pipe->>DB: SELECT business_profiles
+    Pipe->>DB: SELECT import_orders
+    Pipe->>DB: SELECT historical_impacts
+    Pipe->>DB: SELECT supplier_recommendations
+    Pipe->>DB: SELECT agent_runs
+    Pipe->>DB: INSERT agent_runs running
+    Pipe->>Log: pipeline_emit run_start
+
+    Pipe->>RSS: fast_run or cache
+    RSS-->>Pipe: scored articles
+    Pipe->>DB: INSERT rss_articles
+    Pipe->>Log: pipeline_emit rss_done
+
+    alt USE_MOCK_LLM true
+        Pipe->>Pipe: _mock_run 25pct VN tariff
+    else USE_MOCK_LLM false
+        Pipe->>Agents: TariffMonitor
+        Agents-->>Pipe: event JSON
+        Pipe->>Impact: direct_cost exposure_score
+        Impact-->>Pipe: dollar numbers
+        Pipe->>Agents: ImpactCalculator
+        Pipe->>DB: SELECT global_suppliers
+        Pipe->>Agents: AlternativesFinder
+        Pipe->>Agents: ImportCompliance
+        Pipe->>Agents: Adversarial
+        Agents-->>Pipe: agent_outputs
+    end
+
+    Pipe->>DB: INSERT disruption_events
+    Pipe->>DB: INSERT tariff_alerts
+    Pipe->>DB: INSERT agent_run_logs
+    Pipe->>DB: INSERT historical_impacts
+    Pipe->>DB: INSERT supplier_recommendations
+    Pipe->>DB: INSERT pipeline_headlines
+    Pipe->>DB: DELETE rss_articles
+    Pipe->>DB: UPDATE agent_runs completed
+    Pipe->>Log: pipeline_emit run_complete
+
+    API-->>UI: MonitorRunResponse
+
+    loop every 1.5 seconds
+        UI->>API: GET pipeline-log
+        API->>Log: get_pipeline_log
+        API-->>UI: events array
+    end
+
+    UI->>API: GET alerts disruptions suppliers
+    API->>DB: SELECT
+    API-->>UI: refresh UI
+
+    User->>UI: Dismiss or Resolve
+    UI->>API: PUT alerts dismiss resolve
+    API->>DB: UPDATE tariff_alerts

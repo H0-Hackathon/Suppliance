@@ -6,40 +6,40 @@ interface Props { onSave: () => void; saving: boolean; }
 
 const THEMES = [
   {
-    id: 'terminal-dark',
-    label: 'Terminal Dark',
-    desc: 'Deep black with amber accents',
-    preview: { bg: '#090909', accent: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
+    id: 'coastguard',
+    label: 'CoastGuard',
+    desc: 'Warm sand and ocean tones — default',
+    preview: { bg: '#faf8f5', accent: '#548C92', border: 'rgba(84,140,146,0.25)' },
     default: true,
   },
   {
-    id: 'midnight-blue',
-    label: 'Midnight Blue',
-    desc: 'Deep navy with cyan highlights',
-    preview: { bg: '#050914', accent: '#38bdf8', border: 'rgba(56,189,248,0.2)' },
+    id: 'sea-glass',
+    label: 'Sea Glass',
+    desc: 'Light and airy with soft teal accents',
+    preview: { bg: '#f5f1ec', accent: '#B4D7D8', border: 'rgba(180,215,216,0.4)' },
   },
   {
-    id: 'slate-professional',
-    label: 'Slate Professional',
-    desc: 'Balanced charcoal for extended use',
-    preview: { bg: '#0f1117', accent: '#8b8bff', border: 'rgba(139,139,255,0.2)' },
+    id: 'harbor',
+    label: 'Harbor',
+    desc: 'Deep ocean tones for focused work',
+    preview: { bg: '#2B5260', accent: '#B4D7D8', border: 'rgba(180,215,216,0.3)' },
   },
   {
     id: 'high-contrast',
     label: 'High Contrast',
-    desc: 'Maximum legibility for trading floors',
-    preview: { bg: '#000000', accent: '#ffffff', border: 'rgba(255,255,255,0.25)' },
+    desc: 'Maximum legibility',
+    preview: { bg: '#ffffff', accent: '#2B5260', border: 'rgba(43,82,96,0.3)' },
   },
 ] as const;
 
 const DENSITIES = [
   { id: 'comfortable', label: 'Comfortable', desc: 'More whitespace, easier scanning' },
   { id: 'compact',     label: 'Compact',     desc: 'Denser layout, more data per screen' },
-  { id: 'ultra',       label: 'Ultra Dense', desc: 'Bloomberg-style maximum density' },
+  { id: 'ultra',       label: 'Ultra Dense', desc: 'Maximum information density' },
 ] as const;
 
 export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
-  const [theme, setTheme] = useState('terminal-dark');
+  const [theme, setTheme] = useState('coastguard');
   const [density, setDensity] = useState('comfortable');
   const [animations, setAnimations] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -110,8 +110,8 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                   <div style={{
                     fontSize: 12,
                     fontWeight: isSelected ? 600 : 400,
-                    color: isSelected ? '#e8e3d8' : 'rgba(160,150,120,0.6)',
-                    fontFamily: 'Inter, sans-serif',
+                    color: isSelected ? 'var(--ocean)' : 'var(--text-muted)',
+                    fontFamily: 'var(--font)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -135,7 +135,7 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                     fontSize: 10.5,
                     color: 'rgba(120,110,80,0.4)',
                     marginTop: 2,
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'var(--font)',
                   }}>
                     {desc}
                   </div>
@@ -166,20 +166,20 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                   border: `1px solid ${isSelected ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.07)'}`,
                   background: isSelected ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
                   cursor: 'pointer',
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'var(--font)',
                   textAlign: 'center',
                   transition: 'all 0.15s',
                 }}
               >
                 <LayoutGrid
                   size={isSelected ? 18 : 16}
-                  color={isSelected ? '#f59e0b' : 'rgba(160,150,120,0.35)'}
+                  color={isSelected ? '#548C92' : 'rgba(160,150,120,0.35)'}
                   style={{ marginBottom: 6 }}
                 />
                 <div style={{
                   fontSize: 12,
                   fontWeight: isSelected ? 600 : 400,
-                  color: isSelected ? '#e8e3d8' : 'rgba(140,130,100,0.55)',
+                  color: isSelected ? 'var(--ocean)' : 'var(--text-muted)',
                   marginBottom: 4,
                 }}>
                   {label}

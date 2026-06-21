@@ -13,8 +13,10 @@ import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/T
 import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import { NewsTicker } from '../components/dashboard/NewsTicker';
 import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
+import { SoftButton } from '../components/motion';
+import { ShipmentRouteTimeline } from '../components/maritime/ShipmentRouteTimeline';
+import { buildRouteLegs, portByCountry } from '../data/maritimePorts';
 import api from '../services/api';
-
 /**
  * AlertsDashboard — Main CoastGuard command center.
  *
@@ -85,12 +87,11 @@ interface DebugState {
 }
 
 const MAP_LAYERS = [
-  { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
-  { id: 'routes',      label: 'Exposure Routes', color: '#f59e0b' },
-  { id: 'risk',        label: 'Risk Zones',      color: '#dc2626' },
-  { id: 'alt',         label: 'Alternatives',    color: '#14b8a6' },
+  { id: 'suppliers', label: 'Suppliers', color: '#548C92' },
+  { id: 'routes', label: 'Exposure routes', color: '#548C92' },
+  { id: 'risk', label: 'Risk zones', color: 'var(--driftwood)' },
+  { id: 'alt', label: 'Alternatives', color: '#AB9072' },
 ];
-
 export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
   const [disruptions, setDisruptions] = React.useState<DisruptionPoint[]>([]);
@@ -293,37 +294,44 @@ export const AlertsDashboard: React.FC = () => {
     {
       key: 'exposure',
       available: totalExposure > 0,
-      label: 'Trade Exposure',
+      label: 'Trade exposure',
       value: fmtMoney(totalExposure),
       sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
+      context: 'Duty and landed cost on open POs',
+      icon: DollarSign,
+      emphasize: true,
     },
     {
       key: 'proposed',
       available: proposedSuppliersCount > 0,
-      label: 'Proposed Suppliers',
+      label: 'Proposed suppliers',
       value: String(proposedSuppliersCount),
-      sub: 'before compliance review',
-      icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
+      sub: 'Before compliance review',
+      context: 'Alternate origins under review',
+      icon: Users,
+      emphasize: false,
     },
     {
       key: 'events',
       available: active.length > 0,
-      label: 'Critical Trade Events',
+      label: 'Critical trade events',
       value: String(criticalEvents),
       sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)',
+      context: 'Tariff or policy changes affecting lanes',
+      icon: AlertTriangle,
+      emphasize: false,
     },
     {
       key: 'countries',
       available: suppliers.length > 0,
-      label: 'Countries Monitored',
+      label: 'Countries monitored',
       value: String(countryCount),
       sub: `${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`,
-      icon: MapPin, color: '#10b981', bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)',
+      context: 'Origins linked to Port of Los Angeles imports',
+      icon: MapPin,
+      emphasize: false,
     },
   ].filter((c) => c.available);
-
   // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
@@ -333,139 +341,136 @@ export const AlertsDashboard: React.FC = () => {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 
+  const timelineCountry =
+    agentSupplier ??
+    suppliers.find((s) => s.country)?.country ??
+    'China';
+  const routeLegs = buildRouteLegs(timelineCountry);
+  const originPort = portByCountry(timelineCountry);
+
   return (
-    <main className="page-with-sidebar" style={{
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--bg)',
-      overflow: 'hidden',
-    }}>
-      {/* ── Top Hero Bar ── */}
-      <div style={{
-        padding: '12px 24px',
-        borderBottom: '1px solid rgba(245,158,11,0.08)',
+    <main
+      className="page-with-sidebar cg-workspace"
+      style={{
+        height: '100vh',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-        background: 'rgba(14,14,10,0.95)',
-        backdropFilter: 'blur(12px)',
-      }}>
-        <div>
-          <h1 style={{
-            fontSize: 17,
-            fontWeight: 800,
-            color: '#e8e3d8',
-            letterSpacing: '-0.3px',
-            fontFamily: 'Inter, sans-serif',
-            lineHeight: 1,
-            marginBottom: 4,
-          }}>
-            Trade Risk Intelligence
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'rgba(130,120,90,0.8)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{
-                width: 5, height: 5, borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 5px #10b981',
-                display: 'inline-block',
-                animation: 'pulse-dot 2s ease-in-out infinite',
-              }} />
-              Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
-            </span>
-            <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
-              Updated {syncTime}
-            </span>
-            {critical > 0 && (
-              <>
-                <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
-                <span style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  color: '#dc2626', fontWeight: 600,
-                }}>
-                  <AlertTriangle size={11} />
-                  {critical} critical alert{critical !== 1 ? 's' : ''}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.18)',
-            borderRadius: 6,
-            padding: '5px 12px',
-            fontSize: 10,
-            color: '#6ee7b7',
-            fontWeight: 600,
-          }}>
-            <Activity size={10} color="#10b981" />
-            SYSTEMS NOMINAL
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <header className="cg-workspace-header">
+        <div
+          style={{
+            padding: '20px 32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 6 }}>
+              Operations workspace
+            </h1>
+            <div className="ws-meta" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: 'var(--ws-harbor)',
+                    display: 'inline-block',
+                  }}
+                />
+                Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
+              </span>
+              <span style={{ color: 'var(--ws-border-strong)' }}>·</span>
+              <span className="ws-meta-muted">Updated {syncTime}</span>
+              {critical > 0 && (
+                <>
+                  <span style={{ color: 'var(--ws-border-strong)' }}>·</span>
+                  <span
+                    className="ws-critical-pulse"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      color: 'var(--ws-critical)',
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    <AlertTriangle size={14} />
+                    {critical} critical alert{critical !== 1 ? 's' : ''}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
 
-          <button
-            className="btn-accent"
+          <SoftButton
+            variant="accent"
             onClick={handleRunMonitor}
             disabled={isRunning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}
           >
-            <RefreshCw
-              size={12}
-              style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }}
-            />
-            {isRunning ? 'Scanning…' : 'Run Analysis'}
-          </button>
+            <RefreshCw size={14} style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }} />
+            {isRunning ? 'Analyzing…' : 'Run analysis'}
+          </SoftButton>
         </div>
-      </div>
+      </header>
 
-      {/* ── Main Body ── */}
-      <div style={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: '1fr 276px',
-        minHeight: 0,
-        overflow: 'hidden',
-      }}>
-        {/* ── Centre: Map ── */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: '1fr 300px',
           minHeight: 0,
           overflow: 'hidden',
-        }}>
-          {/* Map container */}
-          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <TradeGlobe suppliers={tradeGlobeSuppliers} disruptions={disruptions} />
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            overflow: 'hidden',
+            padding: '16px 16px 0 16px',
+          }}
+        >
+          <div
+            className="ws-map-frame"
+            style={{
+              flex: 1,
+              position: 'relative',
+              minHeight: 0,
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}
+          >
+            <TradeGlobe
+              suppliers={tradeGlobeSuppliers}
+              disruptions={disruptions}
+              activeLayers={activeLayers}
+            />
 
-            {/* Layer toggles overlay */}
-            <div style={{
-              position: 'absolute',
-              top: 14, right: 14,
-              background: 'rgba(14,14,10,0.88)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(245,158,11,0.12)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              zIndex: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'rgba(150,140,100,0.7)',
-                display: 'flex', alignItems: 'center', gap: 5,
-                marginBottom: 2,
-              }}>
-                <Layers size={9} color="#f59e0b" />
-                <span>Map Layers</span>
+            <div
+              className="ws-layers-panel"
+              style={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                padding: '12px 16px',
+                zIndex: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div className="ws-layers-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <Layers size={12} color="var(--ws-harbor)" />
+                <span>Map layers</span>
               </div>
               {MAP_LAYERS.map((layer) => {
                 const on = activeLayers.has(layer.id);
@@ -474,108 +479,86 @@ export const AlertsDashboard: React.FC = () => {
                     key={layer.id}
                     onClick={() => toggleLayer(layer.id)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 7,
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      padding: '2px 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '3px 0',
                     }}
                   >
-                    <div style={{
-                      width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                      background: on ? layer.color : 'rgba(255,255,255,0.06)',
-                      border: `1px solid ${on ? layer.color : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'background 0.15s',
-                    }} />
-                    <span style={{
-                      fontSize: 10.5,
-                      color: on ? '#e8e3d8' : 'rgba(130,120,90,0.6)',
-                      fontFamily: 'Inter, sans-serif',
-                    }}>
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 3,
+                        flexShrink: 0,
+                        background: on ? layer.color : 'var(--ws-surface)',
+                        border: `1.5px solid ${on ? layer.color : 'var(--ws-border)'}`,
+                        transition: 'background 0.2s',
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: on ? 'var(--ws-text)' : 'var(--ws-text-muted)',
+                        fontFamily: 'var(--font)',
+                      }}
+                    >
                       {layer.label}
                     </span>
                   </button>
                 );
               })}
             </div>
-
           </div>
 
-          {/* Bottom: live trade/supply-chain news ticker */}
-          <div style={{ height: 56, flexShrink: 0 }}>
+          <div style={{ height: 52, flexShrink: 0, marginTop: 12 }}>
             <NewsTicker customerId={ACTIVE_CUSTOMER_ID} lastRunAt={lastRunAt} />
           </div>
         </div>
 
-        {/* ── Right Sidebar ── */}
-        <div style={{
-          borderLeft: '1px solid rgba(245,158,11,0.08)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          background: 'rgba(14,14,10,0.5)',
-        }}>
-          {/* Intelligence KPI cards — derived from real monitor results;
-              individual cards hide when their underlying data is unavailable. */}
+        <div className="ws-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {kpiCards.length > 0 && (
-            <div style={{
-              padding: '12px 14px',
-              borderBottom: '1px solid rgba(245,158,11,0.07)',
-              flexShrink: 0,
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-                marginBottom: 9,
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <Globe size={9} color="#f59e0b" />
-                Trade Intelligence
+            <div className="ws-panel-section" style={{ padding: '20px 20px 16px', flexShrink: 0 }}>
+              <div className="ws-section-label" style={{ marginBottom: 12 }}>
+                <Globe size={12} color="var(--ws-harbor)" />
+                Lane snapshot
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-                {kpiCards.map(({ key, label, value, sub, icon: Icon, color, bg, border }) => (
-                  <div key={key} style={{
-                    background: bg,
-                    border: `1px solid ${border}`,
-                    borderRadius: 8,
-                    padding: '10px 11px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                      <Icon size={10} color={color} />
-                      <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {kpiCards.map(({ key, label, value, sub, context, icon: Icon, emphasize }) => (
+                  <div key={key} className="ws-kpi">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Icon size={13} color="var(--ws-harbor)" />
+                      <span className="ws-kpi-label">{label}</span>
                     </div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 800,
-                      color, fontVariantNumeric: 'tabular-nums',
-                      lineHeight: 1, marginBottom: 3,
-                    }}>
-                      {value}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
+                    <div className={`ws-kpi-value${emphasize ? ' ws-kpi-value--emphasis' : ''}`}>{value}</div>
+                    <div className="ws-kpi-sub">{sub}</div>
+                    {context && <div className="ws-kpi-context">{context}</div>}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Analysis Pipeline — live agent debug stream while running, else status */}
-          <div style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: '12px 14px',
-            scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(245,158,11,0.1) transparent',
-          }}>
-            <div style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-              marginBottom: 9,
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}>
-              <Activity size={9} color="#f59e0b" />
-              Live Agent Results
+          <div style={{ flex: 1, overflow: 'auto', padding: '20px', scrollbarWidth: 'thin' }}>
+            <div className="ws-section-label" style={{ marginBottom: 12 }}>
+              <Activity size={12} color="var(--ws-harbor)" />
+              Trade assessment
             </div>
 
-            {/* Real agent output: TariffMonitor, ImpactCalculator, and (real
-                LLM mode) AlternativesFinder, ImportCompliance, Adversarial */}
+            <ShipmentRouteTimeline
+              legs={routeLegs}
+              title="Active shipment lane"
+              subtitle={
+                originPort
+                  ? `${originPort.name} → Singapore → Port of Los Angeles`
+                  : `${timelineCountry} → Singapore → Port of Los Angeles`
+              }
+              compact
+            />
+
             <LiveAgentResults
               agents={agentResults}
               agentStatus={agentStatus}
@@ -584,13 +567,9 @@ export const AlertsDashboard: React.FC = () => {
               live={isRunning}
             />
 
-            {/* Raw agent stream (start/done/log events) while a run is in flight */}
             {debugState && (
-              <div style={{ marginTop: 10 }}>
-                <AgentDebugPanel
-                  agentStates={debugState.agentStates}
-                  logs={debugState.logs}
-                />
+              <div style={{ marginTop: 16 }}>
+                <AgentDebugPanel agentStates={debugState.agentStates} logs={debugState.logs} />
               </div>
             )}
           </div>

@@ -1,0 +1,27 @@
+flowchart TB
+    User["SMB Importer / Ops Manager"]
+    Admin["Admin / Support"]
+
+    subgraph Platform["CoastGuard Platform"]
+        FE["React SPA - Vite :5173"]
+        BE["FastAPI Backend - Uvicorn :8000"]
+        DB[("SQLite / Aurora PostgreSQL")]
+    end
+
+    subgraph External["External Data and AI"]
+        RSS["RSS Feeds - SupplyChainDive, Loadstar, Fibre2Fashion"]
+        GDELT["GDELT DOC API - keyless"]
+        GNews["Google News RSS"]
+        Gemini["Google Gemini via CrewAI"]
+        Chroma["ChromaDB RAG - Phase 3"]
+    end
+
+    User -->|Dashboard, run monitor, resolve alerts| FE
+    Admin -->|Admin page, legacy handoff| FE
+    FE -->|REST /api/v2/* and WebSocket demo| BE
+    BE --> DB
+    BE --> RSS
+    BE --> GDELT
+    BE --> GNews
+    BE --> Gemini
+    BE -.->|planned| Chroma

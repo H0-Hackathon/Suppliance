@@ -17,18 +17,19 @@ interface NewsTickerProps {
 }
 
 const CATEGORY_COLOR: Record<string, string> = {
-  Tariffs: '#f59e0b',
-  Trade: '#fbbf24',
-  Shipping: '#38bdf8',
-  'Supply Chain': '#14b8a6',
-  Customs: '#a78bfa',
-  Manufacturing: '#f97316',
-  Geopolitics: '#ef4444',
-  Logistics: '#10b981',
+  Tariffs: '#548C92',
+  Trade: '#B4D7D8',
+  Shipping: '#6da3a8',
+  'Supply Chain': '#548C92',
+  Customs: '#AB9072',
+  Manufacturing: '#AB9072',
+  Geopolitics: 'var(--driftwood)',
+  Logistics: '#548C92',
 };
-const catColor = (c: string) => CATEGORY_COLOR[c] || '#94a3b8';
+const catColor = (c: string) => CATEGORY_COLOR[c] || '#AB9072';
 
-const REFRESH_MS = 5 * 60 * 1000; // auto-refresh every 5 min
+const REFRESH_MS = 5 * 60 * 1000;
+const SCROLL_PX_PER_SEC = 70;
 
 function relativeTime(ts: number): string {
   if (!ts) return '';
@@ -39,8 +40,6 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-const SCROLL_PX_PER_SEC = 70; // constant, readable ticker speed
-
 export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt }) => {
   const [items, setItems] = React.useState<NewsItem[]>([]);
   const [paused, setPaused] = React.useState(false);
@@ -49,7 +48,6 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
   const trackRef = React.useRef<HTMLDivElement>(null);
 
   const fetchNews = React.useCallback(async () => {
-    // First try pipeline-specific headlines for this customer
     try {
       const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>(
         '/v2/news/pipeline',
@@ -60,37 +58,27 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
         setUpdatedAt(res.data.fetched_at ?? Date.now() / 1000);
         return;
       }
-    } catch {
-      // fall through to generic news
-    }
+    } catch { /* fallback */ }
 
-    // Fallback: generic trade/supply-chain RSS feed
     try {
       const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>('/v2/news');
       if (Array.isArray(res.data.items) && res.data.items.length) {
         setItems(res.data.items);
         setUpdatedAt(res.data.fetched_at ?? Date.now() / 1000);
       }
-    } catch {
-      // backend offline — ticker simply stays empty/hidden
-    }
+    } catch { /* offline */ }
   }, [customerId]);
 
-  // Fetch on mount and auto-refresh every 5 min
   React.useEffect(() => {
     fetchNews();
     const id = setInterval(fetchNews, REFRESH_MS);
     return () => clearInterval(id);
   }, [fetchNews]);
 
-  // Re-fetch pipeline articles whenever a new pipeline run completes
   React.useEffect(() => {
     if (lastRunAt) fetchNews();
   }, [lastRunAt, fetchNews]);
 
-  // Measure the rendered track and derive a duration that yields a constant
-  // scroll speed regardless of how many headlines are present. The track holds
-  // two copies, so translating by -50% scrolls exactly one copy width.
   React.useLayoutEffect(() => {
     if (!trackRef.current || items.length === 0) return;
     const oneCopyPx = trackRef.current.scrollWidth / 2;
@@ -99,10 +87,8 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
     }
   }, [items]);
 
-  // Hide entirely when there's no real data to show.
   if (items.length === 0) return null;
 
-  // Duplicate the list so the marquee loops seamlessly.
   const loop = [...items, ...items];
 
   const renderItem = (it: NewsItem, i: number) => {
@@ -117,42 +103,27 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
         className="ticker-item"
         title={`${it.title} — ${it.source}`}
       >
-        <span style={{
-          fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
-          color, background: `${color}1f`, border: `1px solid ${color}40`,
-          borderRadius: 3, padding: '1px 5px', flexShrink: 0,
-        }}>{it.category}</span>
-        <span style={{ width: 4, height: 4, borderRadius: '50%', background: color, flexShrink: 0 }} />
-        <span style={{ color: '#e8e3d8', fontWeight: 600, whiteSpace: 'nowrap' }}>{it.title}</span>
-        <span style={{ color: 'rgba(150,140,100,0.85)', whiteSpace: 'nowrap' }}>· {it.source}</span>
-        {rel && <span style={{ color: 'rgba(120,110,80,0.7)', whiteSpace: 'nowrap' }}>· {rel}</span>}
-        <ExternalLink size={9} color="rgba(150,140,100,0.5)" style={{ flexShrink: 0 }} />
-        <span style={{ color: 'rgba(245,158,11,0.25)', padding: '0 4px' }}>•</span>
+        <span className="ticker-cat" style={{ color, borderColor: `${color}40`, background: `${color}18` }}>
+          {it.category}
+        </span>
+        <span style={{ color: 'var(--ws-text)', fontWeight: 500, whiteSpace: 'nowrap' }}>{it.title}</span>
+        <span style={{ color: 'var(--ws-text-muted)', whiteSpace: 'nowrap' }}>· {it.source}</span>
+        {rel && <span style={{ color: 'var(--ws-text-muted)', whiteSpace: 'nowrap' }}>· {rel}</span>}
+        <ExternalLink size={9} color="var(--ws-text-muted)" style={{ flexShrink: 0 }} />
+        <span style={{ color: 'var(--ws-border)', padding: '0 4px' }}>·</span>
       </a>
     );
   };
 
   return (
-    <div style={{
-      height: '100%', display: 'flex', alignItems: 'center',
-      background: 'rgba(20,20,18,0.95)', borderTop: '1px solid rgba(245,158,11,0.12)',
-      overflow: 'hidden',
-    }}>
-      {/* Live label */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-        padding: '0 14px', height: '100%',
-        background: 'linear-gradient(90deg, rgba(220,38,38,0.18), rgba(220,38,38,0))',
-        borderRight: '1px solid rgba(245,158,11,0.1)',
-      }}>
-        <Radio size={12} color="#ef4444" style={{ animation: 'pulse-dot 1.4s ease-in-out infinite' }} />
-        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fca5a5' }}>LIVE</span>
-        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(200,185,140,0.85)' }}>TRADE WIRE</span>
+    <div className="ws-ticker">
+      <div className="ws-ticker-label">
+        <Radio size={12} color="var(--ws-harbor)" />
+        <span>Trade news</span>
       </div>
 
-      {/* Marquee viewport */}
       <div
-        style={{ flex: 1, overflow: 'hidden', position: 'relative', height: '100%', display: 'flex', alignItems: 'center' }}
+        className="ws-ticker-viewport"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
@@ -160,32 +131,23 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
           ref={trackRef}
           className="ticker-track"
           style={{
-            display: 'flex', alignItems: 'center', whiteSpace: 'nowrap',
-            width: 'max-content', flexShrink: 0, willChange: 'transform',
             animation: `ticker-scroll ${durationSec}s linear infinite`,
             animationPlayState: paused ? 'paused' : 'running',
           }}
         >
           {loop.map(renderItem)}
         </div>
-        {/* edge fades */}
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 24, background: 'linear-gradient(90deg, rgba(20,20,18,0.95), transparent)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 40, background: 'linear-gradient(270deg, rgba(20,20,18,0.95), transparent)', pointerEvents: 'none' }} />
+        <div className="ws-ticker-fade ws-ticker-fade--left" />
+        <div className="ws-ticker-fade ws-ticker-fade--right" />
       </div>
 
-      {/* Updated stamp */}
       {updatedAt && (
-        <div style={{
-          flexShrink: 0, padding: '0 12px', fontSize: 8.5,
-          color: 'rgba(120,110,80,0.7)', fontFamily: 'JetBrains Mono, monospace',
-          borderLeft: '1px solid rgba(245,158,11,0.08)', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
-        }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 5px #10b981' }} />
+        <div className="ws-ticker-time">
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ws-harbor)' }} />
           {new Date(updatedAt * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
 
-      {/* Scoped marquee styles */}
       <style>{`
         @keyframes ticker-scroll {
           0% { transform: translateX(0); }
@@ -194,15 +156,30 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
         .ticker-item {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           font-size: 11px;
-          font-family: Inter, system-ui, sans-serif;
+          font-family: var(--font);
           text-decoration: none;
           padding: 0 2px;
           transition: opacity 0.15s;
         }
-        .ticker-item:hover { opacity: 0.7; }
-        .ticker-item:hover span { text-decoration: none; }
+        .ticker-item:hover { opacity: 0.75; }
+        .ticker-cat {
+          font-size: 10px;
+          font-weight: 500;
+          border-radius: 4px;
+          padding: 2px 6px;
+          border: 1px solid;
+          flex-shrink: 0;
+        }
+        .ticker-track {
+          display: flex;
+          align-items: center;
+          white-space: nowrap;
+          width: max-content;
+          flex-shrink: 0;
+          will-change: transform;
+        }
       `}</style>
     </div>
   );

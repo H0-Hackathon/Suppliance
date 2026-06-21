@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import './AlertsPage.css';
 import api from '../services/api';
+import { ShipmentRouteTimeline } from '../components/maritime/ShipmentRouteTimeline';
+import { buildRouteLegs, portByCountry } from '../data/maritimePorts';
 
 const ACTIVE_CUSTOMER_ID = 69;
 
@@ -63,7 +65,7 @@ const money = (n: number | null | undefined): string =>
 const cleanSource = (src?: string | null): string => {
   if (!src) return '—';
   const lower = src.toLowerCase();
-  if (lower === 'rss' || lower === 'gemini_knowledge' || lower === 'gemini') return 'Live Trade Intelligence Feed';
+  if (lower === 'rss' || lower === 'gemini_knowledge' || lower === 'gemini') return 'Trade wire feed';
   return src;
 };
 
@@ -123,11 +125,11 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 const EVENT_COLOR: Record<string, string> = {
-  pipeline_start: '#f59e0b', profile_loaded: '#94a3b8', crew_start: '#a78bfa',
-  agent_start: '#60a5fa', agent_done: '#10b981', agent_result: '#14b8a6',
-  db_write: '#34d399', db_query: '#6ee7b7', rss_cleared: '#94a3b8',
-  headlines_saved: '#6ee7b7', run_log: '#94a3b8', pipeline_done: '#10b981',
-  hs_correction: '#f59e0b', crew_error: '#ef4444',
+  pipeline_start: '#548C92', profile_loaded: '#8a7560', crew_start: '#2B5260',
+  agent_start: '#548C92', agent_done: '#3d7a6e', agent_result: '#548C92',
+  db_write: '#3d7a6e', db_query: '#6da3a8', rss_cleared: '#8a7560',
+  headlines_saved: '#6da3a8', run_log: '#8a7560', pipeline_done: '#3d7a6e',
+  hs_correction: 'var(--driftwood)', crew_error: 'var(--critical)',
 };
 
 export function AlertsPage() {
@@ -367,13 +369,13 @@ export function AlertsPage() {
   const liveAgents = useMemo(() => {
     const order = ['tariff_monitor', 'impact_calculator', 'alternatives_finder', 'import_compliance', 'adversarial'];
     const labels: Record<string, string> = {
-      tariff_monitor: 'TariffMonitor', impact_calculator: 'ImpactCalculator',
-      alternatives_finder: 'AlternativesFinder', import_compliance: 'ImportCompliance',
-      adversarial: 'Adversarial',
+      tariff_monitor: 'Tariff Monitor', impact_calculator: 'Impact Calculator',
+      alternatives_finder: 'Alternatives Finder', import_compliance: 'Import Compliance',
+      adversarial: 'Adversarial Review',
     };
     const colors: Record<string, string> = {
-      tariff_monitor: '#f59e0b', impact_calculator: '#ef4444',
-      alternatives_finder: '#14b8a6', import_compliance: '#10b981', adversarial: '#a78bfa',
+      tariff_monitor: 'var(--harbor)', impact_calculator: 'var(--driftwood)',
+      alternatives_finder: '#2B5260', import_compliance: '#3d7a6e', adversarial: '#AB9072',
     };
     return order.map((key) => ({
       key, label: labels[key], color: colors[key], done: !!agentResults[key],
@@ -381,7 +383,7 @@ export function AlertsPage() {
   }, [agentResults]);
 
   return (
-    <div className="ap-root">
+    <div className="ap-root cg-workspace">
       {/* ── INBOX ─────────────────────────────────────────────────────────── */}
       <aside className="ap-inbox">
         <div className="ap-inbox-header">
@@ -576,7 +578,7 @@ export function AlertsPage() {
                     <span className="ap-context-value">{absoluteTime(selected.raw.created_at)}</span>
                   </div>
                   <div className="ap-context-cell">
-                    <span className="ap-context-label">Intelligence Source</span>
+                    <span className="ap-context-label">Trade feed</span>
                     <span className="ap-context-value">{cleanSource(detail.tm.source)}</span>
                   </div>
                   {Array.isArray(detail.tm.affected_hs_codes) && detail.tm.affected_hs_codes.length > 0 && (
@@ -587,6 +589,18 @@ export function AlertsPage() {
                   )}
                 </div>
               </div>
+            </section>
+
+            <section className="ap-section">
+              <h2 className="ap-section-title">Shipment route</h2>
+              <ShipmentRouteTimeline
+                legs={buildRouteLegs(detail.country)}
+                subtitle={
+                  portByCountry(detail.country)
+                    ? `${portByCountry(detail.country)!.name} → Singapore → Port of Los Angeles`
+                    : `${detail.country} → Singapore → Port of Los Angeles`
+                }
+              />
             </section>
 
             {/* Impact Assessment */}
@@ -629,9 +643,9 @@ export function AlertsPage() {
               </div>
             </section>
 
-            {/* Agent Reasoning Timeline */}
+            {/* Assessment steps */}
             <section className="ap-section">
-              <h2 className="ap-section-title">Agent Reasoning Timeline</h2>
+              <h2 className="ap-section-title">Assessment steps</h2>
               <div className="ap-tl">
                 {detail.steps.map((step, i) => (
                   <div
@@ -656,9 +670,9 @@ export function AlertsPage() {
               </div>
             </section>
 
-            {/* Source Intelligence */}
+            {/* Sources & trade wire */}
             <section className="ap-section">
-              <h2 className="ap-section-title">Source Intelligence</h2>
+              <h2 className="ap-section-title">Sources & trade wire</h2>
               <div className="ap-sources">
                 {detail.alertSources.length === 0 && detail.relatedNews.length === 0 && (
                   <div className="ap-prose-card"><p className="ap-prose" style={{ margin: 0 }}>No linked sources for this alert.</p></div>

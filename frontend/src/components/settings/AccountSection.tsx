@@ -56,16 +56,16 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
           background: 'linear-gradient(135deg, rgba(245,158,11,0.3) 0%, rgba(245,158,11,0.1) 100%)',
           border: '2px solid rgba(245,158,11,0.35)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 22, fontWeight: 700, color: '#f59e0b',
+          fontSize: 22, fontWeight: 700, color: '#548C92',
           flexShrink: 0,
         }}>
           {name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e8e3d8', letterSpacing: '-0.3px' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ocean)', letterSpacing: '-0.3px' }}>
             {name || 'Your Name'}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(140,130,100,0.6)', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
             {email}
           </div>
           <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -75,7 +75,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
                 fontWeight: 600,
                 background: 'rgba(245,158,11,0.12)',
                 border: '1px solid rgba(245,158,11,0.25)',
-                color: '#f59e0b',
+                color: '#548C92',
                 padding: '2px 7px',
                 borderRadius: 4,
                 letterSpacing: '0.06em',
@@ -94,7 +94,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
             alignItems: 'center',
             gap: 5,
             fontSize: 10.5,
-            color: '#10b981',
+            color: '#3d7a6e',
             background: 'rgba(16,185,129,0.08)',
             border: '1px solid rgba(16,185,129,0.2)',
             padding: '4px 9px',
@@ -158,14 +158,14 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
                   alignItems: 'center',
                   gap: 10,
                   transition: 'all 0.15s',
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'var(--font)',
                 }}
               >
                 <span style={{
                   fontSize: 9.5,
                   fontWeight: 700,
                   background: isSelected ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.07)',
-                  color: isSelected ? '#f59e0b' : 'rgba(160,150,120,0.5)',
+                  color: isSelected ? '#548C92' : 'rgba(160,150,120,0.5)',
                   padding: '2px 6px',
                   borderRadius: 4,
                   letterSpacing: '0.06em',
@@ -176,7 +176,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
                 <span style={{
                   fontSize: 12,
                   fontWeight: isSelected ? 600 : 400,
-                  color: isSelected ? '#e8e3d8' : 'rgba(140,130,100,0.6)',
+                  color: isSelected ? 'var(--ocean)' : 'var(--text-secondary)',
                 }}>
                   {label}
                 </span>
@@ -202,9 +202,9 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
           marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ShieldCheck size={15} color={twoFa ? '#10b981' : '#ef4444'} />
+            <ShieldCheck size={15} color={twoFa ? '#3d7a6e' : '#b54a3a'} />
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#e8e3d8' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ocean)' }}>
                 Two-Factor Authentication
               </div>
               <div style={{ fontSize: 11, color: 'rgba(120,110,80,0.5)' }}>
@@ -221,9 +221,9 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
               borderRadius: 6,
               border: `1px solid ${twoFa ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
               background: twoFa ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
-              color: twoFa ? '#10b981' : '#f59e0b',
+              color: twoFa ? '#3d7a6e' : '#548C92',
               cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'var(--font)',
             }}
           >
             {twoFa ? 'Manage' : 'Enable'}
@@ -242,7 +242,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
             borderRadius: 8,
             color: 'rgba(160,150,120,0.65)',
             fontSize: 12.5,
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'var(--font)',
             cursor: 'pointer',
           }}
         >
@@ -268,7 +268,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
             flex: 1,
             padding: '9px 12px',
             background: 'rgba(255,255,255,0.03)',
-            color: 'rgba(160,150,120,0.6)',
+            color: 'var(--text-muted)',
             fontSize: 11.5,
             fontFamily: 'JetBrains Mono, monospace',
             overflow: 'hidden',
@@ -285,13 +285,13 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
               background: copied ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.08)',
               border: 'none',
               borderLeft: '1px solid rgba(255,255,255,0.09)',
-              color: copied ? '#10b981' : '#f59e0b',
+              color: copied ? '#3d7a6e' : '#548C92',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 5,
               fontSize: 11.5,
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'var(--font)',
               fontWeight: 600,
               transition: 'all 0.15s',
               flexShrink: 0,
@@ -312,7 +312,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
         padding: '16px 20px',
         background: 'rgba(239,68,68,0.03)',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#ef4444', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#b54a3a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
           <Trash2 size={13} />
           Danger Zone
         </div>
@@ -325,7 +325,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
             border: '1px solid rgba(239,68,68,0.2)',
             color: 'rgba(239,120,120,0.65)',
             fontSize: 12,
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'var(--font)',
             cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
@@ -340,7 +340,7 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving }) => {
             border: '1px solid rgba(239,68,68,0.25)',
             color: 'rgba(239,100,100,0.7)',
             fontSize: 12,
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'var(--font)',
             cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>

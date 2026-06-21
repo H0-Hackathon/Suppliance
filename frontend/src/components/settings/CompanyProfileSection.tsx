@@ -95,10 +95,10 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving }) => {
                     borderRadius: 7,
                     border: `1px solid ${isSelected ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.07)'}`,
                     background: isSelected ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)',
-                    color: isSelected ? '#f59e0b' : 'rgba(160,150,120,0.55)',
+                    color: isSelected ? '#548C92' : 'var(--text-muted)',
                     fontSize: 11.5,
                     fontWeight: isSelected ? 600 : 400,
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'var(--font)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'all 0.15s',
@@ -141,13 +141,13 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving }) => {
           background: 'rgba(245,158,11,0.12)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <Globe size={13} color="#f59e0b" />
+          <Globe size={13} color="#548C92" />
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#e8e3d8', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ocean)', marginBottom: 4 }}>
             How this personalises your monitoring
           </div>
-          <div style={{ fontSize: 11.5, color: 'rgba(140,130,100,0.6)', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             Your industry and revenue range determine which tariff schedules, trade regulations, and supplier risk benchmarks are pre-loaded in your dashboard. Changing these settings will immediately recalibrate alert severity scoring and peer comparison metrics.
           </div>
         </div>

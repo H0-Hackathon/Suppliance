@@ -1,0 +1,170 @@
+erDiagram
+    customers ||--|| business_profiles : has
+    customers ||--o{ suppliers : owns
+    customers ||--o{ products : tracks
+    customers ||--o{ import_orders : places
+    customers ||--o{ tariff_alerts : receives
+    customers ||--o{ agent_runs : executes
+    customers ||--o{ rss_articles : buffers
+    customers ||--o{ pipeline_headlines : headlines
+    customers ||--o{ historical_impacts : history
+    customers ||--o{ supplier_recommendations : recommendations
+    customers ||--o{ agent_run_logs : logs
+
+    suppliers ||--o{ import_orders : fulfills
+    products ||--o{ import_orders : contains
+    import_orders ||--o{ tariff_alerts : triggers
+    disruption_events ||--o{ tariff_alerts : visualizes
+    tariff_alerts ||--o{ agent_run_logs : produced_by
+    tariff_alerts ||--o{ supplier_recommendations : suggests
+    tariff_alerts ||--o{ historical_impacts : records
+
+    customers {
+        int id PK
+        string clerk_id UK
+        string name
+        string company_name
+        string industry
+        bool is_active
+        datetime created_at
+    }
+
+    business_profiles {
+        int id PK
+        int customer_id FK
+        json primary_hs_codes
+        json primary_origin_countries
+        json rss_keywords
+        string destination_country
+        string risk_tolerance
+        float typical_order_value_usd
+    }
+
+    suppliers {
+        int id PK
+        int customer_id FK
+        string name
+        string country
+        float reliability_score
+        bool is_active
+    }
+
+    products {
+        int id PK
+        int customer_id FK
+        string hs_code
+        string description
+        float unit_value_usd
+        string import_country
+    }
+
+    import_orders {
+        int id PK
+        int customer_id FK
+        int supplier_id FK
+        int product_id FK
+        float order_value_usd
+        int quantity
+        datetime expected_delivery_date
+        string status
+    }
+
+    disruption_events {
+        int id PK
+        string incident_id UK
+        string event_type
+        string title
+        float latitude
+        float longitude
+        json hs_codes
+        json countries_affected
+        string severity
+        float confidence
+    }
+
+    tariff_alerts {
+        int id PK
+        int customer_id FK
+        int order_id FK
+        int disruption_event_id FK
+        string alert_type
+        string severity
+        text summary
+        text agent_output
+        string status
+        datetime resolved_at
+    }
+
+    historical_impacts {
+        int id PK
+        int customer_id FK
+        int alert_id FK
+        string run_id
+        string event_type
+        string country
+        float actual_loss
+        string adversarial_verdict
+        json affected_hs_codes
+        int articles_matched
+    }
+
+    agent_runs {
+        int id PK
+        string run_id UK
+        int customer_id FK
+        string status
+        string adversarial_verdict
+        string severity
+        float extra_cost_usd
+        int alerts_generated
+    }
+
+    agent_run_logs {
+        int id PK
+        string run_id
+        int customer_id FK
+        int tariff_alert_id FK
+        string agent_name
+        text input_context
+        text output_json
+    }
+
+    rss_articles {
+        int id PK
+        string run_id
+        int customer_id FK
+        string title
+        string url
+        int relevance_score
+        string agent_target
+    }
+
+    pipeline_headlines {
+        int id PK
+        string run_id
+        int customer_id FK
+        string title
+        string category
+        int relevance_score
+    }
+
+    supplier_recommendations {
+        int id PK
+        int alert_id FK
+        int customer_id FK
+        string run_id
+        string supplier_name
+        string country
+        int lead_time_weeks
+        int cost_delta_pct
+    }
+
+    global_suppliers {
+        int id PK
+        string supplier_id UK
+        string business_name
+        string country
+        string product_category
+        float supplier_rating
+        int lead_time_days
+    }

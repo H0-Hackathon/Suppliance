@@ -5,10 +5,10 @@ import { SectionHeader, SettingsCard, FieldRow, TextInput, ToggleSwitch, SaveBut
 interface Props { onSave: () => void; saving: boolean; }
 
 const SEVERITY_LEVELS = [
-  { id: 'critical', label: 'Critical',   color: '#ef4444', desc: 'Immediate supply chain risk' },
-  { id: 'high',     label: 'High',       color: '#f97316', desc: 'Significant disruption likely' },
-  { id: 'medium',   label: 'Medium',     color: '#f59e0b', desc: 'Moderate potential impact' },
-  { id: 'low',      label: 'Low',        color: '#3b82f6', desc: 'Informational signals' },
+  { id: 'critical', label: 'Critical',   color: 'var(--critical)', desc: 'Immediate supply chain risk' },
+  { id: 'high',     label: 'High',       color: 'var(--driftwood)', desc: 'Significant disruption likely' },
+  { id: 'medium',   label: 'Medium',     color: 'var(--harbor)', desc: 'Moderate potential impact' },
+  { id: 'low',      label: 'Low',        color: 'var(--harbor-light)', desc: 'Informational signals' },
 ] as const;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
@@ -59,7 +59,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
               left: 0,
               height: '100%',
               width: `${(3 - activeIndex) / 3 * 100}%`,
-              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+              background: 'linear-gradient(90deg, #548C92, #f97316)',
               borderRadius: 2,
               transition: 'width 0.3s',
             }} />
@@ -96,7 +96,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                     fontWeight: minSeverity === sev ? 700 : 400,
                     color: minSeverity === sev ? cfg.color : 'rgba(140,130,100,0.5)',
                     whiteSpace: 'nowrap',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'var(--font)',
                     transition: 'color 0.15s',
                   }}>
                     {cfg.label}
@@ -119,9 +119,9 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
           fontSize: 12,
           color: 'rgba(200,190,160,0.8)',
         }}>
-          <BellRing size={13} color="#f59e0b" />
-          Showing <strong style={{ color: '#e8e3d8' }}>{minSeverity.charAt(0).toUpperCase() + minSeverity.slice(1)}</strong> and above.{' '}
-          Approx. <strong style={{ color: '#e8e3d8' }}>
+          <BellRing size={13} color="#548C92" />
+          Showing <strong style={{ color: 'var(--ocean)' }}>{minSeverity.charAt(0).toUpperCase() + minSeverity.slice(1)}</strong> and above.{' '}
+          Approx. <strong style={{ color: 'var(--ocean)' }}>
             {minSeverity === 'low' ? '40–60' : minSeverity === 'medium' ? '15–25' : minSeverity === 'high' ? '5–10' : '1–3'}
           </strong> alerts/week based on your supply chain profile.
         </div>
@@ -208,9 +208,9 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px solid rgba(255,255,255,0.09)',
                     borderRadius: 7,
-                    color: '#e8e3d8',
+                    color: 'var(--ocean)',
                     fontSize: 12.5,
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'var(--font)',
                     padding: '9px 12px',
                     outline: 'none',
                     colorScheme: 'dark',

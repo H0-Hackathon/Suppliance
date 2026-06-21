@@ -1,0 +1,430 @@
+/* CoastGuard — public marketing home */
+
+.mkt-root {
+  position: relative;
+  min-height: 100vh;
+  font-family: var(--font);
+  color: var(--mkt-journey-text, var(--ocean));
+  background: #E0D7CF;
+  --mkt-journey-text: #2B5260;
+  --mkt-journey-text-secondary: #4a6670;
+  --mkt-journey-kicker: #AB9072;
+  --mkt-journey-nav-bg: #E0D7CF;
+}
+
+.mkt-content {
+  position: relative;
+  z-index: 1;
+}
+
+.mkt-journey-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mkt-journey-bg {
+  position: absolute;
+  inset: 0;
+}
+
+.mkt-journey-route-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Nav ── */
+.mkt-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--mkt-journey-nav-bg) 94%, transparent);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.mkt-nav-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.mkt-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--mkt-journey-text);
+  margin-right: auto;
+}
+
+.mkt-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--sea-glass) 45%, transparent);
+  color: var(--mkt-journey-text);
+}
+
+.mkt-nav-name {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mkt-nav-links {
+  display: flex;
+  gap: var(--space-8);
+}
+
+.mkt-nav-links a {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--mkt-journey-text-secondary);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.mkt-nav-links a:hover {
+  color: var(--mkt-journey-text);
+}
+
+.mkt-nav-signin {
+  flex-shrink: 0;
+}
+
+/* ── Hero ── */
+.mkt-hero {
+  padding: var(--space-10) 0 0;
+}
+
+.mkt-hero-copy {
+  margin: 0 auto;
+  padding: 0 var(--space-8) var(--space-6);
+  max-width: min(1280px, 100%);
+}
+
+.mkt-hero h1 {
+  font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+  font-weight: 800;
+  color: var(--mkt-journey-text);
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  max-width: 16ch;
+  margin-bottom: var(--space-5);
+}
+
+.mkt-hero-lead {
+  font-size: clamp(1.05rem, 1.8vw, 1.25rem);
+  color: var(--mkt-journey-text-secondary);
+  line-height: var(--leading-relaxed);
+  max-width: 42rem;
+  margin-bottom: var(--space-6);
+}
+
+.mkt-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.mkt-hero-map {
+  width: 100%;
+  min-height: min(44vh, 400px);
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.mkt-hero-map-svg {
+  display: block;
+  width: 100%;
+  height: min(44vh, 400px);
+}
+
+/* ── Scenario ── */
+.mkt-scenario {
+  padding: var(--space-12) var(--space-8) var(--space-10);
+}
+
+.mkt-scenario-layout {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.mkt-kicker {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--mkt-journey-kicker);
+  letter-spacing: 0.03em;
+  margin-bottom: var(--space-3);
+}
+
+.mkt-scenario-intro h2 {
+  font-size: clamp(1.875rem, 3.8vw, 2.625rem);
+  font-weight: 800;
+  color: var(--mkt-journey-text);
+  letter-spacing: -0.03em;
+  line-height: var(--leading-tight);
+  max-width: 22ch;
+  margin-bottom: var(--space-6);
+}
+
+.mkt-scenario-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 240px);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.mkt-scenario-main {
+  max-width: 42rem;
+}
+
+.mkt-scenario-main p {
+  font-size: var(--text-lg);
+  color: var(--mkt-journey-text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+.mkt-scenario-main strong {
+  color: var(--mkt-journey-text);
+  font-weight: 600;
+}
+
+.mkt-scenario-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.mkt-scenario-route {
+  margin: 0;
+}
+
+.mkt-scenario-route svg {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+}
+
+.mkt-scenario-route-label {
+  font-size: 8px;
+  font-family: var(--font);
+  fill: var(--mkt-journey-text-secondary);
+  font-weight: 500;
+}
+
+.mkt-scenario-route-label--hold {
+  fill: var(--mkt-journey-kicker);
+  font-weight: 700;
+}
+
+.mkt-scenario-route-caption {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--mkt-journey-text-secondary);
+  opacity: 0.8;
+}
+
+.mkt-facts {
+  border-left: 3px solid var(--mkt-journey-kicker);
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.mkt-facts dt {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mkt-journey-kicker);
+  margin-bottom: 2px;
+}
+
+.mkt-facts dd {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--mkt-journey-text);
+  line-height: 1.45;
+}
+
+/* ── What you get (left-to-right reveal) ── */
+.mkt-helps {
+  padding: var(--space-10) var(--space-8);
+}
+
+.mkt-helps-intro {
+  max-width: 1080px;
+  margin: 0 auto var(--space-6);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--mkt-journey-kicker);
+  letter-spacing: 0.02em;
+}
+
+.mkt-helps-track {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.mkt-helps-line {
+  height: 2px;
+  background: color-mix(in srgb, var(--harbor) 25%, transparent);
+  border-radius: 1px;
+  margin-bottom: var(--space-8);
+  overflow: hidden;
+}
+
+.mkt-helps-line-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--harbor);
+  border-radius: 1px;
+  transform-origin: left center;
+}
+
+.mkt-helps-beats {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: 0;
+  margin: 0;
+}
+
+.mkt-helps-beat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--mkt-journey-text);
+  letter-spacing: -0.01em;
+}
+
+.mkt-helps-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--driftwood);
+}
+
+/* ── Closing CTA ── */
+.mkt-close {
+  padding: var(--space-10) var(--space-8) var(--space-12);
+}
+
+.mkt-close-inner {
+  max-width: 480px;
+  margin-left: var(--space-8);
+}
+
+.mkt-close-inner h2 {
+  font-size: clamp(1.625rem, 2.8vw, 2rem);
+  font-weight: 800;
+  color: var(--mkt-journey-text);
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-3);
+}
+
+.mkt-close-inner p {
+  font-size: var(--text-lg);
+  color: var(--mkt-journey-text-secondary);
+  margin-bottom: var(--space-6);
+  line-height: var(--leading-relaxed);
+}
+
+.mkt-close .btn-primary {
+  background: var(--sand-light);
+  color: var(--ocean);
+}
+
+.mkt-close .btn-primary:hover {
+  background: var(--sand);
+  color: var(--ocean-deep);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .mkt-scenario-body {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+
+  .mkt-scenario-aside {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-8);
+  }
+
+  .mkt-facts {
+    border-left: none;
+    border-top: 3px solid var(--mkt-journey-kicker);
+    padding-left: 0;
+    padding-top: var(--space-5);
+    flex: 1;
+    min-width: 180px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+  }
+
+  .mkt-facts > div {
+    min-width: 120px;
+  }
+
+  .mkt-close-inner {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .mkt-nav-inner {
+    padding: var(--space-3) var(--space-5);
+    gap: var(--space-4);
+  }
+
+  .mkt-nav-links {
+    display: none;
+  }
+
+  .mkt-hero-copy {
+    padding: 0 var(--space-5) var(--space-5);
+  }
+
+  .mkt-scenario,
+  .mkt-helps,
+  .mkt-close {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
+  .mkt-hero h1 {
+    max-width: none;
+  }
+
+  .mkt-scenario-aside {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

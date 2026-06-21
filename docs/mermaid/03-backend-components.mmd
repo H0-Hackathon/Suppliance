@@ -1,0 +1,88 @@
+flowchart TB
+    Main["main.py FastAPI App"]
+
+    subgraph API["api/v2"]
+        DemoAPI["demo_routes"]
+        MonitorAPI["monitor_routes"]
+        AlertAPI["alert_routes"]
+        SupplierAPI["supplier_routes"]
+        DisruptionAPI["disruption_routes"]
+        GeoAPI["geo_routes"]
+        NewsAPI["news_routes"]
+        GlobalAPI["global_supplier_routes"]
+    end
+
+    subgraph Core["core"]
+        Orch["crew_orchestrator"]
+        Pipeline["crew_monitor_pipeline"]
+        Impact["impact_engine"]
+        MonAgent["monitor_agent"]
+        Clusterer["event_clusterer"]
+        Cache["article_cache"]
+        Scheduler["scheduler"]
+        Rules["agent_rules"]
+        CompCrew["crew_import_compliance"]
+        DocsCrew["crew_trade_docs"]
+    end
+
+    subgraph Coll["collectors"]
+        MonColl["monitor.py newspaper3k"]
+        TarColl["tariff.py trafilatura"]
+    end
+
+    subgraph Svc["services"]
+        NewsFeed["news_feed"]
+        GdeltSvc["gdelt"]
+        ImpactSvc["impact_service"]
+        Coords["coordinates"]
+    end
+
+    subgraph DataLayer["data layer"]
+        DBLayer["database.py"]
+        Models["models 14 tables"]
+        Schemas["schemas.py"]
+    end
+
+    subgraph Demo["demo"]
+        Autoplay["autoplay_controller"]
+        CoT["cot_data"]
+        Crisis["crisis_455pm_data"]
+    end
+
+    Settings["config.py Settings"]
+
+    Main --> API
+    Main --> Scheduler
+    Main --> Cache
+    Main --> NewsFeed
+    Main --> Settings
+
+    MonitorAPI --> Orch
+    AlertAPI --> Models
+    SupplierAPI --> Models
+    DisruptionAPI --> Models
+    GeoAPI --> Coords
+    NewsAPI --> NewsFeed
+    GlobalAPI --> Models
+    DemoAPI --> Autoplay
+
+    Orch --> Pipeline
+    Orch --> CompCrew
+    Orch --> DocsCrew
+
+    Pipeline --> MonColl
+    Pipeline --> Impact
+    Pipeline --> ImpactSvc
+    Pipeline --> MonAgent
+    Pipeline --> Clusterer
+    Pipeline --> Cache
+    Pipeline --> Models
+    Pipeline -.-> Rules
+
+    MonColl --> TarColl
+    TarColl --> GdeltSvc
+
+    API --> Schemas
+    API --> DBLayer
+    DBLayer --> Models
+    Pipeline --> Settings

@@ -33,7 +33,6 @@ export interface ImpactCalculatorOutput {
   reasons?: string[];
 }
 
-// Agents 3-5 are LLM-backed (CrewAI + Gemini); shapes are loose.
 export type AgentResults = Record<string, any>;
 export type AgentStatusMap = Record<string, 'running' | 'done'>;
 
@@ -54,35 +53,44 @@ interface ChainStep {
   color: string;
 }
 
-// The fixed reasoning chain, in execution order.
 const CHAIN: ChainStep[] = [
-  { key: 'tariff_monitor', label: 'TariffMonitor', icon: TrendingUp, color: '#f59e0b' },
-  { key: 'impact_calculator', label: 'ImpactCalculator', icon: Zap, color: '#dc2626' },
-  { key: 'alternatives_finder', label: 'AlternativesFinder', icon: Search, color: '#14b8a6' },
-  { key: 'import_compliance', label: 'ImportCompliance', icon: ShieldCheck, color: '#10b981' },
-  { key: 'adversarial', label: 'Adversarial', icon: Gavel, color: '#a78bfa' },
+  { key: 'tariff_monitor', label: 'Tariff check', icon: TrendingUp, color: 'var(--harbor)' },
+  { key: 'impact_calculator', label: 'Cost exposure', icon: Zap, color: 'var(--driftwood)' },
+  { key: 'alternatives_finder', label: 'Alternate suppliers', icon: Search, color: 'var(--ocean)' },
+  { key: 'import_compliance', label: 'Import compliance', icon: ShieldCheck, color: 'var(--harbor)' },
+  { key: 'adversarial', label: 'Second review', icon: Gavel, color: 'var(--driftwood)' },
 ];
 
 const SEVERITY_COLOR: Record<string, string> = {
-  critical: '#dc2626', high: '#ef4444', medium: '#f59e0b', low: '#10b981',
-  caution: '#f59e0b', clear: '#10b981', block: '#dc2626',
+  critical: 'var(--critical)', high: 'var(--driftwood)', medium: 'var(--driftwood-muted)', low: 'var(--harbor)',
+  caution: 'var(--driftwood)', clear: 'var(--harbor)', block: 'var(--critical)',
 };
 const sev = (s?: string | null) => (s || 'unknown').toString().toLowerCase();
-const sevColor = (s?: string | null) => SEVERITY_COLOR[sev(s)] || '#6b7280';
+const sevColor = (s?: string | null) => SEVERITY_COLOR[sev(s)] || 'var(--driftwood)';
 const money = (n?: number | null) => (n == null ? '—' : `$${Math.round(n).toLocaleString('en-US')}`);
 
-const Badge: React.FC<{ text: string; color: string }> = ({ text, color }) => (
-  <span style={{
-    fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
-    color, background: `${color}18`, border: `1px solid ${color}30`,
-    borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase', whiteSpace: 'nowrap',
-  }}>{text}</span>
-);
+const Tag: React.FC<{ text: string; tone?: 'harbor' | 'warning' | 'critical' }> = ({
+  text,
+  tone = 'harbor',
+}) => {
+  const styles: Record<string, React.CSSProperties> = {
+    harbor: { color: 'var(--harbor)', background: 'var(--low-soft)', border: '1px solid rgba(84, 140, 146, 0.22)' },
+    warning: { color: 'var(--driftwood)', background: 'var(--warning-soft)', border: '1px solid rgba(171, 144, 114, 0.22)' },
+    critical: { color: 'var(--critical)', background: 'var(--critical-soft)', border: '1px solid rgba(181, 74, 58, 0.22)' },
+  };
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 500,
+      borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap',
+      ...styles[tone],
+    }}>{text}</span>
+  );
+};
 
 const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-    <span style={{ fontSize: 9.5, color: 'rgba(150,140,100,0.7)' }}>{label}</span>
-    <span style={{ fontSize: 10, color: '#e8e3d8', fontWeight: 600, textAlign: 'right' }}>{children}</span>
+    <span style={{ fontSize: 10, color: 'var(--ws-text-muted)' }}>{label}</span>
+    <span style={{ fontSize: 10, color: 'var(--ws-text)', fontWeight: 600, textAlign: 'right' }}>{children}</span>
   </div>
 );
 
@@ -90,12 +98,11 @@ const Reasons: React.FC<{ items?: string[] }> = ({ items }) =>
   items && items.length > 0 ? (
     <ul style={{ margin: '6px 0 0', paddingLeft: 14, listStyle: 'disc' }}>
       {items.slice(0, 3).map((r, i) => (
-        <li key={i} style={{ fontSize: 9, color: 'rgba(180,170,140,0.85)', lineHeight: 1.4, marginBottom: 2 }}>{r}</li>
+        <li key={i} style={{ fontSize: 10, color: 'var(--ws-text-secondary)', lineHeight: 1.4, marginBottom: 2 }}>{r}</li>
       ))}
     </ul>
   ) : null;
 
-// ── Per-agent collapsed summary (shown in the header) ─────────────────────────
 function headerSummary(key: string, agents: AgentResults, status: StepStatus): React.ReactNode {
   if (status !== 'done') return null;
   const d = agents[key];
@@ -104,35 +111,27 @@ function headerSummary(key: string, agents: AgentResults, status: StepStatus): R
     case 'tariff_monitor': {
       const country = (d.affected_countries?.[0] ?? d.country) as string | null;
       return <>
-        {d.tariff_rate != null && <Badge text={`+${d.tariff_rate}%`} color="#ef4444" />}
-        {d.event_type && <Badge text={d.event_type} color="#f59e0b" />}
-        {country && <Badge text={country} color="#94a3b8" />}
+        {d.tariff_rate != null && <Tag text={`+${d.tariff_rate}% duty`} tone="warning" />}
+        {country && <Tag text={country} />}
       </>;
     }
     case 'impact_calculator':
-      return <>
-        <Badge text={money(d.direct_cost ?? d.extra_cost_usd)} color="#dc2626" />
-        <Badge text={sev(d.severity)} color={sevColor(d.severity)} />
-      </>;
+      return <Tag text={money(d.direct_cost ?? d.extra_cost_usd)} tone="warning" />;
     case 'alternatives_finder': {
-      // Backend returns d.options[] — frontend previously looked for d.alternatives[]
       const n = Array.isArray(d.options) ? d.options.length : Array.isArray(d.alternatives) ? d.alternatives.length : 0;
-      return n ? <Badge text={`${n} option${n !== 1 ? 's' : ''}`} color="#14b8a6" /> : null;
+      return n ? <Tag text={`${n} option${n !== 1 ? 's' : ''}`} /> : null;
     }
     case 'import_compliance': {
-      if (d.no_viable_option) return <Badge text="BLOCKED" color="#dc2626" />;
-      return d.recommended_country
-        ? <Badge text={d.recommended_country} color="#10b981" />
-        : null;
+      if (d.no_viable_option) return <Tag text="Blocked" tone="critical" />;
+      return d.recommended_country ? <Tag text={d.recommended_country} /> : null;
     }
     case 'adversarial':
-      return d.verdict ? <Badge text={d.verdict} color={sevColor(d.verdict)} /> : null;
+      return d.verdict ? <Tag text={d.verdict} color={sevColor(d.verdict)} /> : null;
     default:
       return null;
   }
 }
 
-// ── Per-agent expanded detail ────────────────────────────────────────────────
 function agentDetail(key: string, agents: AgentResults, supplier?: string | null): React.ReactNode {
   const d = agents[key];
   if (!d) return null;
@@ -143,7 +142,7 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
     return (
       <>
         {d.event && (
-          <div style={{ fontSize: 10.5, color: '#f1f5f9', fontWeight: 600, lineHeight: 1.35, marginBottom: 7 }}>{d.event}</div>
+          <div style={{ fontSize: 11, color: 'var(--ws-text)', fontWeight: 600, lineHeight: 1.35, marginBottom: 7 }}>{d.event}</div>
         )}
         {country && <Row label="Country">{country}</Row>}
         {supplier && <Row label="Supplier">{supplier}</Row>}
@@ -151,13 +150,13 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
         {Array.isArray(d.affected_hs_codes) && d.affected_hs_codes.length > 0 && (
           <Row label="HS codes">{d.affected_hs_codes.join(', ')}</Row>
         )}
-        <Row label="Tariff change">{d.tariff_rate != null ? <span style={{ color: '#ef4444' }}>+{d.tariff_rate}%</span> : '—'}</Row>
+        <Row label="Tariff change">{d.tariff_rate != null ? <span style={{ color: 'var(--driftwood)' }}>+{d.tariff_rate}%</span> : '—'}</Row>
         {d.confidence != null && <Row label="Confidence">{Math.round(d.confidence * 100)}%</Row>}
         <Row label="Source">{d.source || d.risk_source || '—'}</Row>
         {d.source_url && (
           <a href={d.source_url} target="_blank" rel="noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 9.5, color: '#60a5fa', textDecoration: 'none' }}>
-            <ExternalLink size={10} /> View source headline
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 10, color: 'var(--harbor)', textDecoration: 'none' }}>
+            <ExternalLink size={10} /> View source
           </a>
         )}
       </>
@@ -168,17 +167,17 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+          <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--driftwood)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
             {money(d.direct_cost ?? d.extra_cost_usd)}
           </span>
-          <span style={{ fontSize: 9, color: 'rgba(150,140,100,0.7)' }}>direct cost</span>
+          <span style={{ fontSize: 10, color: 'var(--ws-text-muted)' }}>direct cost</span>
         </div>
         <Row label="Affected orders">{d.affected_orders ?? 0}</Row>
         {d.risk_score != null && <Row label="Risk score">{d.risk_score}</Row>}
         {d.eta_risk && <Row label="ETA risk">{d.eta_risk}</Row>}
         {d.supplier_dependency != null && <Row label="Supplier dependency">{Math.round(d.supplier_dependency * 100)}%</Row>}
         {d.historical_basis && (
-          <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.75)', marginTop: 5, lineHeight: 1.4 }}>{d.historical_basis}</div>
+          <div style={{ fontSize: 10, color: 'var(--ws-text-muted)', marginTop: 5, lineHeight: 1.4 }}>{d.historical_basis}</div>
         )}
         <Reasons items={d.reasons} />
       </>
@@ -186,36 +185,32 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
   }
 
   if (key === 'alternatives_finder') {
-    // Backend returns d.options[]; legacy shape used d.alternatives[]
     const altList: any[] = Array.isArray(d.options) ? d.options : Array.isArray(d.alternatives) ? d.alternatives : [];
     return (
       <>
         {altList.length === 0 && (
-          <div style={{ fontSize: 10, color: 'rgba(150,140,100,0.7)' }}>No alternatives returned.</div>
+          <div style={{ fontSize: 10, color: 'var(--ws-text-muted)' }}>No alternatives returned.</div>
         )}
         {altList.slice(0, 3).map((alt, i) => (
-          <div key={i} style={{ marginBottom: 7, paddingBottom: 7, borderBottom: i < Math.min(altList.length, 3) - 1 ? '1px solid rgba(245,158,11,0.08)' : 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e8e3d8' }}>
+          <div key={i} style={{ marginBottom: 7, paddingBottom: 7, borderBottom: i < Math.min(altList.length, 3) - 1 ? '1px solid var(--ws-border)' : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ws-text)' }}>
                 #{i + 1} {alt.supplier ?? alt.supplier_name ?? 'Alternative'}
               </span>
               {(alt.country ?? alt.country_full) && (
-                <Badge text={alt.country ?? alt.country_full} color="#14b8a6" />
-              )}
-              {alt.source === 'global_suppliers_db' && (
-                <Badge text="verified" color="#10b981" />
+                <Tag text={alt.country ?? alt.country_full} />
               )}
             </div>
-            <div style={{ display: 'flex', gap: 12, fontSize: 9.5, color: 'rgba(180,170,140,0.85)' }}>
+            <div style={{ display: 'flex', gap: 12, fontSize: 10, color: 'var(--ws-text-secondary)' }}>
               {alt.lead_time_weeks != null && <span>{alt.lead_time_weeks}w lead</span>}
               {alt.cost_delta_pct != null && (
-                <span style={{ color: alt.cost_delta_pct <= 0 ? '#10b981' : '#ef4444' }}>
+                <span style={{ color: alt.cost_delta_pct <= 0 ? 'var(--harbor)' : 'var(--driftwood)' }}>
                   {alt.cost_delta_pct > 0 ? '+' : ''}{alt.cost_delta_pct}% cost
                 </span>
               )}
             </div>
             {(alt.stability_note ?? alt.selection_reasoning) && (
-              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.75)', marginTop: 3, lineHeight: 1.35 }}>
+              <div style={{ fontSize: 10, color: 'var(--ws-text-muted)', marginTop: 3, lineHeight: 1.35 }}>
                 {alt.stability_note ?? alt.selection_reasoning}
               </div>
             )}
@@ -228,8 +223,8 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
   if (key === 'import_compliance') {
     if (d.no_viable_option) {
       return (
-        <div style={{ fontSize: 10.5, color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
-          BLOCKED — {d.reason ?? 'No viable alternative found.'}
+        <div style={{ fontSize: 11, color: 'var(--driftwood)', fontWeight: 600, lineHeight: 1.4 }}>
+          Blocked — {d.reason ?? 'No viable alternative found.'}
         </div>
       );
     }
@@ -238,37 +233,35 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
     return (
       <>
         {d.recommended_supplier && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e8e3d8' }}>{d.recommended_supplier}</span>
-            {d.recommended_country && <Badge text={d.recommended_country} color="#10b981" />}
-            {d.compliance_feasibility && <Badge text={`${d.compliance_feasibility} feasibility`} color="#10b981" />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ws-text)' }}>{d.recommended_supplier}</span>
+            {d.recommended_country && <Tag text={d.recommended_country} />}
           </div>
         )}
         {d.lead_time_weeks != null && <Row label="Lead time">{d.lead_time_weeks}w</Row>}
         {d.cost_delta_pct != null && (
           <Row label="Cost delta">
-            <span style={{ color: d.cost_delta_pct <= 0 ? '#10b981' : '#ef4444' }}>
+            <span style={{ color: d.cost_delta_pct <= 0 ? 'var(--harbor)' : 'var(--driftwood)' }}>
               {d.cost_delta_pct > 0 ? '+' : ''}{d.cost_delta_pct}%
             </span>
           </Row>
         )}
         {d.rationale && (
-          <div style={{ fontSize: 9, color: 'rgba(180,170,140,0.85)', marginTop: 5, lineHeight: 1.4 }}>{d.rationale}</div>
+          <div style={{ fontSize: 10, color: 'var(--ws-text-secondary)', marginTop: 5, lineHeight: 1.4 }}>{d.rationale}</div>
         )}
         {docs.length > 0 && (
           <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Required docs</div>
+            <div style={{ fontSize: 10, color: 'var(--ws-text-muted)', marginBottom: 3 }}>Required documents</div>
             {docs.slice(0, 4).map((doc, i) => (
-              <div key={i} style={{ fontSize: 9, color: 'rgba(180,170,140,0.8)', lineHeight: 1.4 }}>· {doc}</div>
+              <div key={i} style={{ fontSize: 10, color: 'var(--ws-text-secondary)', lineHeight: 1.4 }}>· {doc}</div>
             ))}
-            {docs.length > 4 && <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.6)' }}>+{docs.length - 4} more</div>}
           </div>
         )}
         {risks.length > 0 && (
           <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(220,38,38,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Risk factors</div>
+            <div style={{ fontSize: 10, color: 'var(--driftwood-muted)', marginBottom: 3 }}>Risk factors</div>
             {risks.slice(0, 2).map((r, i) => (
-              <div key={i} style={{ fontSize: 9, color: 'rgba(220,38,38,0.75)', lineHeight: 1.4 }}>· {r}</div>
+              <div key={i} style={{ fontSize: 10, color: 'var(--ws-text-secondary)', lineHeight: 1.4 }}>· {r}</div>
             ))}
           </div>
         )}
@@ -279,7 +272,6 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
   if (key === 'adversarial') {
     const flags: any[] = Array.isArray(d.flags) ? d.flags : [];
     const challenged: any[] = Array.isArray(d.challenged_assumptions) ? d.challenged_assumptions : [];
-    // Backend: d.recommendation, d.confidence; legacy shape: d.recommended_action, d.confidence_in_recommendation
     const recommendation = d.recommendation ?? d.recommended_action;
     const confidence = d.confidence ?? d.confidence_in_recommendation;
     const verdictColor = sevColor(d.verdict);
@@ -287,24 +279,24 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
       <>
         {d.verdict && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: verdictColor, letterSpacing: '0.05em' }}>{d.verdict}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: verdictColor }}>{d.verdict}</span>
             {confidence != null && (
-              <span style={{ fontSize: 9, color: 'rgba(150,140,100,0.7)' }}>{Math.round(confidence * 100)}% confidence</span>
+              <span style={{ fontSize: 10, color: 'var(--ws-text-muted)' }}>{Math.round(confidence * 100)}% confidence</span>
             )}
           </div>
         )}
         {recommendation && (
-          <div style={{ fontSize: 10, color: '#f1f5f9', fontWeight: 500, lineHeight: 1.45, marginBottom: 7 }}>{recommendation}</div>
+          <div style={{ fontSize: 11, color: 'var(--ws-text)', fontWeight: 500, lineHeight: 1.45, marginBottom: 7 }}>{recommendation}</div>
         )}
         {flags.length > 0 && (
           <div style={{ marginBottom: 5 }}>
-            <div style={{ fontSize: 8.5, color: 'rgba(220,38,38,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Flags</div>
+            <div style={{ fontSize: 10, color: 'var(--driftwood-muted)', marginBottom: 3 }}>Flags</div>
             <Reasons items={flags.map((f: any) => (typeof f === 'string' ? f : f.flag || JSON.stringify(f)))} />
           </div>
         )}
         {challenged.length > 0 && (
           <div>
-            <div style={{ fontSize: 8.5, color: 'rgba(167,139,250,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Challenged assumptions</div>
+            <div style={{ fontSize: 10, color: 'var(--ws-text-muted)', marginBottom: 3 }}>Challenged assumptions</div>
             <Reasons items={challenged.map((c: any) => (typeof c === 'string' ? c : JSON.stringify(c)))} />
           </div>
         )}
@@ -315,29 +307,27 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
   return null;
 }
 
-// ── Status indicator (rail icon) ──────────────────────────────────────────────
 const StatusCircle: React.FC<{ status: StepStatus; index: number; color: string }> = ({ status, index, color }) => {
   if (status === 'done') {
-    return <CheckCircle2 size={20} color="#10b981" />;
+    return <CheckCircle2 size={18} color="var(--harbor)" />;
   }
   if (status === 'running') {
     return (
       <div style={{
-        width: 20, height: 20, borderRadius: '50%',
+        width: 18, height: 18, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 0 0 3px ${color}22`, animation: 'pulse-dot 1.2s ease-in-out infinite',
+        border: `2px solid ${color}44`,
       }}>
-        <Loader2 size={16} color={color} style={{ animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={14} color={color} style={{ animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
-  // pending
   return (
     <div style={{
-      width: 20, height: 20, borderRadius: '50%',
-      border: '1.5px solid rgba(150,140,100,0.3)',
+      width: 18, height: 18, borderRadius: '50%',
+      border: '1.5px solid var(--ws-border)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 10, fontWeight: 700, color: 'rgba(150,140,100,0.5)',
+      fontSize: 9, fontWeight: 600, color: 'var(--ws-text-muted)',
     }}>{index + 1}</div>
   );
 };
@@ -356,8 +346,6 @@ export const LiveAgentResults: React.FC<LiveAgentResultsProps> = ({
 
   const hasAny = CHAIN.some((s) => stepStatus(s.key) !== 'pending');
 
-  // Auto-expand the active agent (running), else the last completed agent so the
-  // conclusion is visible. User clicks override until the auto-target changes.
   const runningKey = CHAIN.find((s) => stepStatus(s.key) === 'running')?.key ?? null;
   const lastDoneKey = [...CHAIN].reverse().find((s) => stepStatus(s.key) === 'done')?.key ?? null;
   const autoTarget = runningKey || lastDoneKey;
@@ -376,59 +364,50 @@ export const LiveAgentResults: React.FC<LiveAgentResultsProps> = ({
     : null;
 
   return (
-    <div style={{
-      background: 'rgba(20,20,18,0.9)',
-      border: '1px solid rgba(245,158,11,0.1)',
+    <div className="ws-assessment-steps" style={{
+      background: 'var(--ws-surface)',
+      border: '1px solid var(--ws-border)',
       borderRadius: 10,
-      padding: '11px 12px',
+      padding: '12px 14px',
     }}>
-      {/* Status line */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 11, fontSize: 9, color: 'rgba(150,140,100,0.7)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 11, color: 'var(--ws-text-muted)' }}>
         <span style={{
           width: 6, height: 6, borderRadius: '50%',
-          background: live ? '#dc2626' : hasAny ? '#10b981' : 'rgba(150,140,100,0.5)',
-          boxShadow: live || hasAny ? `0 0 6px ${live ? '#dc2626' : '#10b981'}` : 'none',
-          animation: live ? 'pulse-dot 1.2s ease-in-out infinite' : 'none',
+          background: live ? 'var(--harbor)' : hasAny ? 'var(--harbor)' : 'var(--ws-border-strong)',
         }} />
-        <span style={{ fontWeight: 700, letterSpacing: '0.08em', color: live ? '#fca5a5' : hasAny ? '#6ee7b7' : 'rgba(150,140,100,0.7)' }}>
-          {live ? 'LIVE — REASONING CHAIN' : hasAny ? 'REASONING CHAIN' : 'AGENT PIPELINE'}
+        <span style={{ fontWeight: 600, color: 'var(--ws-text-secondary)' }}>
+          {live ? 'Trade assessment steps — in progress' : hasAny ? 'Trade assessment steps' : 'Assessment steps'}
         </span>
-        {ts && <span style={{ marginLeft: 'auto', fontFamily: 'JetBrains Mono, monospace' }}>{ts}</span>}
+        {ts && <span style={{ marginLeft: 'auto' }}>{ts}</span>}
       </div>
 
       {!hasAny && (
-        <div style={{ fontSize: 10.5, color: 'rgba(130,120,90,0.85)', marginBottom: 6, lineHeight: 1.45 }}>
-          Click <strong style={{ color: '#e8e3d8' }}>Run Analysis</strong> to run the chain.
+        <div style={{ fontSize: 11, color: 'var(--ws-text-muted)', marginBottom: 8, lineHeight: 1.45 }}>
+          Run analysis to walk through tariff check, cost exposure, and supplier options.
         </div>
       )}
 
-      {/* Reasoning chain (vertical stepper) */}
       {CHAIN.map((step, idx) => {
         const status = stepStatus(step.key);
         const isLast = idx === CHAIN.length - 1;
         const isExpanded = expandedKey === step.key && status === 'done';
         const Icon = step.icon;
         const dim = status === 'pending';
-        // Connector is green once this step is complete, else faint.
-        const lineColor = status === 'done' ? 'rgba(16,185,129,0.5)' : 'rgba(150,140,100,0.18)';
+        const lineColor = status === 'done' ? 'var(--ws-harbor)' : 'var(--ws-border)';
 
         return (
-          <div key={step.key} style={{ display: 'flex', gap: 9 }}>
-            {/* Rail: status circle + connector line */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 22, flexShrink: 0 }}>
+          <div key={step.key} style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 20, flexShrink: 0 }}>
               <StatusCircle status={status} index={idx} color={step.color} />
               {!isLast && (
                 <div style={{
-                  flex: 1, width: 2, minHeight: 16, marginTop: 3,
-                  background: lineColor,
-                  transition: 'background 0.4s ease',
+                  flex: 1, width: 2, minHeight: 14, marginTop: 3,
+                  background: lineColor, opacity: status === 'done' ? 0.5 : 0.35,
                 }} />
               )}
             </div>
 
-            {/* Content */}
-            <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 12 }}>
-              {/* Clickable header */}
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 10 }}>
               <button
                 onClick={() => status === 'done' && setExpandedKey(isExpanded ? null : step.key)}
                 disabled={status !== 'done'}
@@ -438,44 +417,42 @@ export const LiveAgentResults: React.FC<LiveAgentResultsProps> = ({
                   cursor: status === 'done' ? 'pointer' : 'default',
                 }}
               >
-                <Icon size={12} color={dim ? 'rgba(150,140,100,0.5)' : step.color} />
+                <Icon size={12} color={dim ? 'var(--ws-text-muted)' : step.color} />
                 <span style={{
-                  fontSize: 11, fontWeight: 700,
-                  color: dim ? 'rgba(150,140,100,0.55)' : '#e8e3d8',
+                  fontSize: 11, fontWeight: 600,
+                  color: dim ? 'var(--ws-text-muted)' : 'var(--ws-text)',
                 }}>
                   {step.label}
                 </span>
                 {status === 'running' && (
-                  <span style={{ fontSize: 8.5, fontWeight: 700, color: step.color, letterSpacing: '0.05em' }}>RUNNING…</span>
+                  <span style={{ fontSize: 10, color: step.color }}>Running…</span>
                 )}
                 <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {headerSummary(step.key, a, status)}
                   {status === 'done' && (
                     <ChevronDown
                       size={13}
-                      color="rgba(150,140,100,0.7)"
+                      color="var(--ws-text-muted)"
                       style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
                     />
                   )}
                 </span>
               </button>
 
-              {/* Expanded detail (only completed agents) */}
               {isExpanded && (
                 <div style={{
-                  marginTop: 7, padding: '9px 11px',
-                  background: 'rgba(0,0,0,0.18)',
-                  border: `1px solid ${step.color}20`,
+                  marginTop: 8, padding: '10px 12px',
+                  background: 'var(--ws-bg-elevated)',
+                  border: '1px solid var(--ws-border)',
                   borderRadius: 8,
                 }}>
                   {agentDetail(step.key, a, supplier)}
                 </div>
               )}
 
-              {/* Running placeholder */}
               {status === 'running' && (
-                <div style={{ marginTop: 6, fontSize: 9.5, color: 'rgba(180,170,140,0.7)', fontStyle: 'italic' }}>
-                  Reasoning…
+                <div style={{ marginTop: 6, fontSize: 10, color: 'var(--ws-text-muted)' }}>
+                  Working through this step…
                 </div>
               )}
             </div>

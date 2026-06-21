@@ -1,5 +1,6 @@
 import React from 'react';
 import { Save, LucideIcon } from 'lucide-react';
+import { DriftCard } from '../motion/DriftCard';
 
 interface SectionHeaderProps {
   icon: LucideIcon;
@@ -15,21 +16,21 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
         width: 38,
         height: 38,
         borderRadius: 10,
-        background: 'rgba(245,158,11,0.12)',
-        border: '1px solid rgba(245,158,11,0.25)',
+        background: 'var(--border-soft)',
+        border: '1px solid rgba(84,140,146,0.25)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 0 16px rgba(245,158,11,0.1)',
+        boxShadow: '0 2px 8px rgba(84,140,146,0.08)',
       }}>
-        <Icon size={17} color="#f59e0b" />
+        <Icon size={17} color="#548C92" />
       </div>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{
             fontSize: 20,
             fontWeight: 700,
-            color: '#e8e3d8',
+            color: 'var(--ocean)',
             letterSpacing: '-0.4px',
             margin: 0,
           }}>
@@ -41,9 +42,9 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
               fontWeight: 700,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              background: 'rgba(245,158,11,0.12)',
-              border: '1px solid rgba(245,158,11,0.25)',
-              color: '#f59e0b',
+              background: 'var(--border-soft)',
+              border: '1px solid rgba(84,140,146,0.25)',
+              color: '#548C92',
               padding: '2px 7px',
               borderRadius: 4,
             }}>
@@ -53,7 +54,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
         </div>
         <p style={{
           fontSize: 12,
-          color: 'rgba(140,130,100,0.6)',
+          color: 'var(--text-secondary)',
           margin: '2px 0 0',
           lineHeight: 1.5,
         }}>
@@ -61,7 +62,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
         </p>
       </div>
     </div>
-    <div style={{ height: 1, background: 'linear-gradient(90deg, rgba(245,158,11,0.2) 0%, transparent 60%)' }} />
+    <div style={{ height: 1, background: 'linear-gradient(90deg, rgba(84,140,146,0.25) 0%, transparent 60%)' }} />
   </div>
 );
 
@@ -70,21 +71,32 @@ interface SettingsCardProps {
   description?: string;
   children: React.ReactNode;
   impact?: string;
+  index?: number;
 }
 
-export const SettingsCard: React.FC<SettingsCardProps> = ({ title, description, children, impact }) => (
-  <div style={{
-    background: 'linear-gradient(135deg, #111108 0%, #0f0f0c 100%)',
-    border: '1px solid rgba(245,158,11,0.1)',
-    borderRadius: 12,
-    padding: '24px 28px',
-    marginBottom: 20,
-  }}>
+export const SettingsCard: React.FC<SettingsCardProps> = ({
+  title,
+  description,
+  children,
+  impact,
+  index = 0,
+}) => (
+  <DriftCard
+    index={index}
+    hoverLift={false}
+    style={{
+      background: 'var(--surface)',
+      border: '1px solid var(--border-soft)',
+      borderRadius: 12,
+      padding: '24px 28px',
+      marginBottom: 20,
+    }}
+  >
     <div style={{ marginBottom: 20 }}>
       <h3 style={{
         fontSize: 13.5,
         fontWeight: 600,
-        color: '#e8e3d8',
+        color: 'var(--ocean)',
         margin: 0,
         letterSpacing: '-0.2px',
       }}>
@@ -109,7 +121,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = ({ title, description, 
           fontSize: 10.5,
           color: 'rgba(245,158,11,0.65)',
           background: 'rgba(245,158,11,0.06)',
-          border: '1px solid rgba(245,158,11,0.12)',
+          border: '1px solid var(--border-soft)',
           borderRadius: 4,
           padding: '2px 8px',
         }}>
@@ -119,7 +131,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = ({ title, description, 
       )}
     </div>
     {children}
-  </div>
+  </DriftCard>
 );
 
 interface FieldRowProps {
@@ -150,7 +162,7 @@ export const FieldRow: React.FC<FieldRowProps> = ({ label, hint, children, full 
       {hint && (
         <span style={{
           fontSize: 10.5,
-          color: 'rgba(120,110,80,0.45)',
+          color: 'var(--text-muted)',
           display: 'block',
           marginTop: 2,
           lineHeight: 1.4,
@@ -169,9 +181,9 @@ const inputBase: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.09)',
   borderRadius: 7,
-  color: '#e8e3d8',
+  color: 'var(--ocean)',
   fontSize: 12.5,
-  fontFamily: 'Inter, sans-serif',
+  fontFamily: 'var(--font)',
   outline: 'none',
   transition: 'border-color 0.15s',
   boxSizing: 'border-box',
@@ -188,9 +200,9 @@ export const TextInput: React.FC<TextInputProps> = ({ monospace, style, ...props
       {...props}
       style={{
         ...inputBase,
-        fontFamily: monospace ? 'JetBrains Mono, monospace' : 'Inter, sans-serif',
+        fontFamily: monospace ? 'JetBrains Mono, monospace' : 'var(--font)',
         borderColor: focused ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)',
-        boxShadow: focused ? '0 0 0 3px rgba(245,158,11,0.08)' : 'none',
+        boxShadow: focused ? '0 0 0 3px var(--border-soft)' : 'none',
         ...style,
       }}
       onFocus={e => { setFocused(true); props.onFocus?.(e); }}
@@ -215,7 +227,7 @@ export const SelectInput: React.FC<SelectInputProps> = ({ style, ...props }) => 
         paddingRight: 32,
         cursor: 'pointer',
         borderColor: focused ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)',
-        boxShadow: focused ? '0 0 0 3px rgba(245,158,11,0.08)' : 'none',
+        boxShadow: focused ? '0 0 0 3px var(--border-soft)' : 'none',
         ...style,
       }}
       onFocus={e => { setFocused(true); props.onFocus?.(e); }}
@@ -247,11 +259,11 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, l
   onClick={() => onChange(!checked)}
   >
     <div>
-      <div style={{ fontSize: 12.5, fontWeight: 500, color: checked ? '#e8e3d8' : 'rgba(160,150,120,0.7)' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 500, color: checked ? 'var(--ocean)' : 'rgba(160,150,120,0.7)' }}>
         {label}
       </div>
       {description && (
-        <div style={{ fontSize: 11, color: 'rgba(120,110,80,0.45)', marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
           {description}
         </div>
       )}
@@ -260,7 +272,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, l
       width: 40,
       height: 22,
       borderRadius: 11,
-      background: checked ? '#f59e0b' : 'rgba(255,255,255,0.1)',
+      background: checked ? '#548C92' : 'rgba(255,255,255,0.1)',
       position: 'relative',
       flexShrink: 0,
       transition: 'background 0.2s',
@@ -316,9 +328,9 @@ export const TagInput: React.FC<TagInputProps> = ({ tags, onChange, placeholder 
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
-            background: 'rgba(245,158,11,0.12)',
+            background: 'var(--border-soft)',
             border: '1px solid rgba(245,158,11,0.25)',
-            color: '#f59e0b',
+            color: '#548C92',
             fontSize: 11,
             fontWeight: 500,
             padding: '2px 8px',
@@ -352,9 +364,9 @@ export const TagInput: React.FC<TagInputProps> = ({ tags, onChange, placeholder 
           background: 'none',
           border: 'none',
           outline: 'none',
-          color: '#e8e3d8',
+          color: 'var(--ocean)',
           fontSize: 12.5,
-          fontFamily: 'Inter, sans-serif',
+          fontFamily: 'var(--font)',
           width: '100%',
           minWidth: 80,
         }}
@@ -382,12 +394,12 @@ export const SaveButton: React.FC<SaveButtonProps> = ({ onSave, saving, label = 
         borderRadius: 8,
         background: saving
           ? 'rgba(245,158,11,0.1)'
-          : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+          : 'linear-gradient(135deg, #548C92 0%, #d97706 100%)',
         border: saving ? '1px solid rgba(245,158,11,0.3)' : 'none',
-        color: saving ? 'rgba(245,158,11,0.7)' : '#0a0a08',
+        color: saving ? 'var(--harbor)' : 'white',
         fontSize: 13,
         fontWeight: 700,
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: 'var(--font)',
         cursor: saving ? 'not-allowed' : 'pointer',
         letterSpacing: '0.02em',
         transition: 'all 0.2s',
