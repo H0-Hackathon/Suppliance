@@ -31,12 +31,7 @@ import api from '../services/api';
  * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
  * Replace with the auth token's customer id once Clerk is wired.
  */
-<<<<<<< HEAD
 import { useUser } from '@clerk/clerk-react';
-=======
-
-const ACTIVE_CUSTOMER_ID = 240;
->>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -121,19 +116,19 @@ export const AlertsDashboard: React.FC = () => {
   // ── Data fetching (backend integration) ──────────────────────────────────
   async function fetchAlerts() {
     if (!activeCustomerId) return;
-    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
+    const res = await api.get<ApiAlert[]>('/v2/alerts');
     setAlerts(res.data);
   }
 
   async function fetchDisruptions() {
     if (!activeCustomerId) return;
-    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: activeCustomerId } });
+    const res = await api.get<DisruptionPoint[]>('/v2/disruptions');
     setDisruptions(res.data);
   }
 
   async function fetchSuppliers() {
     if (!activeCustomerId) return;
-    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: activeCustomerId } });
+    const res = await api.get<ApiSupplier[]>('/v2/suppliers');
     const withGeo = await Promise.all(
       res.data.map(async (s): Promise<SupplierWithGeo> => {
         try {
@@ -250,7 +245,7 @@ export const AlertsDashboard: React.FC = () => {
 
     try {
       if (activeCustomerId) {
-        await api.post('/v2/monitor/run', { customer_id: activeCustomerId });
+        await api.post('/v2/monitor/run');
       }
       // Final poll to catch any events emitted in the last interval window
       await poll();

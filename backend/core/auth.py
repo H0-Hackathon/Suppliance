@@ -79,35 +79,17 @@ def get_current_user(
     # Note: If the user hasn't completed onboarding, they won't exist in our DB yet.
     
     clerk_user_id = payload.get("sub")
-    
-    # Check if we have an email claim (you must configure Clerk to send this if you want it)
     email = payload.get("email") 
     
-    query = db.query(Customer)
-    if email:
-        customer = query.filter(Customer.email == email).first()
-    else:
-        # If we rely entirely on Clerk IDs, we'd need a clerk_id column on Customer.
-        # For now, we'll assume the onboarding step sets the customer up and we can just
-        # match by email if it exists, or fallback to matching the first user for demo if needed.
-        # A robust solution requires `customer.clerk_id = clerk_user_id`.
-        # To avoid breaking existing flow if email isn't in JWT, we might have to wait for Onboarding.
-        # Let's add clerk_id conceptually or just use email.
-        pass
-
-    # Since the hackathon code matched by email, let's assume the user configures Clerk
-    # to include email in the JWT, or we fetch it during onboarding.
-    # If the customer isn't found, we return 404 so the frontend knows to route to /onboarding
-    
-    # Workaround if email is not in JWT: during onboarding we will store clerk_user_id in a new column
-    # or just match email. For this implementation, let's just use email if available.
-    
     customer = None
-    if email:
+    if clerk_user_id:
+        customer = db.query(Customer).filter(Customer.clerk_id == clerk_user_id).first()
+        
+    if not customer and email:
         customer = db.query(Customer).filter(Customer.email == email).first()
-    else:
-        # Try to find by clerk_id if we had one. We'll add it in the onboarding route.
-        customer = db.query(Customer).filter(Customer.clerk_id == clerk_user_id).first() if hasattr(Customer, 'clerk_id') else None
+        if customer:
+            customer.clerk_id = clerk_user_id
+            db.commit()
 
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found. Please complete onboarding.")

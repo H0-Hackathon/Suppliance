@@ -16,11 +16,7 @@ const NAV_ITEMS = [
   { label: 'Settings',     path: '/settings',     icon: Settings },
 ];
 
-<<<<<<< HEAD
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-=======
-const ACTIVE_CUSTOMER_ID = 240;
->>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 type DbStatus = 'checking' | 'ok' | 'error';
 
@@ -32,7 +28,7 @@ export const CommonHeader: React.FC = () => {
   const navigate = useNavigate();
   
   const { user } = useUser();
-  const { getToken } = useAuth();
+  const { getToken, signOut } = useAuth();
   
   // Custom delete logic matching our old endpoint
   const handleDeleteAccount = async () => {
@@ -44,7 +40,8 @@ export const CommonHeader: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Force Clerk to sign out since the user is gone
-      window.location.href = '/sign-in';
+      await signOut();
+      navigate('/sign-in');
     } catch (e) {
       alert("Failed to delete account. Please try again.");
     }
@@ -64,15 +61,15 @@ export const CommonHeader: React.FC = () => {
         })
         .catch(() => setDbStatus('error'));
 
-      const activeCustomerId = user?.id;
-      if (activeCustomerId) {
-        fetch(`/api/v2/alerts?customer_id=${activeCustomerId}`)
-          .then(r => r.json())
-          .then(d => {
-            const num = (d || []).filter((a: any) => a.status === 'active').length;
-            setAlertCount(num);
-          })
-          .catch(() => {});
+      if (user) {
+        import('../services/api').then(({ default: api }) => {
+          api.get('/v2/alerts')
+            .then(r => {
+              const num = (r.data || []).filter((a: any) => a.status === 'active').length;
+              setAlertCount(num);
+            })
+            .catch(() => {});
+        });
       }
     };
     

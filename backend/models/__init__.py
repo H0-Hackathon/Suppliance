@@ -30,6 +30,7 @@ class Customer(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    clerk_id = Column(String(255), unique=True, index=True, nullable=True)
     password_hash = Column(String(255), nullable=True)  # nullable for migration compat
     name = Column(String(255), nullable=False)
     company_name = Column(String(255), nullable=True)

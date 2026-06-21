@@ -9,6 +9,7 @@ GET  /api/v2/auth/me             — Get current user + subscription status
 import random
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
@@ -26,6 +27,7 @@ TRIAL_HOURS = 24
 # ── Pydantic Schemas ─────────────────────────────────────────────────────────
 
 class OnboardingRequest(BaseModel):
+    # Customer basic info
     email: EmailStr
     name: str
     company_name: str
@@ -33,6 +35,25 @@ class OnboardingRequest(BaseModel):
     location: str
     years_in_business: int
     average_revenue: str
+    
+    # Business Profile fields
+    business_type: Optional[str] = None
+    annual_import_volume_usd: Optional[float] = None
+    primary_hs_codes: Optional[List[str]] = None
+    primary_origin_countries: Optional[List[str]] = None
+    destination_country: Optional[str] = None
+    destination_port: Optional[str] = None
+    import_region: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    product_categories: Optional[List[str]] = None
+    product_descriptions: Optional[List[str]] = None
+    rss_keywords: Optional[List[str]] = None
+    typical_order_value_usd: Optional[float] = None
+    avg_lead_time_days: Optional[int] = None
+    compliance_notes: Optional[str] = None
+    preferred_alternative_regions: Optional[List[str]] = None
+    preferred_alternative_countries: Optional[List[str]] = None
+    min_supplier_rating: Optional[float] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -87,18 +108,32 @@ def _user_response(customer: Customer, token: str) -> dict:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+from core.auth import security, _decode_clerk_token
+from fastapi.security import HTTPAuthorizationCredentials
+
 @router.post("/onboarding", status_code=status.HTTP_201_CREATED)
-def complete_onboarding(data: OnboardingRequest, db: Session = Depends(get_db)):
+def complete_onboarding(data: OnboardingRequest, db: Session = Depends(get_db), credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Creates the Customer, BusinessProfile, Supplier, and Product in Aurora after Clerk auth."""
     
+    try:
+        payload = _decode_clerk_token(credentials.credentials)
+        clerk_id = payload.get("sub")
+    except:
+        clerk_id = None
+        
     email = data.email.lower().strip()
     
     # Check if they already exist
-    customer = db.query(Customer).filter(Customer.email == email).first()
+    customer = None
+    if clerk_id:
+        customer = db.query(Customer).filter(Customer.clerk_id == clerk_id).first()
+    if not customer:
+        customer = db.query(Customer).filter(Customer.email == email).first()
     
     if not customer:
         customer = Customer(
             email=email,
+            clerk_id=clerk_id,
             name=data.name.strip(),
             company_name=data.company_name.strip(),
             industry=data.industry.strip(),
@@ -123,39 +158,70 @@ def complete_onboarding(data: OnboardingRequest, db: Session = Depends(get_db)):
     # Start 24h free trial
     customer.trial_expires_at = datetime.utcnow() + timedelta(hours=TRIAL_HOURS)
 
-    # Automatically create BusinessProfile for personalized Agent output
+    # Automatically create or update BusinessProfile
     from models import BusinessProfile
-    import re
     existing_profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer.id).first()
-    if not existing_profile:
-        # Heuristic to parse revenue into an annual volume numeric
+    
+    # Optional logic to infer volume if missing
+    import re
+    vol = data.annual_import_volume_usd
+    if vol is None:
         vol = 500000
         try:
             nums = re.findall(r'\d+', data.average_revenue)
             if nums:
                 num = int(nums[-1])
                 if "M" in data.average_revenue.upper() or "MILLION" in data.average_revenue.upper():
-                    vol = num * 1000000
+                    vol = float(num * 1000000)
                 elif "K" in data.average_revenue.upper():
-                    vol = num * 1000
+                    vol = float(num * 1000)
                 elif "B" in data.average_revenue.upper() or "BILLION" in data.average_revenue.upper():
-                    vol = num * 1000000000
+                    vol = float(num * 1000000000)
                 else:
-                    vol = num
+                    vol = float(num)
         except:
             pass
 
+    if not existing_profile:
         profile = BusinessProfile(
             customer_id=customer.id,
-            business_type=data.industry.strip(),
+            business_type=data.business_type or data.industry.strip(),
             annual_import_volume_usd=vol,
-            primary_origin_countries=[data.location.strip()],
-            destination_country="United States",
-            import_region=data.location.strip(),
-            primary_hs_codes=["8500.00"], # Default fallback
-            product_descriptions=[data.industry.strip()],
+            primary_hs_codes=data.primary_hs_codes or ["8542.31", "8517.62"],
+            primary_origin_countries=data.primary_origin_countries or ["China", "Taiwan"],
+            destination_country=data.destination_country or "United States",
+            destination_port=data.destination_port or "Port of Los Angeles",
+            import_region=data.import_region or "East Asia",
+            risk_tolerance=data.risk_tolerance or "medium",
+            product_categories=data.product_categories or [data.industry.strip()],
+            product_descriptions=data.product_descriptions or [],
+            rss_keywords=data.rss_keywords or [f"{data.industry.strip()} tariff"],
+            typical_order_value_usd=data.typical_order_value_usd or vol * 0.1,
+            avg_lead_time_days=data.avg_lead_time_days or 30,
+            compliance_notes=data.compliance_notes or "",
+            preferred_alternative_regions=data.preferred_alternative_regions or [],
+            preferred_alternative_countries=data.preferred_alternative_countries or [],
+            min_supplier_rating=data.min_supplier_rating or 3.5,
         )
         db.add(profile)
+    else:
+        existing_profile.business_type = data.business_type or data.industry.strip()
+        existing_profile.annual_import_volume_usd = vol
+        if data.primary_hs_codes: existing_profile.primary_hs_codes = data.primary_hs_codes
+        if data.primary_origin_countries: existing_profile.primary_origin_countries = data.primary_origin_countries
+        if data.destination_country: existing_profile.destination_country = data.destination_country
+        if data.destination_port: existing_profile.destination_port = data.destination_port
+        if data.import_region: existing_profile.import_region = data.import_region
+        if data.risk_tolerance: existing_profile.risk_tolerance = data.risk_tolerance
+        if data.product_categories: existing_profile.product_categories = data.product_categories
+        if data.product_descriptions: existing_profile.product_descriptions = data.product_descriptions
+        if data.rss_keywords: existing_profile.rss_keywords = data.rss_keywords
+        if data.typical_order_value_usd: existing_profile.typical_order_value_usd = data.typical_order_value_usd
+        if data.avg_lead_time_days: existing_profile.avg_lead_time_days = data.avg_lead_time_days
+        if data.compliance_notes is not None: existing_profile.compliance_notes = data.compliance_notes
+        if data.preferred_alternative_regions: existing_profile.preferred_alternative_regions = data.preferred_alternative_regions
+        if data.preferred_alternative_countries: existing_profile.preferred_alternative_countries = data.preferred_alternative_countries
+        if data.min_supplier_rating: existing_profile.min_supplier_rating = data.min_supplier_rating
         
         # Create a default Supplier so the map is instantly personalized
         from models import Supplier, Product
@@ -205,17 +271,32 @@ def delete_account(
     db: Session = Depends(get_db)
 ):
     """Permanently delete the authenticated user's account and all associated data."""
-    # Hard-delete the customer record. Cascade should remove related rows
-    # (tariff_alerts, agent_runs, etc.) if FK ON DELETE CASCADE is set;
-    # otherwise we do a manual soft-delete by marking inactive first.
     try:
+        from models import (
+            BusinessProfile, Supplier, Product, ImportOrder, TariffAlert,
+            AgentRun, RssArticle, SupplierRecommendation, AgentRunLog, PipelineHeadline
+        )
+        # Manually cascade delete all related tables
+        db.query(PipelineHeadline).filter(PipelineHeadline.customer_id == current_user.id).delete()
+        db.query(AgentRunLog).filter(AgentRunLog.customer_id == current_user.id).delete()
+        db.query(SupplierRecommendation).filter(SupplierRecommendation.customer_id == current_user.id).delete()
+        db.query(RssArticle).filter(RssArticle.customer_id == current_user.id).delete()
+        db.query(AgentRun).filter(AgentRun.customer_id == current_user.id).delete()
+        db.query(TariffAlert).filter(TariffAlert.customer_id == current_user.id).delete()
+        db.query(ImportOrder).filter(ImportOrder.customer_id == current_user.id).delete()
+        db.query(Product).filter(Product.customer_id == current_user.id).delete()
+        db.query(Supplier).filter(Supplier.customer_id == current_user.id).delete()
+        db.query(BusinessProfile).filter(BusinessProfile.customer_id == current_user.id).delete()
+        
+        # Hard-delete the customer record
         db.delete(current_user)
         db.commit()
-    except Exception:
-        # Fallback: soft-delete so FK constraints don't block us
+    except Exception as e:
         db.rollback()
+        # Fallback: soft-delete
         current_user.is_active = False
         current_user.email = f"deleted_{current_user.id}_{current_user.email}"
+        current_user.clerk_id = None
         db.commit()
 
     return {"message": "Account deleted successfully."}

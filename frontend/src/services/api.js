@@ -9,6 +9,21 @@ const api = axios.create({
   }
 });
 
+// Automatically inject Clerk JWT token into every request
+api.interceptors.request.use(async (config) => {
+  if (window.Clerk && window.Clerk.session) {
+    try {
+      const token = await window.Clerk.session.getToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (e) {
+      console.error("Failed to fetch Clerk token for API request", e);
+    }
+  }
+  return config;
+});
+
 // Legacy chat/handoff API (admin panel)
 export const chatAPI = {
   createCustomer: (data) => api.post('/customers', data),

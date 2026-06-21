@@ -3,11 +3,7 @@ import './AlertsPage.css';
 import { useUser } from '@clerk/clerk-react';
 import api from '../services/api';
 
-<<<<<<< HEAD
-=======
-const ACTIVE_CUSTOMER_ID = 240;
 
->>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 interface ApiAlert {
@@ -155,7 +151,7 @@ export const AlertsPage: React.FC = () => {
   const fetchAlerts = useCallback(async () => {
     if (!activeCustomerId) return;
     try {
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts');
       setAlerts(res.data.filter((a) => a.status === 'active'));
     } catch {
       setAlerts([]);
@@ -167,7 +163,7 @@ export const AlertsPage: React.FC = () => {
   useEffect(() => {
     fetchAlerts();
     if (!activeCustomerId) return;
-    api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: activeCustomerId } })
+    api.get<ApiSupplier[]>('/v2/suppliers')
       .then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
     api.get<{ items: NewsItem[] }>('/v2/news')
       .then((r) => setNews(r.data.items || [])).catch(() => setNews([]));
@@ -206,12 +202,12 @@ export const AlertsPage: React.FC = () => {
 
     const interval = setInterval(poll, 1500);
     try {
-      await api.post('/v2/monitor/run', { customer_id: activeCustomerId });
+      await api.post('/v2/monitor/run');
       await poll();
       await fetchAlerts();
       setRunPhase('done');
       // Auto-select the most recent alert
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: activeCustomerId } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts');
       const active = res.data.filter((a) => a.status === 'active');
       setAlerts(active);
       if (active.length > 0) setSelectedId(active[0].id);

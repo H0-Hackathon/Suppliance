@@ -137,12 +137,9 @@ app.include_router(disruption_router)
 app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
-<<<<<<< HEAD
 app.include_router(auth_router)
 app.include_router(payment_router)
-=======
 app.include_router(settings_router)
->>>>>>> 0a8b967f792f8ea25c1aca56f1b1d7abdae410f5
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
