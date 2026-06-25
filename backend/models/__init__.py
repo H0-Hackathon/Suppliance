@@ -11,7 +11,7 @@ Tables:
   disruption_events       — structured/queryable record of every risk event
   historical_impacts      — past disruption outcomes for the Impact Agent (enriched)
   agent_runs              — permanent log of every pipeline run
-  rss_articles            — temporary RSS buffer per run (deleted after pipeline)
+  rss_articles            — rolling 12h RSS buffer, used to de-dup articles across runs
   supplier_recommendations— extracted AlternativesFinder outputs per alert
   global_suppliers        — 25,000 synthetic global exporter directory
 """
@@ -34,8 +34,16 @@ class Customer(Base):
     email = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     industry = Column(String(100), nullable=True)
+    location = Column(String(255), nullable=True)
+    years_in_business = Column(Integer, nullable=True)
+    average_revenue = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Subscription / trial
+    trial_expires_at = Column(DateTime, nullable=True)
+    subscription_plan = Column(String(50), nullable=True)          # 'standard' | 'pro'
+    subscription_expires_at = Column(DateTime, nullable=True)       # None = lifetime
 
     business_profile = relationship("BusinessProfile", back_populates="customer", uselist=False)
     suppliers = relationship("Supplier", back_populates="customer")
@@ -234,9 +242,11 @@ class AgentRun(Base):
 
 class RssArticle(Base):
     """
-    Temporary Aurora buffer for scored RSS articles during a pipeline run.
-    Written at pipeline start, deleted at pipeline end.
-    Shows Aurora as an active data buffer in the pipeline flow (not just a result store).
+    Rolling 12-hour Aurora buffer for scored RSS articles. Written at the
+    start of every pipeline run; a row is excluded from being re-cited by
+    any later run for the same customer+agent_target until it ages past
+    RSS_DEDUP_WINDOW_HOURS (core/crew_monitor_pipeline.py), at which point
+    it's pruned. This keeps back-to-back runs from citing the same headline twice.
     """
     __tablename__ = "rss_articles"
 

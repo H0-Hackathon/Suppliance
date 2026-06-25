@@ -11,7 +11,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
+from models import Customer
 from services import news_feed
+from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v2", tags=["News"])
 
@@ -28,9 +30,12 @@ def get_news(force: bool = False):
 
 
 @router.get("/news/pipeline")
-def get_pipeline_news(customer_id: int, db: Session = Depends(get_db)):
+def get_pipeline_news(
+    current_user: Customer = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Return RSS headlines from the most recent pipeline run for this customer.
+    Return RSS headlines from the most recent pipeline run for the authenticated customer.
 
     Pulls from pipeline_headlines (written at pipeline end, kept for 3 runs).
     Returns the same {items, fetched_at} shape as /news so NewsTicker works
@@ -40,7 +45,7 @@ def get_pipeline_news(customer_id: int, db: Session = Depends(get_db)):
 
     latest = (
         db.query(PipelineHeadline.run_id, func.max(PipelineHeadline.created_at).label("ts"))
-        .filter(PipelineHeadline.customer_id == customer_id)
+        .filter(PipelineHeadline.customer_id == current_user.id)
         .group_by(PipelineHeadline.run_id)
         .order_by(func.max(PipelineHeadline.created_at).desc())
         .first()

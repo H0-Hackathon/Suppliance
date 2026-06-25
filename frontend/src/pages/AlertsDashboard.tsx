@@ -9,7 +9,7 @@ import {
   MapPin,
   Activity,
 } from 'lucide-react';
-import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
+import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier, TradeGlobeHQ, TradeGlobeAlternateSupplier } from '../components/TradeGlobe';
 import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import { NewsTicker } from '../components/dashboard/NewsTicker';
 import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
@@ -27,11 +27,9 @@ import api from '../services/api';
  *   - GET  /api/v2/monitor/pipeline-log?since=N    poll live log during run
  *   - PUT  /api/v2/alerts/{id}/dismiss|resolve     alert actions
  *
- * Auth is removed; ACTIVE_CUSTOMER_ID is set to the seeded demo customer.
- * Replace with the auth token's customer id once Clerk is wired.
+ * Customer is resolved server-side from the Clerk session token (attached
+ * automatically by the axios interceptor in services/api.js).
  */
-
-const ACTIVE_CUSTOMER_ID = 240;
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -95,6 +93,8 @@ export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
   const [disruptions, setDisruptions] = React.useState<DisruptionPoint[]>([]);
   const [suppliers, setSuppliers] = React.useState<SupplierWithGeo[]>([]);
+  const [hqLocation, setHqLocation] = React.useState<TradeGlobeHQ | null>(null);
+  const [alternateSuppliers, setAlternateSuppliers] = React.useState<TradeGlobeAlternateSupplier[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [debugState, setDebugState] = React.useState<DebugState | null>(null);
   const [activeLayers, setActiveLayers] = React.useState<Set<string>>(
@@ -113,21 +113,21 @@ export const AlertsDashboard: React.FC = () => {
 
   // ── Data fetching (backend integration) ──────────────────────────────────
   async function fetchAlerts() {
-    const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<ApiAlert[]>('/v2/alerts');
     setAlerts(res.data);
   }
 
   async function fetchDisruptions() {
-    const res = await api.get<DisruptionPoint[]>('/v2/disruptions', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<DisruptionPoint[]>('/v2/disruptions');
     setDisruptions(res.data);
   }
 
   async function fetchSuppliers() {
-    const res = await api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+    const res = await api.get<ApiSupplier[]>('/v2/suppliers');
     const withGeo = await Promise.all(
       res.data.map(async (s): Promise<SupplierWithGeo> => {
         try {
-          const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: s.country } });
+          const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: s.country, name: s.name } });
           return { ...s, latitude: geo.data.latitude, longitude: geo.data.longitude, countryCode: geo.data.code };
         } catch {
           return { ...s, latitude: null, longitude: null, countryCode: null };
@@ -137,16 +137,90 @@ export const AlertsDashboard: React.FC = () => {
     setSuppliers(withGeo);
   }
 
+  // HQ/destination pin — resolved server-side from this customer's BusinessProfile
+  // (destination_country/destination_port), then geocoded the same way suppliers are.
+  async function fetchHQLocation() {
+    try {
+      const res = await api.get<{ destination_country: string | null; destination_port: string | null }>('/v2/settings');
+      const { destination_country, destination_port } = res.data;
+      if (!destination_country) {
+        setHqLocation(null);
+        return;
+      }
+      const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: destination_country } });
+      setHqLocation({
+        name: destination_port || destination_country,
+        country: destination_country,
+        latitude: geo.data.latitude,
+        longitude: geo.data.longitude,
+      });
+    } catch {
+      setHqLocation(null);
+    }
+  }
+
   React.useEffect(() => {
     (async () => {
       try {
-        await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers()]);
+        await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers(), fetchHQLocation()]);
       } catch (err) {
-        // backend offline — globe falls back to its built-in demo data
         console.error('Failed to load dashboard data', err);
       }
+
+      // Dashboard (globe + suppliers) is now visible — silently auto-run the
+      // pipeline exactly once for accounts that have never had a run, without
+      // blocking the page on it.
+      try {
+        const me = await api.get<{ has_run_pipeline: boolean }>('/v2/auth/me');
+        if (!me.data.has_run_pipeline) {
+          handleRunMonitor();
+        }
+      } catch {
+        // best-effort — skip auto-run if /auth/me fails
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Alternate suppliers surfaced by the latest AlternativesFinder run — geocoded
+  // the same way the customer's own suppliers are, so the globe can swap to
+  // routes from these instead of the (now-disrupted) main suppliers.
+  React.useEffect(() => {
+    const options: any[] = agentResults.alternatives_finder?.options
+      ?? agentResults.alternatives_finder?.alternatives
+      ?? [];
+    if (options.length === 0) {
+      setAlternateSuppliers([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const resolved = await Promise.all(
+        options.map(async (opt): Promise<TradeGlobeAlternateSupplier | null> => {
+          const country = opt.country ?? opt.country_full ?? '';
+          if (!country) return null;
+          const name = opt.supplier ?? opt.supplier_name ?? 'Alternative Supplier';
+          try {
+            const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country, name } });
+            return {
+              name,
+              country,
+              latitude: geo.data.latitude,
+              longitude: geo.data.longitude,
+              leadTimeWeeks: opt.lead_time_weeks ?? null,
+              costDeltaPct: opt.cost_delta_pct ?? null,
+            };
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (!cancelled) {
+        setAlternateSuppliers(resolved.filter((r): r is TradeGlobeAlternateSupplier => r != null));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [agentResults]);
 
   // Surface the most recent persisted agent run (TariffAlert.agent_output) so
   // real Agent 1/2 data is visible on page load without re-running. Skipped
@@ -238,7 +312,7 @@ export const AlertsDashboard: React.FC = () => {
     const pollInterval = setInterval(poll, 1500);
 
     try {
-      await api.post('/v2/monitor/run', { customer_id: ACTIVE_CUSTOMER_ID });
+      await api.post('/v2/monitor/run');
       // Final poll to catch any events emitted in the last interval window
       await poll();
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
@@ -441,7 +515,12 @@ export const AlertsDashboard: React.FC = () => {
         }}>
           {/* Map container */}
           <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <TradeGlobe suppliers={tradeGlobeSuppliers} disruptions={disruptions} />
+            <TradeGlobe
+              suppliers={tradeGlobeSuppliers}
+              disruptions={disruptions}
+              hqLocation={hqLocation}
+              alternateSuppliers={alternateSuppliers}
+            />
 
             {/* Layer toggles overlay */}
             <div style={{
@@ -501,7 +580,7 @@ export const AlertsDashboard: React.FC = () => {
 
           {/* Bottom: live trade/supply-chain news ticker */}
           <div style={{ height: 56, flexShrink: 0 }}>
-            <NewsTicker customerId={ACTIVE_CUSTOMER_ID} lastRunAt={lastRunAt} />
+            <NewsTicker lastRunAt={lastRunAt} />
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import Globe, { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
+import { useAuth } from '@clerk/clerk-react';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -13,16 +14,8 @@ interface Supplier {
   riskScore: number;
   exposure: string;
   exposureTier: 1 | 2 | 3;
+  reliabilityScore?: number;
 }
-
-const SUPPLIERS: Supplier[] = [
-  { name: 'Vietnam Textiles Ltd',  country: 'Vietnam',       lat: 20.8651,  lng: 106.6838,  status: 'impacted',    riskScore: 82, exposure: '$40,000',  exposureTier: 3 },
-  { name: 'Dhaka Apparel Co',      country: 'Bangladesh',    lat: 23.8103,  lng: 90.4125,   status: 'healthy',     riskScore: 21, exposure: '$18,500',  exposureTier: 1 },
-  { name: 'Shenzhen Components',   country: 'China',         lat: 22.5431,  lng: 114.0579,  status: 'impacted',    riskScore: 74, exposure: '$95,000',  exposureTier: 3 },
-  { name: 'MexiThread Mfg',        country: 'Mexico',        lat: 20.6597,  lng: -103.3496, status: 'alternative', riskScore: 18, exposure: '$22,000',  exposureTier: 2 },
-  { name: 'Colombo Fabrics',       country: 'Sri Lanka',     lat: 6.9271,   lng: 79.8612,   status: 'alternative', riskScore: 29, exposure: '$14,000',  exposureTier: 1 },
-  { name: 'US Distribution Hub',   country: 'United States', lat: 34.0522,  lng: -118.2437, status: 'customer',    riskScore: 0,  exposure: '$0',       exposureTier: 1 },
-];
 
 interface Arc {
   startLat: number;
@@ -33,31 +26,24 @@ interface Arc {
   exposureTier: 1 | 2 | 3;
 }
 
-const ARCS: Arc[] = [
-  { startLat: 20.8651,  startLng: 106.6838,  endLat: 34.0522, endLng: -118.2437, routeStatus: 'impacted',    exposureTier: 3 },
-  { startLat: 22.5431,  startLng: 114.0579,  endLat: 34.0522, endLng: -118.2437, routeStatus: 'impacted',    exposureTier: 3 },
-  { startLat: 23.8103,  startLng: 90.4125,   endLat: 34.0522, endLng: -118.2437, routeStatus: 'healthy',     exposureTier: 1 },
-  { startLat: 20.6597,  startLng: -103.3496, endLat: 34.0522, endLng: -118.2437, routeStatus: 'alternative', exposureTier: 2 },
-  { startLat: 6.9271,   startLng: 79.8612,   endLat: 34.0522, endLng: -118.2437, routeStatus: 'alternative', exposureTier: 1 },
-];
-
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<Supplier['status'], string> = {
-  impacted:    '#dc2626',
-  healthy:     '#10b981',
-  alternative: '#f59e0b',
-  customer:    '#38bdf8',
+  impacted:    '#ff2a2a', // Brighter neon red
+  healthy:     '#00ff9d', // Neon emerald green
+  alternative: '#ffb700', // Neon amber
+  customer:    '#00e5ff', // Neon cyan
 };
 
-const ARC_COLOR: Record<Arc['routeStatus'], [number, number, number, number]> = {
-  impacted:    [220, 38,  38,  255],
-  healthy:     [16,  185, 129, 230],
-  alternative: [245, 158, 11,  255],
+// Gradient from supplier color to customer color
+const ARC_COLORS: Record<Arc['routeStatus'], [string, string]> = {
+  impacted:    ['#ff2a2a', '#00e5ff'],
+  healthy:     ['#00ff9d', '#00e5ff'],
+  alternative: ['#ffb700', '#00e5ff'],
 };
 
-const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.6, 2: 1.0, 3: 1.55 };
-const ARC_DASH_SPEED: Record<1|2|3, number> = { 1: 4000, 2: 2800, 3: 1800 };
+const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.8, 2: 1.4, 3: 2.2 };
+const ARC_DASH_SPEED: Record<1|2|3, number> = { 1: 3000, 2: 2000, 3: 1200 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -71,42 +57,75 @@ export interface DisruptionPoint {
   countries_affected?: string[] | null;
 }
 
-/** A customer supplier with resolved coordinates, supplied by the backend
- *  (GET /v2/suppliers + /v2/geo/supplier-coords). Used to drive the globe
- *  with live data instead of the built-in demo set. */
 export interface TradeGlobeSupplier {
   name: string;
   country: string;
-  /** ISO 3166-1 alpha-2 code, used to match against disruption countries_affected */
   countryCode: string | null;
+  latitude: number;
+  longitude: number;
+  reliabilityScore?: number;
+}
+
+export interface TradeGlobeHQ {
+  name: string;
+  country: string;
   latitude: number;
   longitude: number;
 }
 
-export interface TradeGlobeProps {
-  /** This customer's active suppliers with resolved coordinates. When provided
-   *  (non-empty), the globe renders live backend data; otherwise it falls back
-   *  to the built-in demo visualization. */
-  suppliers?: TradeGlobeSupplier[];
-  disruptions?: DisruptionPoint[];
+export interface TradeGlobeAlternateSupplier {
+  name: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  leadTimeWeeks?: number | null;
+  costDeltaPct?: number | null;
 }
 
-// Fixed import destination for live data (US importer). Coordinates match the
-// "US" entry in backend/services/coordinates.py.
-const LIVE_DESTINATION = {
-  name: 'Port of Los Angeles',
-  country: 'United States',
-  lat: 33.7395,
-  lng: -118.261,
-};
+export interface TradeGlobeProps {
+  suppliers?: TradeGlobeSupplier[];
+  disruptions?: DisruptionPoint[];
+  /** This customer's HQ/destination — resolved server-side from their BusinessProfile. */
+  hqLocation?: TradeGlobeHQ | null;
+  /** AlternativesFinder output from the latest pipeline run — empty until a run completes. */
+  alternateSuppliers?: TradeGlobeAlternateSupplier[];
+}
 
-export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disruptions = [] }) => {
+export const TradeGlobe: React.FC<TradeGlobeProps> = ({
+  suppliers = [],
+  disruptions = [],
+  hqLocation = null,
+  alternateSuppliers = [],
+}) => {
   const globeRef = useRef<GlobeMethods | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ width: 1200, height: 800 });
   const [hoveredSupplier, setHoveredSupplier] = useState<Supplier | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  // Responsive sizing via ResizeObserver
+  const [globalSuppliers, setGlobalSuppliers] = useState<any[]>([]);
+
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    const loadGlobalSuppliers = async () => {
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        
+        const res = await fetch('/api/v2/suppliers/global', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setGlobalSuppliers(data);
+        }
+      } catch (e) {
+        console.error('Failed to load global suppliers:', e);
+      }
+    };
+    loadGlobalSuppliers();
+  }, [getToken]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -125,50 +144,41 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!globeRef.current) return;
+    const controls = globeRef.current.controls() as any;
+    if (controls) {
+      const isHovered = !!hoveredSupplier || !!selectedSupplier;
+      controls.autoRotate = !isHovered;
+      controls.autoRotateSpeed = isHovered ? 0 : 0.5;
+    }
+  }, [hoveredSupplier, selectedSupplier]);
 
-  // Globe initialization with starfield background
   useEffect(() => {
     if (!globeRef.current) return;
 
     const globe = globeRef.current;
     
-    // Add starfield background to Three.js scene
     const scene = globe.scene() as THREE.Scene;
     if (scene && !scene.background) {
-      // Create realistic deep space background
       const canvas = document.createElement('canvas');
       canvas.width = 2048;
       canvas.height = 1024;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Deep space gradient: almost black to very dark blue
-        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        gradient.addColorStop(0, '#0a0e1a');
-        gradient.addColorStop(0.5, '#050812');
-        gradient.addColorStop(1, '#0a0e1a');
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, '#02040a');
+        gradient.addColorStop(1, '#060a14');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Add subtle stars
-        for (let i = 0; i < 2000; i++) {
+        for (let i = 0; i < 3000; i++) {
           const x = Math.random() * canvas.width;
           const y = Math.random() * canvas.height;
           const size = Math.random() * 1.5;
-          const brightness = Math.random() * 0.8 + 0.2; // 0.2-1.0
-          ctx.fillStyle = `rgba(255, 255, 255, ${brightness * 0.6})`;
+          const brightness = Math.random() * 0.8 + 0.2;
+          ctx.fillStyle = `rgba(140, 200, 255, ${brightness * 0.6})`;
           ctx.fillRect(x, y, size, size);
-        }
-
-        // Add very faint distant galaxies (small soft circles)
-        for (let i = 0; i < 50; i++) {
-          const x = Math.random() * canvas.width;
-          const y = Math.random() * canvas.height;
-          const radius = Math.random() * 8 + 3;
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-          gradient.addColorStop(0, 'rgba(200, 200, 220, 0.08)');
-          gradient.addColorStop(1, 'rgba(200, 200, 220, 0)');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
         }
       }
 
@@ -176,101 +186,147 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
       scene.background = texture;
     }
     
-    // Enable controls
     const controls = globe.controls() as any;
     if (controls) {
       controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.3;
+      controls.autoRotateSpeed = 0.5;
       controls.enableZoom = true;
       controls.enablePan = true;
       controls.minDistance = 200;
       controls.maxDistance = 800;
     }
 
-    // Center on Atlantic, zoomed out to show all three major trade regions simultaneously
     setTimeout(() => {
-      globe.pointOfView({ lat: 20, lng: -20, altitude: 2.8 }, 1500);
+      globe.pointOfView({ lat: 20, lng: -20, altitude: 2.2 }, 1500);
     }, 100);
   }, []);
 
-  // A supplier is "at risk" when its country appears in an active disruption's
-  // countries_affected list (backend-driven). Falls back to the demo set when
-  // no live suppliers are supplied.
   const affectedCodes = useMemo(
-    () => new Set(disruptions.flatMap((d) => d.countries_affected ?? [])),
+    () => new Set(disruptions.flatMap((d) => (d.countries_affected ?? []).map(c => c.toUpperCase()))),
     [disruptions]
   );
-  const usingLiveData = suppliers.length > 0;
 
   const effectiveSuppliers = useMemo<Supplier[]>(() => {
-    if (!usingLiveData) return SUPPLIERS;
-    const mapped: Supplier[] = suppliers.map((s) => {
-      const risk = s.countryCode ? affectedCodes.has(s.countryCode) : false;
+    // 1. This customer's real suppliers
+    const liveMapped = suppliers.map((s) => {
+      const risk = (s.countryCode && affectedCodes.has(s.countryCode.toUpperCase())) ||
+                   (s.country && affectedCodes.has(s.country.toUpperCase()));
+      const baseRiskScore = s.reliabilityScore !== undefined ? Math.round(100 - s.reliabilityScore) : 50;
+      const finalRiskScore = risk ? Math.min(100, baseRiskScore + 40) : baseRiskScore;
+
       return {
         name: s.name,
         country: s.country,
         lat: s.latitude,
         lng: s.longitude,
-        status: risk ? 'impacted' : 'healthy',
-        riskScore: risk ? 78 : 22,
+        status: (risk ? 'impacted' : 'healthy') as Supplier['status'],
+        riskScore: finalRiskScore,
         exposure: '—',
-        exposureTier: risk ? 3 : 1,
+        exposureTier: (risk ? 3 : 1) as Supplier['exposureTier'],
       };
     });
-    mapped.push({
-      name: LIVE_DESTINATION.name,
-      country: LIVE_DESTINATION.country,
-      lat: LIVE_DESTINATION.lat,
-      lng: LIVE_DESTINATION.lng,
-      status: 'customer',
-      riskScore: 0,
-      exposure: '$0',
-      exposureTier: 1,
+
+    // 2. Alternative suppliers surfaced by the latest AlternativesFinder run (if any)
+    const alternateMapped = alternateSuppliers.map((s) => ({
+      name: s.name,
+      country: s.country,
+      lat: s.latitude,
+      lng: s.longitude,
+      status: 'alternative' as Supplier['status'],
+      riskScore: 15,
+      exposure: s.costDeltaPct != null ? `${s.costDeltaPct > 0 ? '+' : ''}${s.costDeltaPct}%` : '—',
+      exposureTier: 2 as Supplier['exposureTier'],
+    }));
+
+    const combined: Supplier[] = [...liveMapped, ...alternateMapped];
+
+    // 3. This customer's HQ/destination, resolved server-side from their BusinessProfile
+    if (hqLocation) {
+      combined.push({
+        name: hqLocation.name,
+        country: hqLocation.country,
+        lat: hqLocation.latitude,
+        lng: hqLocation.longitude,
+        status: 'customer',
+        riskScore: 0,
+        exposure: '$0',
+        exposureTier: 1,
+      });
+    }
+    return combined;
+  }, [suppliers, alternateSuppliers, hqLocation, affectedCodes]);
+
+  // The 22k global background points — coloured green/red based on disruptions
+  const bgPoints = useMemo(() => {
+    const impacted: any[] = [];
+    const healthy: any[] = [];
+    
+    globalSuppliers.forEach((s: any) => {
+      const risk = (s.countryCode && affectedCodes.has(s.countryCode.toUpperCase())) ||
+                   (s.country && affectedCodes.has(s.country.toUpperCase()));
+                   
+      const baseSupplier = {
+        ...s,
+        riskScore: s.reliability_score ? Math.round(100 - s.reliability_score) : 50,
+        exposure: '—',
+        exposureTier: (risk ? 3 : 1) as Supplier['exposureTier'],
+        status: (risk ? 'impacted' : 'healthy') as Supplier['status']
+      };
+      
+      if (risk) {
+        impacted.push(baseSupplier);
+      } else {
+        healthy.push(baseSupplier);
+      }
     });
-    return mapped;
-  }, [usingLiveData, suppliers, affectedCodes]);
 
+    // Deterministically pick ~100 healthy suppliers to spread around the globe
+    const step = Math.max(1, Math.floor(healthy.length / 100));
+    const sampledHealthy = healthy.filter((_, i) => i % step === 0).slice(0, 100);
+
+    return [...impacted, ...sampledHealthy];
+  }, [globalSuppliers, affectedCodes]);
+
+  // Baseline: arcs from every main supplier to HQ. After a pipeline run finds
+  // alternatives, swap to arcs from the alternate supplier(s) to HQ instead —
+  // the disruption pin (rendered separately from `disruptions`) shows why.
   const effectiveArcs = useMemo<Arc[]>(() => {
-    if (!usingLiveData) return ARCS;
-    return effectiveSuppliers
-      .filter((s) => s.status !== 'customer')
-      .map((s) => ({
-        startLat: s.lat,
-        startLng: s.lng,
-        endLat: LIVE_DESTINATION.lat,
-        endLng: LIVE_DESTINATION.lng,
-        routeStatus: (s.status === 'impacted' ? 'impacted' : 'healthy') as Arc['routeStatus'],
-        exposureTier: s.exposureTier,
+    if (!hqLocation) return [];
+    const sourceSuppliers = alternateSuppliers.length > 0
+      ? effectiveSuppliers.filter((s) => s.status === 'alternative')
+      : effectiveSuppliers.filter((s) => s.status !== 'customer');
+    return sourceSuppliers.map((s) => ({
+      startLat: s.lat,
+      startLng: s.lng,
+      endLat: hqLocation.latitude,
+      endLng: hqLocation.longitude,
+      routeStatus: s.status as Arc['routeStatus'],
+      exposureTier: s.exposureTier,
+    }));
+  }, [effectiveSuppliers, hqLocation, alternateSuppliers]);
+
+  // Points for the news events (disruptions) so they visually appear on the map cities
+  const disruptionMarkers = useMemo(() => {
+    return disruptions
+      .filter((d) => d.latitude != null && d.longitude != null)
+      .map((d) => ({
+        ...d,
+        lat: d.latitude!,
+        lng: d.longitude!,
       }));
-  }, [usingLiveData, effectiveSuppliers]);
+  }, [disruptions]);
 
-  // Most severe active disruption drives the banner text when live data exists.
-  const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-  const topDisruption = [...disruptions].sort(
-    (a, b) => (SEVERITY_RANK[b.severity ?? 'low'] ?? 0) - (SEVERITY_RANK[a.severity ?? 'low'] ?? 0)
-  )[0];
-  const bannerText = topDisruption
-    ? `${(topDisruption.severity ?? 'medium').toUpperCase()} — ${topDisruption.title}`
-    : 'CRITICAL — Vietnam tariff exposure +34% · Shenzhen factory suspension';
-
-  // Memoized point data with all properties
-  const pointsData = useMemo(() => effectiveSuppliers, [effectiveSuppliers]);
-  
-  // Memoized arc data
+  // Only the user's own suppliers + customer destination get rings / labels / arcs
+  // The 22k global blob is too large for interactive hover
+  const interactivePoints = useMemo(() => effectiveSuppliers, [effectiveSuppliers]);
   const arcsData = useMemo(() => effectiveArcs, [effectiveArcs]);
 
-  // Get point size based on exposure tier (+30% increase)
-  const getPointRadius = useCallback((d: any) => {
-    if (d.status === 'customer') return 0.85;
-    return 0.65;
-  }, []);
-
-  // Get point color
-  const getPointColor = useCallback((d: any) => STATUS_COLOR[d.status], []);
-
-  // Get arc dash length/gap based on tier
-  const getArcDashLength = useCallback((d: any) => (d.exposureTier === 3 ? 0.25 : 0.35), []);
-  const getArcDashGap = useCallback((d: any) => (d.exposureTier === 3 ? 0.18 : 0.25), []);
+  const getBgPointColor = useCallback((d: any) =>
+    d.status === 'impacted' ? '#ff2a2a' : '#10b981', []);
+  const getPointRadius = useCallback((d: any) => (d.status === 'customer' ? 1.0 : 0.8), []);
+  const getPointColor = useCallback((d: any) => STATUS_COLOR[d.status as Supplier['status']], []);
+  const getArcDashLength = useCallback((d: any) => (d.exposureTier === 3 ? 0.3 : 0.15), []);
+  const getArcDashGap = useCallback((d: any) => (d.exposureTier === 3 ? 1.2 : 2.5), []);
 
   return (
     <div
@@ -280,62 +336,92 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
         width: '100%',
         height: '100%',
         minHeight: 0,
-        background: '#060a14',
+        background: 'transparent',
         overflow: 'hidden',
+      }}
+      onMouseMove={(e) => {
+        if (hoveredSupplier) {
+          setTooltipPos({ x: e.clientX, y: e.clientY });
+        }
       }}
     >
       <Globe
         ref={globeRef as any}
         width={dims.width}
         height={dims.height}
+        backgroundColor="rgba(0,0,0,0)"
         
         // ── Globe appearance ──────────────────────────────────────────────
-        // Use day-side Earth texture for better geographic readability
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        backgroundImageUrl=""
         
         showAtmosphere
-        atmosphereColor="#4da6ff"
-        atmosphereAltitude={0.11}
+        atmosphereColor="#3b82f6" // Bright glowing blue
+        atmosphereAltitude={0.15}
         
-        // ── Supplier nodes ────────────────────────────────────────────────
-        pointsData={pointsData}
-        pointLat={(d: any) => d.lat}
-        pointLng={(d: any) => d.lng}
-        pointAltitude={(d: any) => 0.012}
-        pointRadius={getPointRadius}
-        pointColor={getPointColor}
-        pointResolution={8}
-        pointMerge={false}
-        onPointHover={(point: any) => {
-          setHoveredSupplier(point || null);
+        // ── (Removed the old pointsData lines; rendering bgPoints as labels/rings instead) ──
+
+        // ── Interactive user suppliers & 100 random suppliers (rings, hover, labels) ──────────────
+        // Use ringsData for the suppliers
+        ringsData={[...interactivePoints, ...bgPoints, ...disruptionMarkers.map(d => ({ ...d, isDisruption: true }))]}
+        ringLat={(d: any) => d.lat}
+        ringLng={(d: any) => d.lng}
+        ringColor={(d: any) => d.isDisruption ? 'rgba(255,50,50,0.9)' : STATUS_COLOR[d.status as Supplier['status']]}
+        ringMaxRadius={(d: any) => d.isDisruption ? 10 : (d.status === 'impacted' ? 5 : (d.status === 'customer' ? 3.5 : 2))}
+        ringPropagationSpeed={(d: any) => d.isDisruption ? 5 : (d.status === 'impacted' ? 3.5 : 1.5)}
+        ringRepeatPeriod={(d: any) => d.isDisruption ? 500 : (d.status === 'impacted' ? 700 : 1800)}
+        onRingHover={(ring: any) => {
+          setHoveredSupplier(ring || null);
+          if (globeRef.current) {
+            const controls = globeRef.current.controls() as any;
+            if (controls) controls.autoRotate = !ring && !selectedSupplier;
+          }
         }}
-        
-        // ── Trade exposure arcs ────────────────────────────────────────────
+        onRingClick={(ring: any) => {
+          setSelectedSupplier(ring);
+          if (globeRef.current) {
+            const controls = globeRef.current.controls() as any;
+            if (controls) controls.autoRotate = !ring && !hoveredSupplier;
+          }
+        }}
+        // ── Trade exposure arcs (from live suppliers → destination) ──────
         arcsData={arcsData}
         arcStartLat={(d: any) => d.startLat}
         arcStartLng={(d: any) => d.startLng}
         arcEndLat={(d: any) => d.endLat}
         arcEndLng={(d: any) => d.endLng}
-        arcColor={(d: any) => ARC_COLOR[d.routeStatus]}
-        arcStroke={(d: any) => ARC_WIDTH[d.exposureTier]}
-        arcAltitude={0.45}
+        arcColor={(d: any) => ARC_COLORS[d.routeStatus as Arc['routeStatus']]}
+        arcStroke={(d: any) => ARC_WIDTH[d.exposureTier as Arc['exposureTier']]}
+        arcAltitudeAutoScale={0.4}
         arcDashLength={getArcDashLength}
         arcDashGap={getArcDashGap}
-        arcDashAnimateTime={(d: any) => ARC_DASH_SPEED[d.exposureTier]}
+        arcDashAnimateTime={(d: any) => ARC_DASH_SPEED[d.exposureTier as Arc['exposureTier']]}
         arcCurveResolution={64}
 
-        // ── Labels ────────────────────────────────────────────────────────
-        labelsData={effectiveSuppliers.filter((s) => s.status !== 'customer')}
+        // ── Labels (for both active chain and 100 random suppliers) ───────────
+        labelsData={[...interactivePoints, ...bgPoints]}
         labelLat={(d: any) => d.lat}
         labelLng={(d: any) => d.lng}
         labelText={(d: any) => d.name}
-        labelSize={0.65}
-        labelDotRadius={0}
-        labelColor={(d: any) => STATUS_COLOR[d.status]}
-        labelAltitude={0.022}
-        labelResolution={2}
+        labelSize={1.8}
+        labelDotRadius={0.5}
+        labelColor={(d: any) => STATUS_COLOR[d.status as Supplier['status']]}
+        labelAltitude={0.025}
+        labelResolution={4}
+        onLabelClick={(point: any) => {
+          setSelectedSupplier(point);
+          if (globeRef.current) {
+            const controls = globeRef.current.controls() as any;
+            if (controls) controls.autoRotate = !point && !hoveredSupplier;
+          }
+        }}
+        onLabelHover={(point: any) => {
+          setHoveredSupplier(point || null);
+          if (globeRef.current) {
+            const controls = globeRef.current.controls() as any;
+            if (controls) controls.autoRotate = !point && !selectedSupplier;
+          }
+        }}
       />
 
 
@@ -548,6 +634,90 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
                   ? 'DESTINATION — Distribution hub'
                   : 'HEALTHY — No active disruptions'}
           </div>
+        </div>
+      )}
+
+      {/* ── Selected Supplier VCard Panel ── */}
+      {selectedSupplier && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 24,
+            right: 24,
+            width: 340,
+            background: 'rgba(10, 15, 30, 0.85)',
+            backdropFilter: 'blur(16px)',
+            border: `1px solid ${STATUS_COLOR[selectedSupplier.status]}80`,
+            borderRadius: 16,
+            padding: 24,
+            color: '#f8fafc',
+            boxShadow: `0 12px 40px rgba(0, 0, 0, 0.5), 0 0 30px ${STATUS_COLOR[selectedSupplier.status]}30`,
+            zIndex: 30,
+            fontFamily: 'Inter, system-ui, sans-serif',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.3 }}>{selectedSupplier.name}</h3>
+            <button
+              onClick={() => {
+                setSelectedSupplier(null);
+                if (globeRef.current) {
+                  const controls = globeRef.current.controls() as any;
+                  if (controls) controls.autoRotate = !hoveredSupplier;
+                }
+              }}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4, fontSize: 16 }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+            <span style={{ 
+              display: 'inline-block', 
+              width: 10, height: 10, 
+              borderRadius: '50%', 
+              backgroundColor: STATUS_COLOR[selectedSupplier.status],
+              boxShadow: `0 0 8px ${STATUS_COLOR[selectedSupplier.status]}`
+            }} />
+            <span style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.05em', color: STATUS_COLOR[selectedSupplier.status], fontWeight: 600 }}>
+              {selectedSupplier.status === 'impacted' ? 'Impacted by Disruption' : 
+               selectedSupplier.status === 'customer' ? 'Your Operations' : 
+               selectedSupplier.status === 'alternative' ? 'Available Alternative' : 'Healthy Supply Route'}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: selectedSupplier.status === 'impacted' ? 20 : 0 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>Location</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{selectedSupplier.country}</div>
+            </div>
+            
+            {selectedSupplier.status !== 'customer' && (
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>Reliability</div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>
+                  {selectedSupplier.reliabilityScore !== undefined ? `${selectedSupplier.reliabilityScore}/100` : '92/100'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedSupplier.status === 'impacted' && (
+            <div style={{ 
+              background: 'rgba(239, 68, 68, 0.1)', 
+              borderLeft: '3px solid #ef4444',
+              padding: '12px 14px',
+              borderRadius: '4px 8px 8px 4px',
+              fontSize: 13,
+              color: '#fca5a5',
+              lineHeight: 1.5,
+              fontWeight: 500
+            }}>
+              WARNING: This supplier is located in an active disruption zone. Route performance may be severely degraded.
+            </div>
+          )}
         </div>
       )}
     </div>

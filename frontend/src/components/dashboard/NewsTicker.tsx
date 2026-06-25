@@ -12,7 +12,6 @@ interface NewsItem {
 }
 
 interface NewsTickerProps {
-  customerId: number;
   lastRunAt: string | null;
 }
 
@@ -41,7 +40,7 @@ function relativeTime(ts: number): string {
 
 const SCROLL_PX_PER_SEC = 70; // constant, readable ticker speed
 
-export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt }) => {
+export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
   const [items, setItems] = React.useState<NewsItem[]>([]);
   const [paused, setPaused] = React.useState(false);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
@@ -49,12 +48,10 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
   const trackRef = React.useRef<HTMLDivElement>(null);
 
   const fetchNews = React.useCallback(async () => {
-    // First try pipeline-specific headlines for this customer
+    // First try pipeline-specific headlines for the authenticated customer
+    // (resolved server-side from the Clerk session token)
     try {
-      const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>(
-        '/v2/news/pipeline',
-        { params: { customer_id: customerId } },
-      );
+      const res = await api.get<{ items: NewsItem[]; fetched_at: number | null }>('/v2/news/pipeline');
       if (Array.isArray(res.data.items) && res.data.items.length >= 3) {
         setItems(res.data.items);
         setUpdatedAt(res.data.fetched_at ?? Date.now() / 1000);
@@ -74,7 +71,7 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ customerId, lastRunAt })
     } catch {
       // backend offline — ticker simply stays empty/hidden
     }
-  }, [customerId]);
+  }, []);
 
   // Fetch on mount and auto-refresh every 5 min
   React.useEffect(() => {

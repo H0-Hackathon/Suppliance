@@ -1,17 +1,20 @@
 """
 CoastGuard — Settings Routes
 
-GET  /api/v2/settings?customer_id=N   → returns customer + business profile for the settings page
-PATCH /api/v2/settings?customer_id=N  → updates customer and/or business profile fields
+GET  /api/v2/settings   → returns customer + business profile for the settings page
+PATCH /api/v2/settings  → updates customer and/or business profile fields
+
+Both routes resolve the customer from the authenticated Clerk session
+(Depends(get_current_user)) rather than a customer_id query param.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
 
 from database import get_db
 from models import Customer, BusinessProfile
+from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v2/settings", tags=["Settings"])
 
@@ -66,14 +69,8 @@ class SettingsPatch(BaseModel):
     compliance_notes: Optional[str] = None
 
 
-@router.get("", response_model=SettingsResponse)
-def get_settings(customer_id: int, db: Session = Depends(get_db)):
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
-        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
-
-    profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer_id).first()
-
+def _build_response(customer: Customer, db: Session) -> SettingsResponse:
+    profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer.id).first()
     return SettingsResponse(
         customer_id=customer.id,
         name=customer.name or "",
@@ -98,24 +95,32 @@ def get_settings(customer_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.patch("", response_model=SettingsResponse)
-def patch_settings(customer_id: int, payload: SettingsPatch, db: Session = Depends(get_db)):
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
-        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
+@router.get("", response_model=SettingsResponse)
+def get_settings(
+    current_user: Customer = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _build_response(current_user, db)
 
+
+@router.patch("", response_model=SettingsResponse)
+def patch_settings(
+    payload: SettingsPatch,
+    current_user: Customer = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     # Update customer fields
     if payload.name is not None:
-        customer.name = payload.name
+        current_user.name = payload.name
     if payload.company_name is not None:
-        customer.company_name = payload.company_name
+        current_user.company_name = payload.company_name
     if payload.industry is not None:
-        customer.industry = payload.industry
+        current_user.industry = payload.industry
 
     # Get or create BusinessProfile
-    profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer_id).first()
+    profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == current_user.id).first()
     if not profile:
-        profile = BusinessProfile(customer_id=customer_id)
+        profile = BusinessProfile(customer_id=current_user.id)
         db.add(profile)
 
     profile_fields = [
@@ -131,7 +136,7 @@ def patch_settings(customer_id: int, payload: SettingsPatch, db: Session = Depen
             setattr(profile, field, value)
 
     db.commit()
-    db.refresh(customer)
+    db.refresh(current_user)
     db.refresh(profile)
 
-    return get_settings(customer_id=customer_id, db=db)
+    return _build_response(current_user, db)

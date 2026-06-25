@@ -4,14 +4,13 @@ import {
   Building2, Globe2, BellRing, Palette, UserCircle2,
   Settings, ChevronRight, Loader2,
 } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { CompanyProfileSection, type CompanySaveData } from '../components/settings/CompanyProfileSection';
 import { SupplyChainSection, type SupplyChainSaveData } from '../components/settings/SupplyChainSection';
 import { AlertPreferencesSection } from '../components/settings/AlertPreferencesSection';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
 import { AccountSection, type AccountSaveData } from '../components/settings/AccountSection';
-
-const ACTIVE_CUSTOMER_ID = 240;
-const API_BASE = 'http://localhost:8000';
+import api from '../services/api';
 
 interface SettingsData {
   customer_id: number;
@@ -42,32 +41,35 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
 
+  const { getToken } = useAuth();
+
   useEffect(() => {
-    setLoading(true);
-    fetch(`${API_BASE}/api/v2/settings?customer_id=${ACTIVE_CUSTOMER_ID}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<SettingsData>;
-      })
-      .then(d => { setData(d); setLoading(false); })
-      .catch(err => {
+    const loadSettings = async () => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const res = await api.get<SettingsData>('/v2/settings', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setData(res.data);
+      } catch (err) {
         console.error('Settings load failed:', err);
         toast.error('Could not load settings');
+      } finally {
         setLoading(false);
-      });
-  }, []);
+      }
+    };
+    loadSettings();
+  }, [getToken]);
 
   const patch = useCallback(async (payload: Record<string, unknown>) => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v2/settings?customer_id=${ACTIVE_CUSTOMER_ID}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const token = await getToken();
+      const res = await api.patch<SettingsData>('/v2/settings', payload, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const updated = await res.json() as SettingsData;
-      setData(updated);
+      setData(res.data);
       toast.success('Settings saved');
     } catch (err) {
       console.error('Settings save failed:', err);
@@ -75,7 +77,7 @@ export const SettingsPage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [getToken]);
 
   const handleCompanySave  = (d: CompanySaveData)     => patch({ company_name: d.company_name, industry: d.industry });
   const handleSupplySave   = (d: SupplyChainSaveData) => patch({

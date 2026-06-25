@@ -2,8 +2,6 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import './AlertsPage.css';
 import api from '../services/api';
 
-const ACTIVE_CUSTOMER_ID = 240;
-
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 interface ApiAlert {
@@ -148,7 +146,7 @@ export function AlertsPage() {
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts');
       setAlerts(res.data.filter((a) => a.status === 'active'));
     } catch {
       setAlerts([]);
@@ -159,7 +157,7 @@ export function AlertsPage() {
 
   useEffect(() => {
     fetchAlerts();
-    api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: ACTIVE_CUSTOMER_ID } })
+    api.get<ApiSupplier[]>('/v2/suppliers')
       .then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
     api.get<{ items: NewsItem[] }>('/v2/news')
       .then((r) => setNews(r.data.items || [])).catch(() => setNews([]));
@@ -197,12 +195,12 @@ export function AlertsPage() {
 
     const interval = setInterval(poll, 1500);
     try {
-      await api.post('/v2/monitor/run', { customer_id: ACTIVE_CUSTOMER_ID });
+      await api.post('/v2/monitor/run');
       await poll();
       await fetchAlerts();
       setRunPhase('done');
       // Auto-select the most recent alert
-      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: ACTIVE_CUSTOMER_ID } });
+      const res = await api.get<ApiAlert[]>('/v2/alerts');
       const active = res.data.filter((a) => a.status === 'active');
       setAlerts(active);
       if (active.length > 0) setSelectedId(active[0].id);

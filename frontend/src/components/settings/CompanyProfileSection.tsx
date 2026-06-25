@@ -75,30 +75,35 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
 
         <FieldRow label="Primary Industry" hint="Drives sector-specific risk models">
           <SelectInput value={form.industry} onChange={set('industry')}>
-            <option value="">Select industry</option>
-            <option value="manufacturing">Manufacturing</option>
-            <option value="retail">Retail & E-commerce</option>
-            <option value="pharma">Pharmaceuticals</option>
-            <option value="automotive">Automotive</option>
-            <option value="electronics">Electronics</option>
-            <option value="food">Food & Beverage</option>
-            <option value="chemicals">Chemicals</option>
-            <option value="aerospace">Aerospace & Defense</option>
-            <option value="Furniture">Furniture</option>
-            <option value="other">Other</option>
+            <option value="" style={{ color: '#000', background: '#fff' }}>Select industry</option>
+            <option value="Electronics & Semiconductors" style={{ color: '#000', background: '#fff' }}>Electronics & Semiconductors</option>
+            <option value="Automotive & Auto Parts" style={{ color: '#000', background: '#fff' }}>Automotive & Auto Parts</option>
+            <option value="Apparel & Textiles" style={{ color: '#000', background: '#fff' }}>Apparel & Textiles</option>
+            <option value="Food & Beverage" style={{ color: '#000', background: '#fff' }}>Food & Beverage</option>
+            <option value="Chemicals & Plastics" style={{ color: '#000', background: '#fff' }}>Chemicals & Plastics</option>
+            <option value="Medical Devices & Pharma" style={{ color: '#000', background: '#fff' }}>Medical Devices & Pharma</option>
+            <option value="Industrial Machinery" style={{ color: '#000', background: '#fff' }}>Industrial Machinery</option>
+            <option value="Furniture & Home Goods" style={{ color: '#000', background: '#fff' }}>Furniture & Home Goods</option>
+            <option value="Toys & Consumer Products" style={{ color: '#000', background: '#fff' }}>Toys & Consumer Products</option>
+            <option value="Steel & Metals" style={{ color: '#000', background: '#fff' }}>Steel & Metals</option>
+            <option value="Agriculture & Commodities" style={{ color: '#000', background: '#fff' }}>Agriculture & Commodities</option>
+            <option value="Aerospace & Defense" style={{ color: '#000', background: '#fff' }}>Aerospace & Defense</option>
+            <option value="Energy & Oil" style={{ color: '#000', background: '#fff' }}>Energy & Oil</option>
+            <option value="Retail & E-commerce" style={{ color: '#000', background: '#fff' }}>Retail & E-commerce</option>
+            <option value="Logistics & Freight" style={{ color: '#000', background: '#fff' }}>Logistics & Freight</option>
           </SelectInput>
         </FieldRow>
 
         <FieldRow label="Headquarters Country" hint="Sets primary regulatory jurisdiction">
           <SelectInput value={form.hqCountry} onChange={set('hqCountry')}>
-            <option value="US">United States</option>
-            <option value="GB">United Kingdom</option>
-            <option value="DE">Germany</option>
-            <option value="FR">France</option>
-            <option value="JP">Japan</option>
-            <option value="CA">Canada</option>
-            <option value="AU">Australia</option>
-            <option value="SG">Singapore</option>
+            <option value="US" style={{ color: '#000', background: '#fff' }}>United States</option>
+            <option value="GB" style={{ color: '#000', background: '#fff' }}>United Kingdom</option>
+            <option value="DE" style={{ color: '#000', background: '#fff' }}>Germany</option>
+            <option value="FR" style={{ color: '#000', background: '#fff' }}>France</option>
+            <option value="JP" style={{ color: '#000', background: '#fff' }}>Japan</option>
+            <option value="CA" style={{ color: '#000', background: '#fff' }}>Canada</option>
+            <option value="AU" style={{ color: '#000', background: '#fff' }}>Australia</option>
+            <option value="SG" style={{ color: '#000', background: '#fff' }}>Singapore</option>
           </SelectInput>
         </FieldRow>
       </SettingsCard>
@@ -137,11 +142,11 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
 
         <FieldRow label="Employee Count" hint="Helps size operational risk models">
           <SelectInput value={form.employeeCount} onChange={set('employeeCount')}>
-            <option value="1-49">1 – 49 employees</option>
-            <option value="50-249">50 – 249 employees</option>
-            <option value="250-999">250 – 999 employees</option>
-            <option value="1000-4999">1,000 – 4,999 employees</option>
-            <option value="5000+">5,000+ employees</option>
+            <option value="1-49" style={{ color: '#000', background: '#fff' }}>1 – 49 employees</option>
+            <option value="50-249" style={{ color: '#000', background: '#fff' }}>50 – 249 employees</option>
+            <option value="250-999" style={{ color: '#000', background: '#fff' }}>250 – 999 employees</option>
+            <option value="1000-4999" style={{ color: '#000', background: '#fff' }}>1,000 – 4,999 employees</option>
+            <option value="5000+" style={{ color: '#000', background: '#fff' }}>5,000+ employees</option>
           </SelectInput>
         </FieldRow>
       </SettingsCard>

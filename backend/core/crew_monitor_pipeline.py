@@ -2,23 +2,27 @@
 CoastGuard — 5-Agent Tariff Monitoring Pipeline
 
 Aurora data flow every run:
-  1. RssArticle rows written   (temporary buffer — deleted after run)
-  2. HistoricalImpact queried  → enriches ImpactCalculator prompt
-  3. SupplierRecommendation queried → enriches AlternativesFinder prompt
-  4. AgentRun queried          → enriches Adversarial prompt
-  5. AgentRun row written      (permanent run log)
-  6. HistoricalImpact row written (permanent, enriched with all signal metadata)
-  7. SupplierRecommendation rows written (permanent per alternative)
-  8. RssArticle rows deleted   (buffer cleared)
+  1. Already-seen URLs queried  → excludes articles used by any run in the
+     last RSS_DEDUP_WINDOW_HOURS, so back-to-back runs don't re-cite the same headline
+  2. RssArticle rows written    (rolling de-dup buffer — pruned by age, not by run)
+  3. HistoricalImpact queried   → enriches ImpactCalculator prompt
+  4. SupplierRecommendation queried → enriches AlternativesFinder prompt
+  5. AgentRun queried           → enriches Adversarial prompt
+  6. AgentRun row written       (permanent run log)
+  7. HistoricalImpact row written (permanent, enriched with all signal metadata)
+  8. SupplierRecommendation rows written (permanent per alternative)
+  9. RssArticle rows older than RSS_DEDUP_WINDOW_HOURS pruned (this run's rows stay
+     for the next run's de-dup check)
 """
 
+import contextvars
 import json
 import logging
 import re
 import threading
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from config import get_settings
@@ -50,6 +54,12 @@ COUNTRY_COORDS: dict[str, tuple[float, float]] = {
 
 ALERT_CAP = 20
 
+# How long a buffered RssArticle counts as "already seen" for de-dup purposes.
+# Rows older than this are pruned at the end of each run (see step 9 above);
+# rows newer than this are excluded from the next run's candidate pool so the
+# same headline doesn't get cited by two runs in a row.
+RSS_DEDUP_WINDOW_HOURS = 12
+
 try:
     from crewai import Agent, Task, Crew, LLM
     HAS_CREWAI = True
@@ -57,10 +67,26 @@ except ImportError:
     HAS_CREWAI = False
 
 
-# ── Live pipeline log ─────────────────────────────────────────────────────────
+# ── Live pipeline log (per-customer) ──────────────────────────────────────────
 
 _log_lock = threading.Lock()
-_pipeline_log: deque = deque(maxlen=1000)
+_pipeline_logs: dict[int, deque] = {}
+
+# Set for the duration of MonitorPipeline.run() so pipeline_emit() (55 call
+# sites scattered through this module) can route events to the right
+# customer's log without threading customer_id through every call.
+_current_customer_id: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    "current_customer_id", default=None
+)
+
+# Only one pipeline run in flight at a time, app-wide (protects the shared
+# Gemini quota — concurrent runs would burn through the daily request cap fast).
+_run_lock = threading.Lock()
+
+
+class PipelineBusyError(Exception):
+    """Raised when a pipeline run is requested while another is already in flight."""
+    pass
 
 
 _DISPLAY_EVENTS = {
@@ -87,8 +113,12 @@ _EVENT_CATEGORY = {
 
 def pipeline_emit(event: str, msg: str) -> None:
     logger.debug(f"[pipeline:{event}] {msg}")
+    customer_id = _current_customer_id.get()
+    if customer_id is None:
+        return
     with _log_lock:
-        _pipeline_log.append({
+        log = _pipeline_logs.setdefault(customer_id, deque(maxlen=1000))
+        log.append({
             "event": event,
             "msg": msg,
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -97,14 +127,14 @@ def pipeline_emit(event: str, msg: str) -> None:
         })
 
 
-def get_pipeline_log() -> list:
+def get_pipeline_log(customer_id: int) -> list:
     with _log_lock:
-        return list(_pipeline_log)
+        return list(_pipeline_logs.get(customer_id, []))
 
 
-def clear_pipeline_log() -> None:
+def clear_pipeline_log(customer_id: int) -> None:
     with _log_lock:
-        _pipeline_log.clear()
+        _pipeline_logs[customer_id] = deque(maxlen=1000)
 
 
 # ── LLM initializer ───────────────────────────────────────────────────────────
@@ -121,6 +151,33 @@ def _init_gemini_llm() -> "LLM":
 
 
 # ── RSS fetch + Aurora buffer ─────────────────────────────────────────────────
+
+def _seen_article_urls(customer_id: int, agent_target: str, db, hours: int = RSS_DEDUP_WINDOW_HOURS) -> set:
+    """
+    URLs already buffered for this customer+agent_target within the last
+    `hours` — i.e. cited by a previous run that hasn't aged out of the
+    rss_articles table yet. Subtract this set from a fresh RSS pull so two
+    runs in a row never cite the same headline.
+    """
+    if not db:
+        return set()
+    try:
+        from models import RssArticle
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        rows = (
+            db.query(RssArticle.url)
+            .filter(
+                RssArticle.customer_id == customer_id,
+                RssArticle.agent_target == agent_target,
+                RssArticle.created_at >= cutoff,
+            )
+            .all()
+        )
+        return {r[0] for r in rows if r[0]}
+    except Exception as exc:
+        logger.warning(f"Seen-URL lookup failed for {agent_target}: {exc}")
+        return set()
+
 
 def _fetch_and_buffer_articles(
     rss_keywords: list,
@@ -147,6 +204,16 @@ def _fetch_and_buffer_articles(
         logger.warning(f"RSS collector failed: {exc}")
         pipeline_emit("rss_error", f"RSS fetch failed: {exc}")
         return [], {"articles_matched": 0, "source_credibility": "", "signal_age_hours": None, "risk_source": "gemini_knowledge"}
+
+    # Drop anything already cited by a run within the last RSS_DEDUP_WINDOW_HOURS
+    seen_urls = _seen_article_urls(customer_id, "tariff_monitor", db)
+    if seen_urls:
+        before = len(raw_articles)
+        raw_articles = [a for a in raw_articles if a.get("url") not in seen_urls]
+        pipeline_emit(
+            "rss_dedup",
+            f"Excluded {before - len(raw_articles)} articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+        )
 
     # Authoritative sources that boost credibility score
     CREDIBLE_SOURCES = {"usda", "ustr", "trade.gov", "fas.usda", "cbp", "commerce"}
@@ -428,6 +495,15 @@ def _fetch_compliance_articles(
         pipeline_emit("compliance_rss_error", f"Compliance feed fetch failed: {exc}")
         return ""
 
+    seen_urls = _seen_article_urls(customer_id, "import_compliance", db)
+    if seen_urls:
+        before = len(articles)
+        articles = [a for a in articles if a.get("url") not in seen_urls]
+        pipeline_emit(
+            "compliance_rss_dedup",
+            f"Excluded {before - len(articles)} compliance articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+        )
+
     if not articles:
         pipeline_emit("compliance_rss_done", "No compliance articles retrieved")
         return ""
@@ -521,6 +597,15 @@ def _fetch_alternatives_articles(
         logger.warning(f"Alternatives RSS fetch failed: {exc}")
         pipeline_emit("alt_rss_error", f"Alternatives feed fetch failed: {exc}")
         return ""
+
+    seen_urls = _seen_article_urls(customer_id, "alternatives_finder", db)
+    if seen_urls:
+        before = len(articles)
+        articles = [a for a in articles if a.get("url") not in seen_urls]
+        pipeline_emit(
+            "alt_rss_dedup",
+            f"Excluded {before - len(articles)} stability articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+        )
 
     if not articles:
         pipeline_emit("alt_rss_done", "No alternatives stability articles retrieved")
@@ -716,9 +801,16 @@ class MonitorPipeline:
         return self._llm
 
     def run(self, customer_id: int, db: Optional[Session] = None) -> dict:
-        if settings.use_mock_llm:
-            return self._mock_run(customer_id, db)
-        return self._real_run(customer_id, db)
+        if not _run_lock.acquire(blocking=False):
+            raise PipelineBusyError("A pipeline run is already in progress.")
+        token = _current_customer_id.set(customer_id)
+        try:
+            if settings.use_mock_llm:
+                return self._mock_run(customer_id, db)
+            return self._real_run(customer_id, db)
+        finally:
+            _current_customer_id.reset(token)
+            _run_lock.release()
 
     def _load_profile(self, customer_id: int, db: Optional[Session]) -> dict:
         if db is None:
@@ -1653,12 +1745,19 @@ class MonitorPipeline:
                 db.rollback()
 
             try:
+                # Prune by age, not by run_id: this run's rows must survive so the
+                # *next* run's _seen_article_urls() lookup can exclude them.
                 from models import RssArticle
-                deleted = db.query(RssArticle).filter(RssArticle.run_id == run_id).delete()
+                cutoff = datetime.utcnow() - timedelta(hours=RSS_DEDUP_WINDOW_HOURS)
+                deleted = db.query(RssArticle).filter(RssArticle.created_at < cutoff).delete()
                 db.commit()
-                pipeline_emit("rss_cleared", f"Deleted {deleted} rss_articles rows from Aurora buffer")
+                pipeline_emit(
+                    "rss_pruned",
+                    f"Pruned {deleted} rss_articles rows older than {RSS_DEDUP_WINDOW_HOURS}h "
+                    f"(this run's articles kept for the next run's de-dup check)",
+                )
             except Exception as exc:
-                logger.warning(f"RSS buffer cleanup failed: {exc}")
+                logger.warning(f"RSS buffer prune failed: {exc}")
                 db.rollback()
 
         pipeline_emit("pipeline_done", f"Pipeline complete — severity={severity} cost=${extra_cost:,} verdict={adversarial_verdict}")

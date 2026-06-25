@@ -9,23 +9,25 @@ import {
   Anchor,
   TrendingUp,
   Globe,
+  CreditCard,
 } from 'lucide-react';
+import { UserButton, useAuth } from '@clerk/clerk-react';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',   path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Alerts',      path: '/alerts',    icon: Bell },
-  { label: 'Suppliers',   path: '/suppliers', icon: Building2 },
-  { label: 'Compliance',  path: '/compliance',icon: ShieldCheck },
-  { label: 'Settings',    path: '/settings',  icon: Settings },
+  { label: 'Dashboard',    path: '/dashboard',    icon: LayoutDashboard },
+  { label: 'Alerts',       path: '/alerts',       icon: Bell },
+  { label: 'Suppliers',    path: '/suppliers',    icon: Building2 },
+  { label: 'Compliance',   path: '/compliance',   icon: ShieldCheck },
+  { label: 'Subscription', path: '/subscription', icon: CreditCard },
+  { label: 'Settings',     path: '/settings',     icon: Settings },
 ];
-
-const ACTIVE_CUSTOMER_ID = 240;
 
 type DbStatus = 'checking' | 'ok' | 'error';
 
 export const CommonHeader: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { getToken } = useAuth();
   const [dbStatus, setDbStatus] = useState<DbStatus>('checking');
   const [dbBackend, setDbBackend] = useState<string>('');
   const [alertCount, setAlertCount] = useState<number | null>(null);
@@ -51,8 +53,10 @@ export const CommonHeader: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const fetchAlerts = () => {
-      fetch(`/api/v2/alerts?customer_id=${ACTIVE_CUSTOMER_ID}`)
+    const fetchAlerts = async () => {
+      const token = await getToken();
+      if (!token) return;
+      fetch('/api/v2/alerts', { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
         .then((data) => {
           const alerts = Array.isArray(data) ? data : (data?.items ?? []);
@@ -245,16 +249,22 @@ export const CommonHeader: React.FC = () => {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer – logout button */}
       <div style={{
-        padding: '12px 20px',
+        padding: '12px 16px',
         borderTop: '1px solid rgba(245,158,11,0.07)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
       }}>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
-          CoastGuard v0.1.0
-        </div>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
-          Trade Risk Intelligence Platform
+        <UserButton afterSignOutUrl="/sign-in" />
+        <div>
+          <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
+            CoastGuard v0.1.0
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
+            Trade Risk Intelligence
+          </div>
         </div>
       </div>
     </aside>

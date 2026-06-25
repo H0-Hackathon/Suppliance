@@ -15,7 +15,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from database import get_db
-from models import GlobalSupplier
+from models import GlobalSupplier, BusinessProfile
+from core.auth import get_current_user_optional
 
 router = APIRouter(prefix="/api/v2/global-suppliers", tags=["Global Supplier Directory"])
 
@@ -63,22 +64,49 @@ ALL_REGIONS = [
     "Sub-Saharan Africa", "North Africa", "East Asia", "Oceania", "CIS Countries",
 ]
 
+REGION_TO_COUNTRIES = {
+    "Middle East": ['Israel', 'Kuwait', 'Qatar', 'Saudi Arabia', 'Turkey', 'UAE'],
+    "South Asia": ['Bangladesh', 'India', 'Nepal', 'Pakistan', 'Sri Lanka'],
+    "Western Europe": ['Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Greece', 'Ireland', 'Italy', 'Netherlands', 'Norway', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'United Kingdom'],
+    "Eastern Europe": ['Czech Republic', 'Hungary', 'Poland', 'Romania', 'Russia', 'Ukraine'],
+    "Southeast Asia": ['Cambodia', 'Indonesia', 'Malaysia', 'Myanmar', 'Philippines', 'Singapore', 'Thailand', 'Vietnam'],
+    "North America": ['Canada', 'Mexico', 'United States'],
+    "South America": ['Argentina', 'Brazil', 'Chile', 'Colombia', 'Ecuador', 'Peru'],
+    "Sub-Saharan Africa": ['Ethiopia', 'Ghana', 'Kenya', 'Nigeria', 'South Africa', 'Tanzania'],
+    "North Africa": ['Egypt', 'Morocco', 'Tunisia'],
+    "East Asia": ['China', 'Hong Kong', 'Japan', 'South Korea', 'Taiwan'],
+    "Oceania": ['Australia', 'New Zealand'],
+    "CIS Countries": ['Kazakhstan', 'Russia', 'Ukraine'],
+}
 
 def _region_filter(query, region: str):
-    return query.filter(GlobalSupplier.export_markets.ilike(f"%{region}%"))
-
-
+    countries = REGION_TO_COUNTRIES.get(region, [])
+    if countries:
+        return query.filter(GlobalSupplier.country.in_(countries))
+    else:
+        # Fallback to export_markets if region not mapped
+        return query.filter(GlobalSupplier.export_markets.ilike(f"%{region}%"))
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/regions", response_model=List[dict])
-def get_regions(db: Session = Depends(get_db)):
+def get_regions(
+    explore_all: bool = Query(False),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional)
+):
+    categories = None
+    if user and not explore_all:
+        profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == user.id).first()
+        if profile and profile.product_categories:
+            categories = profile.product_categories
+
     results = []
     for region in ALL_REGIONS:
-        count = (
-            db.query(func.count(GlobalSupplier.id))
-            .filter(GlobalSupplier.export_markets.ilike(f"%{region}%"))
-            .scalar()
-        )
+        q = _region_filter(db.query(func.count(GlobalSupplier.id)), region)
+        if categories:
+            q = q.filter(GlobalSupplier.product_category.in_(categories))
+            
+        count = q.scalar()
         if count and count > 0:
             results.append({"region": region, "supplier_count": count})
     return results
@@ -87,27 +115,34 @@ def get_regions(db: Session = Depends(get_db)):
 @router.get("/countries", response_model=List[dict])
 def get_countries(
     region: str = Query(..., description="Export market region"),
+    explore_all: bool = Query(False),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional)
 ):
     """Distinct supplier home countries that export to the given region."""
-    rows = (
-        _region_filter(db.query(GlobalSupplier.country), region)
-        .distinct()
-        .order_by(GlobalSupplier.country)
-        .all()
-    )
+    categories = None
+    if user and not explore_all:
+        profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == user.id).first()
+        if profile and profile.product_categories:
+            categories = profile.product_categories
+
+    q_countries = _region_filter(db.query(GlobalSupplier.country), region)
+    if categories:
+        q_countries = q_countries.filter(GlobalSupplier.product_category.in_(categories))
+        
+    rows = q_countries.distinct().order_by(GlobalSupplier.country).all()
+
     countries = []
     for (c,) in rows:
         if not c:
             continue
-        count = (
-            _region_filter(
-                db.query(func.count(GlobalSupplier.id))
-                .filter(GlobalSupplier.country == c),
-                region,
-            ).scalar()
-        )
-        countries.append({"country": c, "supplier_count": count})
+        q_count = _region_filter(db.query(func.count(GlobalSupplier.id)).filter(GlobalSupplier.country == c), region)
+        if categories:
+            q_count = q_count.filter(GlobalSupplier.product_category.in_(categories))
+            
+        count = q_count.scalar()
+        if count and count > 0:
+            countries.append({"country": c, "supplier_count": count})
     return countries
 
 
@@ -115,11 +150,19 @@ def get_countries(
 def get_categories(
     region: str = Query(...),
     country: Optional[str] = Query(None, description="Filter by supplier country"),
+    explore_all: bool = Query(False),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional)
 ):
     q = _region_filter(db.query(GlobalSupplier.product_category), region)
     if country:
         q = q.filter(GlobalSupplier.country == country)
+        
+    if user and not explore_all:
+        profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == user.id).first()
+        if profile and profile.product_categories:
+            q = q.filter(GlobalSupplier.product_category.in_(profile.product_categories))
+            
     rows = q.distinct().order_by(GlobalSupplier.product_category).all()
 
     categories = []
@@ -140,17 +183,18 @@ def get_categories(
 
 @router.get("", response_model=SupplierListResponse)
 def list_global_suppliers(
-    region: str = Query(...),
-    category: str = Query(...),
+    region: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     country: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(6, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    base_q = _region_filter(
-        db.query(GlobalSupplier).filter(GlobalSupplier.product_category == category),
-        region,
-    )
+    base_q = db.query(GlobalSupplier)
+    if category:
+        base_q = base_q.filter(GlobalSupplier.product_category == category)
+    if region:
+        base_q = _region_filter(base_q, region)
     if country:
         base_q = base_q.filter(GlobalSupplier.country == country)
 
