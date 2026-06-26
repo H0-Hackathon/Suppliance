@@ -4,18 +4,15 @@ import {
   LayoutDashboard,
   Bell,
   Building2,
-  ShieldCheck,
   Settings,
-  Anchor,
-  TrendingUp,
   Globe,
 } from 'lucide-react';
+import { Logo } from './common/Logo';
 
 const NAV_ITEMS = [
   { label: 'Dashboard',   path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Alerts',      path: '/alerts',    icon: Bell },
+  { label: 'Past Events', path: '/alerts',    icon: Bell },
   { label: 'Suppliers',   path: '/suppliers', icon: Building2 },
-  { label: 'Compliance',  path: '/compliance',icon: ShieldCheck },
   { label: 'Settings',    path: '/settings',  icon: Settings },
 ];
 
@@ -47,8 +44,8 @@ export const CommonHeader: React.FC = () => {
   }, []);
 
   const statusColor =
-    dbStatus === 'ok' ? '#10b981' :
-    dbStatus === 'error' ? '#dc2626' : '#f59e0b';
+    dbStatus === 'ok' ? '#5BA86F' :
+    dbStatus === 'error' ? '#E24B4A' : '#E0A23B';
 
   return (
     <aside style={{
@@ -56,8 +53,8 @@ export const CommonHeader: React.FC = () => {
       top: 0, left: 0,
       width: 'var(--sidebar-w, 224px)',
       height: '100vh',
-      background: 'linear-gradient(180deg, #0e0e10 0%, #111108 100%)',
-      borderRight: '1px solid rgba(245,158,11,0.1)',
+      background: 'var(--card)',
+      borderRight: '1px solid var(--border-soft)',
       display: 'flex',
       flexDirection: 'column',
       zIndex: 1000,
@@ -66,78 +63,19 @@ export const CommonHeader: React.FC = () => {
       <div
         style={{
           padding: '22px 20px 18px',
-          borderBottom: '1px solid rgba(245,158,11,0.08)',
+          borderBottom: '1px solid var(--border-soft)',
           cursor: 'pointer',
         }}
         onClick={() => navigate('/dashboard')}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          {/* Anchor icon in warm amber ring */}
-          <div style={{
-            width: 34, height: 34, borderRadius: 9,
-            background: 'rgba(245,158,11,0.12)',
-            border: '1px solid rgba(245,158,11,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-            boxShadow: '0 0 12px rgba(245,158,11,0.15)',
-          }}>
-            <Anchor size={17} color="#f59e0b" />
-          </div>
-          <div>
-            <div style={{
-              fontFamily: 'Inter, sans-serif',
-              fontSize: 16,
-              fontWeight: 800,
-              color: '#e8e3d8',
-              letterSpacing: '-0.4px',
-              lineHeight: 1,
-            }}>
-              Coast<span style={{ color: '#f59e0b' }}>Guard</span>
-            </div>
-            <div style={{
-              fontSize: 9,
-              color: 'rgba(180,170,140,0.55)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-              marginTop: 3,
-            }}>
-              Trade Risk Intel
-            </div>
-          </div>
-        </div>
-
-        {/* Risk snapshot bar */}
-        <div style={{
-          marginTop: 10,
-          background: 'rgba(220,38,38,0.07)',
-          border: '1px solid rgba(220,38,38,0.15)',
-          borderRadius: 6,
-          padding: '5px 10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-        }}>
-          <TrendingUp size={10} color="#dc2626" />
-          <span style={{ fontSize: 10, color: 'rgba(220,100,100,0.9)', fontWeight: 600 }}>
-            4 high-risk suppliers
-          </span>
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: 9,
-            color: 'rgba(220,38,38,0.6)',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}>
-            LIVE
-          </span>
-        </div>
+        <Logo size={32} withWordmark />
       </div>
 
       {/* System status bar */}
       <div style={{
         margin: '10px 12px 2px',
-        background: dbStatus === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(220,38,38,0.06)',
-        border: `1px solid ${dbStatus === 'ok' ? 'rgba(16,185,129,0.15)' : 'rgba(220,38,38,0.15)'}`,
+        background: dbStatus === 'ok' ? 'rgba(91,168,111,0.08)' : 'rgba(226,75,74,0.08)',
+        border: `1px solid ${dbStatus === 'ok' ? 'rgba(91,168,111,0.15)' : 'rgba(226,75,74,0.15)'}`,
         borderRadius: 6,
         padding: '5px 10px',
         display: 'flex',
@@ -152,7 +90,7 @@ export const CommonHeader: React.FC = () => {
           animation: dbStatus === 'ok' ? 'pulse-dot 2s ease-in-out infinite' : 'none',
         }} />
         <span style={{
-          fontSize: 10, color: 'rgba(180,170,140,0.7)',
+          fontSize: 10, color: 'var(--text-secondary)',
           fontFamily: 'JetBrains Mono, monospace',
           fontWeight: 500,
           flex: 1,
@@ -171,7 +109,7 @@ export const CommonHeader: React.FC = () => {
       <nav style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <div style={{
           fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-          color: 'rgba(150,140,110,0.55)', textTransform: 'uppercase',
+          color: 'var(--text-secondary)', textTransform: 'uppercase',
           padding: '10px 10px 5px',
         }}>
           Platform
@@ -192,48 +130,32 @@ export const CommonHeader: React.FC = () => {
                 border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'Inter, sans-serif',
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#e8e3d8' : 'rgba(160,150,120,0.55)',
+                color: isActive ? 'var(--foreground)' : 'var(--text-secondary)',
                 background: isActive
-                  ? 'linear-gradient(90deg, rgba(245,158,11,0.14) 0%, rgba(245,158,11,0.04) 100%)'
+                  ? 'linear-gradient(90deg, rgba(84,140,146,0.14) 0%, rgba(84,140,146,0.04) 100%)'
                   : 'transparent',
                 textAlign: 'left',
                 width: '100%',
-                transition: 'all 0.15s',
-                borderLeft: isActive ? '2px solid #f59e0b' : '2px solid transparent',
-                boxShadow: isActive ? 'inset 0 0 0 1px rgba(245,158,11,0.08)' : 'none',
+                transition: 'all 0.15s ease-out',
+                borderLeft: isActive ? '2px solid var(--dusty-teal)' : '2px solid transparent',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(245,158,11,0.05)';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,227,216,0.85)';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(84,140,146,0.08)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(160,150,120,0.55)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
                 }
               }}
             >
-              <Icon size={15} style={{ flexShrink: 0 }} />
+              <Icon size={16} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }} />
               {label}
-              {label === 'Alerts' && (
-                <span style={{
-                  marginLeft: 'auto',
-                  background: '#dc2626',
-                  color: 'white',
-                  fontSize: 9,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  padding: '1px 5px',
-                  minWidth: 16,
-                  textAlign: 'center',
-                }}>
-                  3
-                </span>
-              )}
             </button>
           );
         })}
@@ -242,12 +164,12 @@ export const CommonHeader: React.FC = () => {
       {/* Footer */}
       <div style={{
         padding: '12px 20px',
-        borderTop: '1px solid rgba(245,158,11,0.07)',
+        borderTop: '1px solid var(--border-soft)',
       }}>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
-          CoastGuard v0.1.0
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace' }}>
+          Suppliance v0.1.0
         </div>
-        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.6, marginTop: 2 }}>
           Trade Risk Intelligence Platform
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import Globe, { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
+import { STATUS_COLORS, ARC_COLORS, DUSTY_TEAL, SEAFOAM } from '../styles/palette';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -43,18 +44,9 @@ const ARCS: Arc[] = [
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
-const STATUS_COLOR: Record<Supplier['status'], string> = {
-  impacted:    '#dc2626',
-  healthy:     '#10b981',
-  alternative: '#f59e0b',
-  customer:    '#38bdf8',
-};
+const STATUS_COLOR: Record<Supplier['status'], string> = STATUS_COLORS;
 
-const ARC_COLOR: Record<Arc['routeStatus'], [number, number, number, number]> = {
-  impacted:    [220, 38,  38,  255],
-  healthy:     [16,  185, 129, 230],
-  alternative: [245, 158, 11,  255],
-};
+const ARC_COLOR: Record<Arc['routeStatus'], [number, number, number, number]> = ARC_COLORS;
 
 const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.6, 2: 1.0, 3: 1.55 };
 const ARC_DASH_SPEED: Record<1|2|3, number> = { 1: 4000, 2: 2800, 3: 1800 };
@@ -330,7 +322,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
         backgroundImageUrl=""
         
         showAtmosphere
-        atmosphereColor="#4da6ff"
+        atmosphereColor={DUSTY_TEAL}
         atmosphereAltitude={0.11}
         
         // ── Supplier nodes ────────────────────────────────────────────────
@@ -390,13 +382,13 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
           top: 14,
           left: '50%',
           transform: 'translateX(-50%)',
-          background: 'rgba(220,38,38,0.1)',
-          border: '1px solid rgba(220,38,38,0.35)',
+          background: 'rgba(226,75,74,0.10)',
+          border: '1px solid rgba(226,75,74,0.35)',
           borderRadius: 6,
           padding: '5px 18px',
           fontSize: 11,
           fontWeight: 700,
-          color: '#fca5a5',
+          color: '#f5a0a0',
           letterSpacing: '0.05em',
           fontFamily: 'Inter, system-ui, sans-serif',
           zIndex: 10,
@@ -414,9 +406,9 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
           position: 'absolute',
           bottom: 16,
           left: 16,
-          background: 'rgba(6,10,20,0.88)',
+          background: 'rgba(30,58,66,0.88)',
           backdropFilter: 'blur(14px)',
-          border: '1px solid rgba(245,158,11,0.12)',
+          border: '1px solid rgba(232,226,216,0.10)',
           borderRadius: 10,
           padding: '12px 16px',
           fontFamily: 'Inter, system-ui, sans-serif',
@@ -431,7 +423,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
             fontWeight: 700,
             fontSize: 9,
             letterSpacing: '0.12em',
-            color: 'rgba(245,158,11,0.7)',
+            color: 'rgba(132,215,216,0.70)',
             textTransform: 'uppercase',
             marginBottom: 10,
           }}
@@ -440,10 +432,10 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
         </div>
 
         {[
-          { color: '#dc2626', label: 'Impacted Supplier' },
-          { color: '#10b981', label: 'Healthy Supplier' },
-          { color: '#f59e0b', label: 'Alternative Supplier' },
-          { color: '#38bdf8', label: 'Customer Destination' },
+          { color: '#E24B4A', label: 'Impacted Supplier' },
+          { color: '#5BA86F', label: 'Healthy Supplier' },
+          { color: '#548C92', label: 'Alternative Supplier' },
+          { color: '#7EB8C8', label: 'Customer Destination' },
         ].map(({ color, label }) => (
           <div
             key={label}
@@ -468,12 +460,12 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
           </div>
         ))}
 
-        <div style={{ borderTop: '1px solid rgba(245,158,11,0.1)', margin: '9px 0' }} />
+        <div style={{ borderTop: '1px solid rgba(232,226,216,0.10)', margin: '9px 0' }} />
 
         {[
-          { color: '#f59e0b', label: 'Exposure route (gold)' },
-          { color: '#dc2626', label: 'Disrupted route (crimson)' },
-          { color: '#10b981', label: 'Alternative route (emerald)' },
+          { color: '#548C92', label: 'Exposure route (teal)' },
+          { color: '#E24B4A', label: 'Disrupted route (crimson)' },
+          { color: '#5BA86F', label: 'Alternative route (emerald)' },
         ].map(({ color, label }) => (
           <div
             key={label}
@@ -518,7 +510,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
             position: 'fixed',
             left: (tooltipPos?.x || 0) + 16,
             top: (tooltipPos?.y || 0) - 10,
-            background: 'rgba(6,10,20,0.97)',
+            background: 'rgba(30,58,66,0.97)',
             border: `1px solid ${STATUS_COLOR[hoveredSupplier.status]}55`,
             borderRadius: 8,
             padding: '10px 14px',
@@ -567,10 +559,10 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
                     fontFamily: 'JetBrains Mono, monospace',
                     color:
                       hoveredSupplier.riskScore > 60
-                        ? '#dc2626'
+                        ? '#E24B4A'
                         : hoveredSupplier.riskScore > 35
-                          ? '#f59e0b'
-                          : '#10b981',
+                          ? '#E0A23B'
+                          : '#5BA86F',
                   }}
                 >
                   {hoveredSupplier.riskScore}
@@ -601,7 +593,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({ suppliers = [], disrupti
             style={{
               marginTop: 8,
               paddingTop: 8,
-              borderTop: '1px solid rgba(245,158,11,0.1)',
+              borderTop: '1px solid rgba(232,226,216,0.10)',
               fontSize: 9,
               fontWeight: 700,
               letterSpacing: '0.08em',

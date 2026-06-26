@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('CoastGuard render error:', error, info)
+    console.error('Suppliance render error:', error, info)
   }
 
   render() {

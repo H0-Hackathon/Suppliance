@@ -1,85 +1,103 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* ── Core brand tokens ── */
+  --teal-navy: #285260;
+  --dusty-teal: #548C92;
+  --seafoam: #84D7D8;
+  --sand: #E0D7CF;
+  --clay: #A89072;
+  --critical: #E24B4A;
+  --warning: #E0A23B;
+  --safe: #5BA86F;
+
+  /* ── Derived / aliases ── */
+  --ocean: #548C92;
+  --border-soft: rgba(232, 226, 216, 0.10);
+  --text-secondary: #A89072;
+  --surface: #285260;
+
+  /* ── shadcn semantic slots (mapped to new palette) ── */
   --font-size: 16px;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --input-background: #1a1a1f;
-  --switch-background: #3a3a40;
+  --background: #1E3A42;
+  --foreground: #E8E2D8;
+  --card: #285260;
+  --card-foreground: #E8E2D8;
+  --popover: #285260;
+  --popover-foreground: #E8E2D8;
+  --primary: #548C92;
+  --primary-foreground: #0E1E22;
+  --secondary: #1E3A42;
+  --secondary-foreground: #E8E2D8;
+  --muted: #1E3A42;
+  --muted-foreground: #A89072;
+  --accent: #84D7D8;
+  --accent-foreground: #0E1E22;
+  --destructive: #E24B4A;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(232, 226, 216, 0.10);
+  --input: rgba(232, 226, 216, 0.10);
+  --input-background: #1E3A42;
+  --switch-background: #3A5A62;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --ring: #548C92;
+  --chart-1: #548C92;
+  --chart-2: #84D7D8;
+  --chart-3: #E0A23B;
+  --chart-4: #E24B4A;
+  --chart-5: #5BA86F;
+  --radius: 0.75rem;
+  --sidebar: #285260;
+  --sidebar-foreground: #E8E2D8;
+  --sidebar-primary: #548C92;
+  --sidebar-primary-foreground: #0E1E22;
+  --sidebar-accent: #1E3A42;
+  --sidebar-accent-foreground: #E8E2D8;
+  --sidebar-border: rgba(232, 226, 216, 0.10);
+  --sidebar-ring: #548C92;
 }
 
 .dark {
+  /* Identical to :root — dark toggle is a no-op, dark mode is the only mode */
   --font-size: 16px;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --input-background: #1a1a1f;
-  --switch-background: #3a3a40;
+  --background: #1E3A42;
+  --foreground: #E8E2D8;
+  --card: #285260;
+  --card-foreground: #E8E2D8;
+  --popover: #285260;
+  --popover-foreground: #E8E2D8;
+  --primary: #548C92;
+  --primary-foreground: #0E1E22;
+  --secondary: #1E3A42;
+  --secondary-foreground: #E8E2D8;
+  --muted: #1E3A42;
+  --muted-foreground: #A89072;
+  --accent: #84D7D8;
+  --accent-foreground: #0E1E22;
+  --destructive: #E24B4A;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(232, 226, 216, 0.10);
+  --input: rgba(232, 226, 216, 0.10);
+  --input-background: #1E3A42;
+  --switch-background: #3A5A62;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --ring: #548C92;
+  --chart-1: #548C92;
+  --chart-2: #84D7D8;
+  --chart-3: #E0A23B;
+  --chart-4: #E24B4A;
+  --chart-5: #5BA86F;
+  --radius: 0.75rem;
+  --sidebar: #285260;
+  --sidebar-foreground: #E8E2D8;
+  --sidebar-primary: #548C92;
+  --sidebar-primary-foreground: #0E1E22;
+  --sidebar-accent: #1E3A42;
+  --sidebar-accent-foreground: #E8E2D8;
+  --sidebar-border: rgba(232, 226, 216, 0.10);
+  --sidebar-ring: #548C92;
 }
 
 @theme inline {
@@ -121,6 +139,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Brand aliases in Tailwind */
+  --color-teal-navy: var(--teal-navy);
+  --color-dusty-teal: var(--dusty-teal);
+  --color-seafoam: var(--seafoam);
+  --color-sand: var(--sand);
+  --color-clay: var(--clay);
+  --color-critical: var(--critical);
+  --color-warning: var(--warning);
+  --color-safe: var(--safe);
 }
 
 @layer base {
@@ -131,11 +159,6 @@
   body {
     @apply bg-background text-foreground;
   }
-
-  /**
-  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
-  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
-  */
 
   html {
     font-size: var(--font-size);

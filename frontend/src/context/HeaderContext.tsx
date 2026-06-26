@@ -15,13 +15,13 @@ interface HeaderContextType {
 const HeaderContext = createContext<HeaderContextType | undefined>(undefined);
 
 export const HeaderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [title, setTitle] = useState('CoastGuard');
+    const [title, setTitle] = useState('Suppliance');
     const [subtitle, setSubtitle] = useState('');
     const [extraContent, setExtraContent] = useState<ReactNode | null>(null);
     const [showShieldIcon, setShowShieldIcon] = useState(false);
 
     const resetHeader = () => {
-        setTitle('CoastGuard');
+        setTitle('Suppliance');
         setSubtitle('');
         setExtraContent(null);
         setShowShieldIcon(false);

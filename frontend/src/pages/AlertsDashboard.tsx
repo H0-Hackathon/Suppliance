@@ -1,33 +1,23 @@
 import React from 'react';
-import {
-  RefreshCw,
-  Globe,
-  AlertTriangle,
-  Layers,
-  DollarSign,
-  Users,
-  MapPin,
-  Activity,
-} from 'lucide-react';
+import { RefreshCw, Globe, TriangleAlert as AlertTriangle, Layers, DollarSign, Users, MapPin, Activity } from 'lucide-react';
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier } from '../components/TradeGlobe';
-import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import { NewsTicker } from '../components/dashboard/NewsTicker';
 import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
+import { MetricCard } from '../components/common/MetricCard';
+import { TopProgressBar } from '../components/common/TopProgressBar';
+import { StatusPill } from '../components/common/StatusPill';
 import api from '../services/api';
 
 /**
- * AlertsDashboard — Main CoastGuard command center.
+ * AlertsDashboard — Main Suppliance command center.
  *
- * Visual design / layout: frontend redesign (map-centric command center).
- * Backend integration preserved from the Samved branch:
+ * Backend integration preserved:
  *   - GET  /api/v2/alerts?customer_id=1            alert feed
  *   - GET  /api/v2/disruptions?customer_id=1       globe markers
  *   - GET  /api/v2/suppliers + /api/v2/geo/...     suppliers with coordinates
  *   - GET  /api/v2/monitor/targets                 countries/HS codes to scan
  *   - SSE  /api/v2/monitor/stream                  live 5-agent pipeline run
  *   - PUT  /api/v2/alerts/{id}/dismiss|resolve     alert actions
- *
- * Auth is removed; CUSTOMER_ID is hardcoded to the seeded demo customer (id=1).
  */
 
 const CUSTOMER_ID = 1;
@@ -75,41 +65,65 @@ export interface MonitorTarget {
   product_category: string | null;
 }
 
-interface DebugState {
-  target: AgentDebugTarget;
-  targetIndex: number;
-  totalTargets: number;
-  agentStates: Record<string, AgentState>;
-  logs: string[];
-}
-
 const MAP_LAYERS = [
-  { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
-  { id: 'routes',      label: 'Exposure Routes', color: '#f59e0b' },
-  { id: 'risk',        label: 'Risk Zones',      color: '#dc2626' },
-  { id: 'alt',         label: 'Alternatives',    color: '#14b8a6' },
+  { id: 'suppliers',   label: 'Suppliers',       color: '#5BA86F' },
+  { id: 'routes',      label: 'Exposure Routes', color: '#548C92' },
+  { id: 'risk',        label: 'Risk Zones',      color: '#E24B4A' },
+  { id: 'alt',         label: 'Alternatives',    color: '#84D7D8' },
 ];
+
+// Map SSE event types to progress milestones (monotonically increasing)
+function computeProgress(events: { type: string; agent?: string }[]): number {
+  const milestones: Record<string, number> = {
+    pipeline_start: 5,
+    profile_loaded: 10,
+    crew_start: 15,
+  };
+
+  const agentOrder = ['tariff_monitor', 'impact_calculator', 'alternatives_finder', 'import_compliance', 'adversarial'];
+  let maxPct = 0;
+  const seenAgents = new Set<string>();
+
+  for (const ev of events) {
+    if (milestones[ev.type]) {
+      maxPct = Math.max(maxPct, milestones[ev.type]);
+    }
+    if ((ev.type === 'agent_start' || ev.type === 'agent_done' || ev.type === 'agent_result') && ev.agent) {
+      seenAgents.add(ev.agent);
+      const idx = agentOrder.indexOf(ev.agent);
+      if (idx >= 0) {
+        maxPct = Math.max(maxPct, 15 + (idx + 1) * 15);
+      }
+    }
+    if (ev.type === 'pipeline_done') {
+      maxPct = 100;
+    }
+  }
+
+  return Math.min(100, maxPct);
+}
 
 export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
   const [disruptions, setDisruptions] = React.useState<DisruptionPoint[]>([]);
   const [suppliers, setSuppliers] = React.useState<SupplierWithGeo[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
-  const [debugState, setDebugState] = React.useState<DebugState | null>(null);
   const [activeLayers, setActiveLayers] = React.useState<Set<string>>(
     new Set(['suppliers', 'routes', 'risk'])
   );
   const [lastSync] = React.useState(() => new Date().toISOString());
 
-  // Real agent outputs (TariffMonitor, ImpactCalculator, AlternativesFinder,
-  // ImportCompliance, Adversarial), surfaced live from the SSE stream during a
-  // run and from the latest persisted alert (TariffAlert.agent_output) on load.
   const [agentResults, setAgentResults] = React.useState<AgentResults>({});
   const [agentStatus, setAgentStatus] = React.useState<Record<string, 'running' | 'done'>>({});
   const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
   const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
 
-  // ── Data fetching (backend integration) ──────────────────────────────────
+  // Progress bar state
+  const [pipelineEvents, setPipelineEvents] = React.useState<{ type: string; agent?: string }[]>([]);
+  const [progressLabel, setProgressLabel] = React.useState('Generating analysis');
+  const [showProgress, setShowProgress] = React.useState(false);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
   async function fetchAlerts() {
     const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
     setAlerts(res.data);
@@ -140,15 +154,11 @@ export const AlertsDashboard: React.FC = () => {
       try {
         await Promise.all([fetchAlerts(), fetchDisruptions(), fetchSuppliers()]);
       } catch (err) {
-        // backend offline — globe falls back to its built-in demo data
         console.error('Failed to load dashboard data', err);
       }
     })();
   }, []);
 
-  // Surface the most recent persisted agent run (TariffAlert.agent_output) so
-  // real Agent 1/2 data is visible on page load without re-running. Skipped
-  // while a live run is streaming (SSE updates take precedence).
   React.useEffect(() => {
     if (isRunning) return;
     for (const a of alerts) {
@@ -167,25 +177,14 @@ export const AlertsDashboard: React.FC = () => {
     }
   }, [alerts, isRunning]);
 
-  // ── Alert actions (backend integration) ──────────────────────────────────
-  async function handleDismiss(id: number) {
-    await api.put(`/v2/alerts/${id}/dismiss`);
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'dismissed' } : a)));
-  }
-
-  async function handleResolve(id: number) {
-    await api.put(`/v2/alerts/${id}/resolve`);
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
-  }
-
-  // ── Monitor run via SSE 5-agent pipeline (backend integration) ───────────
-  // Real-time progress streams into the AgentDebugPanel as each agent emits
-  // start/done/log events.
+  // ── Monitor run via SSE 5-agent pipeline ───────────────────────────────────
   async function handleRunMonitor() {
     setIsRunning(true);
-    setDebugState(null);
     setAgentResults({});
     setAgentStatus({});
+    setPipelineEvents([]);
+    setShowProgress(true);
+    setProgressLabel('Generating analysis');
 
     try {
       const targetsRes = await api.get<MonitorTarget[]>('/v2/monitor/targets', {
@@ -195,14 +194,7 @@ export const AlertsDashboard: React.FC = () => {
 
       for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
-
-        setDebugState({
-          target: { ...target },
-          targetIndex: i,
-          totalTargets: targets.length,
-          agentStates: {},
-          logs: [],
-        });
+        setProgressLabel(`Analyzing ${target.country_name} — ${target.hs_code}`);
 
         await new Promise<void>((resolve, reject) => {
           const params = new URLSearchParams({
@@ -217,26 +209,15 @@ export const AlertsDashboard: React.FC = () => {
               const event = JSON.parse(e.data as string) as Record<string, unknown>;
               const type = event.type as string;
 
+              setPipelineEvents((prev) => [...prev, { type, agent: event.agent as string | undefined }]);
+
               if (type === 'agent_start') {
                 const agent = event.agent as string;
-                setDebugState((prev) =>
-                  prev ? {
-                    ...prev,
-                    agentStates: { ...prev.agentStates, [agent]: { status: 'running' } },
-                  } : prev
-                );
                 if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'running' }));
               } else if (type === 'agent_done') {
                 const agent = event.agent as string;
                 const output = event.output as Record<string, unknown> | undefined;
-                setDebugState((prev) =>
-                  prev ? {
-                    ...prev,
-                    agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } },
-                  } : prev
-                );
                 if (agent) setAgentStatus((prev) => ({ ...prev, [agent]: 'done' }));
-                // Surface each real agent output in the Live Agent Results panel.
                 if (agent && output) {
                   setAgentResults((prev) => ({ ...prev, [agent]: output }));
                   setAgentsUpdatedAt(new Date().toISOString());
@@ -246,11 +227,6 @@ export const AlertsDashboard: React.FC = () => {
                     );
                   }
                 }
-              } else if (type === 'log') {
-                const text = event.text as string;
-                setDebugState((prev) =>
-                  prev ? { ...prev, logs: [...prev.logs.slice(-300), text] } : prev
-                );
               } else if (type === 'done') {
                 es.close();
                 resolve();
@@ -258,7 +234,6 @@ export const AlertsDashboard: React.FC = () => {
                 es.close();
                 reject(new Error(event.message as string));
               }
-              // heartbeat: ignore
             } catch {
               // malformed event — ignore
             }
@@ -276,8 +251,8 @@ export const AlertsDashboard: React.FC = () => {
       console.error('Run Monitor failed', err);
     } finally {
       setIsRunning(false);
-      // Leave debugState visible so the final agent output stays on screen;
-      // it clears on the next run.
+      setProgressLabel('Analysis complete');
+      setTimeout(() => setShowProgress(false), 1200);
     }
   }
 
@@ -290,18 +265,15 @@ export const AlertsDashboard: React.FC = () => {
     });
   }
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // ── Derived values ─────────────────────────────────────────────────────────
   const active = alerts.filter((a) => a.status === 'active');
   const critical = active.filter((a) => a.severity === 'critical').length;
   const countryCount = new Set(suppliers.map((s) => s.country)).size;
 
-  // Real direct-cost figure from Agent 2 (ImpactCalculator); null until a run.
   const agentMonitor = agentResults.tariff_monitor;
   const agentImpact = agentResults.impact_calculator;
   const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
 
-  // ── KPI cards derived from real monitor results (no hardcoded values) ──────
-  // Cumulative direct-cost exposure across active alerts' ImpactCalculator output.
   const activeParsed = active.map((a) => {
     try { return a.agent_output ? JSON.parse(a.agent_output) : {}; } catch { return {}; }
   });
@@ -316,44 +288,8 @@ export const AlertsDashboard: React.FC = () => {
   const fmtMoney = (n: number) =>
     n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`;
 
-  // Each card is only shown when its underlying real data exists; otherwise it
-  // is hidden (no placeholder values).
-  const kpiCards = [
-    {
-      key: 'exposure',
-      available: totalExposure > 0,
-      label: 'Trade Exposure',
-      value: fmtMoney(totalExposure),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
-    },
-    {
-      key: 'highrisk',
-      available: suppliers.length > 0,
-      label: 'High Risk Suppliers',
-      value: String(highRiskSuppliers),
-      sub: `of ${suppliers.length} tracked`,
-      icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
-    },
-    {
-      key: 'events',
-      available: active.length > 0,
-      label: 'Critical Trade Events',
-      value: String(criticalEvents),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)',
-    },
-    {
-      key: 'countries',
-      available: suppliers.length > 0,
-      label: 'Countries Monitored',
-      value: String(countryCount),
-      sub: `${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`,
-      icon: MapPin, color: '#10b981', bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)',
-    },
-  ].filter((c) => c.available);
+  const progressPercent = computeProgress(pipelineEvents);
 
-  // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
     .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
@@ -367,55 +303,61 @@ export const AlertsDashboard: React.FC = () => {
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      background: 'var(--bg)',
+      background: 'var(--background)',
       overflow: 'hidden',
     }}>
+      {/* Top progress bar */}
+      <TopProgressBar
+        label={progressLabel}
+        percent={progressPercent}
+        visible={showProgress}
+      />
+
       {/* ── Top Hero Bar ── */}
       <div style={{
-        padding: '12px 24px',
-        borderBottom: '1px solid rgba(245,158,11,0.08)',
+        padding: '16px 24px',
+        borderBottom: '1px solid var(--border-soft)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
-        background: 'rgba(14,14,10,0.95)',
-        backdropFilter: 'blur(12px)',
+        background: 'var(--card)',
       }}>
         <div>
           <h1 style={{
-            fontSize: 17,
-            fontWeight: 800,
-            color: '#e8e3d8',
+            fontSize: 20,
+            fontWeight: 700,
+            color: 'var(--foreground)',
             letterSpacing: '-0.3px',
             fontFamily: 'Inter, sans-serif',
-            lineHeight: 1,
+            lineHeight: 1.2,
             marginBottom: 4,
           }}>
             Trade Risk Intelligence
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'rgba(130,120,90,0.8)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: 'var(--text-secondary)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{
                 width: 5, height: 5, borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 5px #10b981',
+                background: '#5BA86F',
+                boxShadow: '0 0 5px #5BA86F',
                 display: 'inline-block',
                 animation: 'pulse-dot 2s ease-in-out infinite',
               }} />
               Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
             </span>
-            <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
+            <span style={{ color: 'var(--border-soft)' }}>|</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
               Updated {syncTime}
             </span>
             {critical > 0 && (
               <>
-                <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
+                <span style={{ color: 'var(--border-soft)' }}>|</span>
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 4,
-                  color: '#dc2626', fontWeight: 600,
+                  color: '#E24B4A', fontWeight: 600,
                 }}>
-                  <AlertTriangle size={11} />
+                  <AlertTriangle size={12} />
                   {critical} critical alert{critical !== 1 ? 's' : ''}
                 </span>
               </>
@@ -426,15 +368,15 @@ export const AlertsDashboard: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.18)',
-            borderRadius: 6,
+            background: 'rgba(91,168,111,0.08)',
+            border: '1px solid rgba(91,168,111,0.15)',
+            borderRadius: 8,
             padding: '5px 12px',
-            fontSize: 10,
-            color: '#6ee7b7',
+            fontSize: 11,
+            color: '#a8d9b4',
             fontWeight: 600,
           }}>
-            <Activity size={10} color="#10b981" />
+            <Activity size={11} color="#5BA86F" />
             SYSTEMS NOMINAL
           </div>
 
@@ -442,10 +384,10 @@ export const AlertsDashboard: React.FC = () => {
             className="btn-accent"
             onClick={handleRunMonitor}
             disabled={isRunning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
           >
             <RefreshCw
-              size={12}
+              size={13}
               style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }}
             />
             {isRunning ? 'Scanning…' : 'Run Analysis'}
@@ -453,13 +395,48 @@ export const AlertsDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Metric Cards Row ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 16,
+        padding: '16px 24px',
+        flexShrink: 0,
+      }}>
+        <MetricCard
+          label="Trade Exposure"
+          value={totalExposure > 0 ? fmtMoney(totalExposure) : '—'}
+          sub={`${active.length} active event${active.length !== 1 ? 's' : ''}`}
+          icon={<DollarSign size={16} />}
+        />
+        <MetricCard
+          label="High Risk Suppliers"
+          value={String(highRiskSuppliers)}
+          sub={`of ${suppliers.length} tracked`}
+          icon={<Users size={16} />}
+        />
+        <MetricCard
+          label="Critical Trade Events"
+          value={String(criticalEvents)}
+          sub={`${active.length} active event${active.length !== 1 ? 's' : ''}`}
+          icon={<AlertTriangle size={16} />}
+        />
+        <MetricCard
+          label="Countries Monitored"
+          value={String(countryCount)}
+          sub={`${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`}
+          icon={<MapPin size={16} />}
+        />
+      </div>
+
       {/* ── Main Body ── */}
       <div style={{
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: '1fr 276px',
+        gridTemplateColumns: '1fr 360px',
         minHeight: 0,
         overflow: 'hidden',
+        gap: 0,
       }}>
         {/* ── Centre: Map ── */}
         <div style={{
@@ -468,7 +445,6 @@ export const AlertsDashboard: React.FC = () => {
           minHeight: 0,
           overflow: 'hidden',
         }}>
-          {/* Map container */}
           <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
             <TradeGlobe suppliers={tradeGlobeSuppliers} disruptions={disruptions} />
 
@@ -476,9 +452,9 @@ export const AlertsDashboard: React.FC = () => {
             <div style={{
               position: 'absolute',
               top: 14, right: 14,
-              background: 'rgba(14,14,10,0.88)',
+              background: 'rgba(30,58,66,0.92)',
               backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(245,158,11,0.12)',
+              border: '1px solid var(--border-soft)',
               borderRadius: 8,
               padding: '10px 12px',
               zIndex: 20,
@@ -487,13 +463,13 @@ export const AlertsDashboard: React.FC = () => {
               gap: 6,
             }}>
               <div style={{
-                fontSize: 9, fontWeight: 700,
+                fontSize: 10, fontWeight: 700,
                 letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'rgba(150,140,100,0.7)',
+                color: 'var(--text-secondary)',
                 display: 'flex', alignItems: 'center', gap: 5,
                 marginBottom: 2,
               }}>
-                <Layers size={9} color="#f59e0b" />
+                <Layers size={10} color="#84D7D8" />
                 <span>Map Layers</span>
               </div>
               {MAP_LAYERS.map((layer) => {
@@ -512,11 +488,11 @@ export const AlertsDashboard: React.FC = () => {
                       width: 10, height: 10, borderRadius: 2, flexShrink: 0,
                       background: on ? layer.color : 'rgba(255,255,255,0.06)',
                       border: `1px solid ${on ? layer.color : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'background 0.15s',
+                      transition: 'background 0.15s ease-out',
                     }} />
                     <span style={{
-                      fontSize: 10.5,
-                      color: on ? '#e8e3d8' : 'rgba(130,120,90,0.6)',
+                      fontSize: 11,
+                      color: on ? 'var(--foreground)' : 'var(--text-secondary)',
                       fontFamily: 'Inter, sans-serif',
                     }}>
                       {layer.label}
@@ -526,26 +502,26 @@ export const AlertsDashboard: React.FC = () => {
               })}
             </div>
 
-            {/* Exposure callout overlay — bottom left of map */}
+            {/* Exposure callout overlay */}
             <div style={{
               position: 'absolute',
               bottom: 14, left: 14,
-              background: 'rgba(14,14,10,0.88)',
+              background: 'rgba(30,58,66,0.92)',
               backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(220,38,38,0.2)',
+              border: '1px solid rgba(226,75,74,0.20)',
               borderRadius: 8,
-              padding: '8px 14px',
+              padding: '10px 16px',
               zIndex: 20,
             }}>
-              <div style={{ fontSize: 9, color: 'rgba(150,140,100,0.6)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
                 Direct Cost Impact {agentImpact ? '(ImpactCalculator)' : ''}
               </div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#E24B4A', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                 {exposureValue != null
                   ? `$${Math.round(exposureValue).toLocaleString('en-US')}`
                   : '—'}
               </div>
-              <div style={{ fontSize: 9, color: 'rgba(220,38,38,0.7)', marginTop: 3 }}>
+              <div style={{ fontSize: 10, color: 'rgba(226,75,74,0.70)', marginTop: 4 }}>
                 {agentMonitor?.tariff_rate != null
                   ? `${agentMonitor.tariff_rate}% tariff · ${agentMonitor.country ?? ''}`
                   : 'Run Analysis to calculate exposure'}
@@ -553,83 +529,35 @@ export const AlertsDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Bottom: live trade/supply-chain news ticker */}
+          {/* Bottom: news ticker */}
           <div style={{ height: 56, flexShrink: 0 }}>
             <NewsTicker />
           </div>
         </div>
 
-        {/* ── Right Sidebar ── */}
+        {/* ── Right Rail: Live Agent Results ── */}
         <div style={{
-          borderLeft: '1px solid rgba(245,158,11,0.08)',
+          borderLeft: '1px solid var(--border-soft)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: 'rgba(14,14,10,0.5)',
+          background: 'var(--card)',
         }}>
-          {/* Intelligence KPI cards — derived from real monitor results;
-              individual cards hide when their underlying data is unavailable. */}
-          {kpiCards.length > 0 && (
-            <div style={{
-              padding: '12px 14px',
-              borderBottom: '1px solid rgba(245,158,11,0.07)',
-              flexShrink: 0,
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-                marginBottom: 9,
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <Globe size={9} color="#f59e0b" />
-                Trade Intelligence
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-                {kpiCards.map(({ key, label, value, sub, icon: Icon, color, bg, border }) => (
-                  <div key={key} style={{
-                    background: bg,
-                    border: `1px solid ${border}`,
-                    borderRadius: 8,
-                    padding: '10px 11px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                      <Icon size={10} color={color} />
-                      <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
-                    </div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 800,
-                      color, fontVariantNumeric: 'tabular-nums',
-                      lineHeight: 1, marginBottom: 3,
-                    }}>
-                      {value}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Analysis Pipeline — live agent debug stream while running, else status */}
           <div style={{
             flex: 1,
             overflow: 'auto',
-            padding: '12px 14px',
-            scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(245,158,11,0.1) transparent',
+            padding: '16px 20px',
           }}>
             <div style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-              marginBottom: 9,
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'var(--text-secondary)',
+              marginBottom: 12,
               display: 'flex', alignItems: 'center', gap: 5,
             }}>
-              <Activity size={9} color="#f59e0b" />
+              <Activity size={10} color="#84D7D8" />
               Live Agent Results
             </div>
 
-            {/* Real agent output: TariffMonitor, ImpactCalculator, and (real
-                LLM mode) AlternativesFinder, ImportCompliance, Adversarial */}
             <LiveAgentResults
               agents={agentResults}
               agentStatus={agentStatus}
@@ -637,19 +565,6 @@ export const AlertsDashboard: React.FC = () => {
               updatedAt={agentsUpdatedAt}
               live={isRunning}
             />
-
-            {/* Raw agent stream (start/done/log events) while a run is in flight */}
-            {debugState && (
-              <div style={{ marginTop: 10 }}>
-                <AgentDebugPanel
-                  target={debugState.target}
-                  agentStates={debugState.agentStates}
-                  logs={debugState.logs}
-                  targetIndex={debugState.targetIndex}
-                  totalTargets={debugState.totalTargets}
-                />
-              </div>
-            )}
           </div>
         </div>
       </div>

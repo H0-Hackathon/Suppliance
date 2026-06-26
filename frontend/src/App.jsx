@@ -11,7 +11,7 @@ import { DemoPage } from './pages/DemoPage';
 import { AdminPage } from './pages/AdminPage';
 
 /**
- * CoastGuard — App Router
+ * Suppliance — App Router
  *
  * Routes:
  *   /            → redirect to /dashboard

@@ -1,6 +1,23 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
-import './SuppliersPage.css';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Globe,
+  Factory,
+  Mountain,
+  Ship,
+  Shirt,
+  Cpu,
+  Package,
+  Check,
+  Mail,
+  ExternalLink,
+  Star,
+} from 'lucide-react';
+import { CountryOutlineIcon } from '../components/common/CountryOutlineIcon';
+import { StatusPill } from '../components/common/StatusPill';
+import { Card } from '../components/common/Card';
 
 // ── World topojson (public CDN) ───────────────────────────────────────────────
 const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
@@ -63,7 +80,6 @@ interface MapTooltip {
   x: number;
   y: number;
   country: string;
-  flag: string;
   suppliers: Supplier[];
 }
 
@@ -72,14 +88,12 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<MapTooltip | null>(null);
 
-  // Group suppliers by country, sorted by rating desc
   const countryGroups = React.useMemo(() => {
     const groups: Record<string, Supplier[]> = {};
     suppliers.forEach(s => {
       if (!groups[s.country]) groups[s.country] = [];
       groups[s.country].push(s);
     });
-    // Sort each group by rating desc
     Object.values(groups).forEach(arr =>
       arr.sort((a, b) => (b.supplier_rating ?? 0) - (a.supplier_rating ?? 0))
     );
@@ -102,23 +116,58 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
     if (!rect) return;
     let x = e.clientX - rect.left + 14;
     let y = e.clientY - rect.top - 10;
-    // Keep tooltip inside map bounds (tooltip ~260px wide, ~240px tall)
     if (x + 270 > rect.width) x = e.clientX - rect.left - 280;
     if (y + 250 > rect.height) y = rect.height - 260;
     if (y < 36) y = 36;
-    setTooltip({ x, y, country, flag: getFlag(country), suppliers: items });
+    setTooltip({ x, y, country, suppliers: items });
   };
 
   const dotR = (count: number) => Math.min(3.5 + Math.sqrt(count) * 0.9, 11);
   const ringR = (count: number) => Math.min(dotR(count) + 3, 16);
 
   return (
-    <div className="sp-map-wrap" ref={mapRef} onMouseLeave={() => setTooltip(null)}>
+    <div
+      ref={mapRef}
+      onMouseLeave={() => setTooltip(null)}
+      style={{
+        marginBottom: 20,
+        background: 'var(--card)',
+        border: '1px solid var(--border-soft)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        height: 270,
+        position: 'relative',
+      }}
+    >
       {/* Header bar */}
-      <div className="sp-map-label">
-        <span className="sp-map-dot-legend" />
+      <div style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0,
+        zIndex: 20,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 14px',
+        background: 'rgba(30,58,66,0.95)',
+        borderBottom: '1px solid var(--border-soft)',
+        fontSize: 10,
+        fontWeight: 700,
+        color: '#5BA86F',
+        fontFamily: 'Inter, sans-serif',
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        backdropFilter: 'blur(6px)',
+      }}>
+        <span style={{
+          width: 8, height: 8,
+          borderRadius: '50%',
+          background: '#5BA86F',
+          boxShadow: '0 0 8px rgba(91,168,111,0.9)',
+          flexShrink: 0,
+          animation: 'pulse-dot 2s ease-in-out infinite',
+        }} />
         Supplier Locations
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6b6a5e' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-secondary)' }}>
           {markers.length} countr{markers.length === 1 ? 'y' : 'ies'} · {suppliers.length} loaded · hover dot for details
         </span>
       </div>
@@ -135,12 +184,12 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill="#1b1b1e"
-                  stroke="#28282c"
+                  fill="rgba(30,58,66,0.4)"
+                  stroke="rgba(232,226,216,0.08)"
                   strokeWidth={0.4}
                   style={{
                     default: { outline: 'none' },
-                    hover:   { fill: '#222226', outline: 'none' },
+                    hover:   { fill: 'rgba(40,82,96,0.6)', outline: 'none' },
                     pressed: { outline: 'none' },
                   }}
                 />
@@ -156,90 +205,114 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
               onMouseLeave={() => setTooltip(null)}
               style={{ cursor: 'pointer' }}
             >
-              {/* Pulsing outer ring */}
               <circle
                 r={ringR(count)}
-                fill="rgba(16,185,129,0.13)"
-                className="sp-dot-pulse"
-                style={{ pointerEvents: 'none' }}
+                fill="rgba(91,168,111,0.13)"
+                style={{ pointerEvents: 'none', animation: 'pulse-dot 2.5s ease-out infinite' }}
               />
-              {/* Core green dot */}
               <circle
                 r={dotR(count)}
-                fill="#10b981"
-                stroke="#0e0e10"
+                fill="#5BA86F"
+                stroke="#1E3A42"
                 strokeWidth={1.2}
-                style={{ filter: 'drop-shadow(0 0 4px rgba(16,185,129,0.7))' }}
+                style={{ filter: 'drop-shadow(0 0 4px rgba(91,168,111,0.7))' }}
               />
             </Marker>
           ))}
         </ZoomableGroup>
       </ComposableMap>
 
-      {/* Rich hover tooltip */}
+      {/* Tooltip */}
       {tooltip && (
         <div
-          className="sp-map-tooltip"
-          style={{ left: tooltip.x, top: tooltip.y }}
-          onMouseEnter={() => {/* keep open when hovering tooltip */}}
+          style={{
+            position: 'absolute',
+            zIndex: 100,
+            width: 262,
+            background: 'var(--card)',
+            border: '1px solid rgba(91,168,111,0.22)',
+            borderRadius: 10,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            animation: 'slide-up 0.12s ease',
+            left: tooltip.x,
+            top: tooltip.y,
+          }}
         >
-          {/* Tooltip header */}
-          <div className="sp-tt-header">
-            <span className="sp-tt-flag">{tooltip.flag}</span>
+          <div style={{
+            padding: '10px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: 'rgba(91,168,111,0.06)',
+          }}>
+            <CountryOutlineIcon countryName={tooltip.country} size={20} />
             <div>
-              <div className="sp-tt-country">{tooltip.country}</div>
-              <div className="sp-tt-count">
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)', lineHeight: 1.2 }}>
+                {tooltip.country}
+              </div>
+              <div style={{ fontSize: 10, color: '#5BA86F', marginTop: 1, fontFamily: 'JetBrains Mono, monospace' }}>
                 {tooltip.suppliers.length} verified supplier{tooltip.suppliers.length > 1 ? 's' : ''}
               </div>
             </div>
-            <span className="sp-tt-live" />
+            <span style={{
+              marginLeft: 'auto',
+              width: 6, height: 6,
+              borderRadius: '50%',
+              background: '#5BA86F',
+              boxShadow: '0 0 6px #5BA86F',
+              animation: 'pulse-dot 2s ease-in-out infinite',
+              flexShrink: 0,
+            }} />
           </div>
 
-          {/* Top suppliers list */}
-          <div className="sp-tt-divider" />
-          <div className="sp-tt-label">Top Suppliers</div>
+          <div style={{ height: 1, background: 'rgba(232,226,216,0.05)' }} />
+          <div style={{ padding: '6px 12px 3px', fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>
+            Top Suppliers
+          </div>
           {tooltip.suppliers.slice(0, 3).map((s, i) => (
-            <div key={s.id} className="sp-tt-row">
-              <div className="sp-tt-rank">#{i + 1}</div>
-              <div className="sp-tt-info">
-                <div className="sp-tt-name">{s.business_name}</div>
-                <div className="sp-tt-meta">
-                  <span className="sp-tt-cat">{s.product_category}</span>
-                  <span className="sp-tt-sep">·</span>
-                  <span className="sp-tt-type">{s.business_type ?? '—'}</span>
+            <div key={s.id} style={{ display: 'flex', gap: 8, padding: '7px 12px', borderTop: '1px solid rgba(232,226,216,0.03)' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#E0A23B', fontFamily: 'JetBrains Mono, monospace', paddingTop: 1, flexShrink: 0 }}>
+                #{i + 1}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2 }}>
+                  {s.business_name}
                 </div>
-                <div className="sp-tt-stats">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, color: '#E0A23B', fontWeight: 600 }}>{s.product_category}</span>
+                  <span style={{ fontSize: 9, color: 'rgba(232,226,216,0.15)' }}>·</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{s.business_type ?? '—'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
                   {s.supplier_rating && (
-                    <span className="sp-tt-rating">
-                      ★ {s.supplier_rating.toFixed(1)}
+                    <span style={{ fontSize: 10, color: '#E0A23B', fontWeight: 600 }}>
+                      <Star size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 2 }} />
+                      {s.supplier_rating.toFixed(1)}
                     </span>
                   )}
                   {s.annual_export_volume_usd && (
-                    <span className="sp-tt-vol">
+                    <span style={{ fontSize: 10, color: '#5BA86F', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
                       {s.annual_export_volume_usd >= 1e6
                         ? `$${(s.annual_export_volume_usd / 1e6).toFixed(1)}M`
                         : `$${(s.annual_export_volume_usd / 1e3).toFixed(0)}K`}
                     </span>
                   )}
                   {s.lead_time_days && (
-                    <span className="sp-tt-lead">{s.lead_time_days}d lead</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{s.lead_time_days}d lead</span>
                   )}
                 </div>
                 {(s.email || s.website) && (
-                  <div className="sp-tt-links">
+                  <div style={{ display: 'flex', gap: 6 }}>
                     {s.email && (
-                      <a href={`mailto:${s.email}`} className="sp-tt-link" onClick={e => e.stopPropagation()}>
-                        ✉ Email
+                      <a href={`mailto:${s.email}`} onClick={e => e.stopPropagation()} style={{ fontSize: 9, fontWeight: 600, color: '#E0A23B', background: 'rgba(224,162,59,0.08)', border: '1px solid rgba(224,162,59,0.15)', borderRadius: 4, padding: '2px 7px', textDecoration: 'none', cursor: 'pointer', pointerEvents: 'all' }}>
+                        Email
                       </a>
                     )}
                     {s.website && (
-                      <a
-                        href={s.website.startsWith('http') ? s.website : `https://${s.website}`}
-                        target="_blank" rel="noreferrer"
-                        className="sp-tt-link sp-tt-web"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        🌐 Web
+                      <a href={s.website.startsWith('http') ? s.website : `https://${s.website}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 9, fontWeight: 600, color: '#84D7D8', background: 'rgba(132,215,216,0.08)', border: '1px solid rgba(132,215,216,0.15)', borderRadius: 4, padding: '2px 7px', textDecoration: 'none', cursor: 'pointer', pointerEvents: 'all' }}>
+                        Web
                       </a>
                     )}
                   </div>
@@ -248,7 +321,9 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
             </div>
           ))}
           {tooltip.suppliers.length > 3 && (
-            <div className="sp-tt-more">+{tooltip.suppliers.length - 3} more in list below</div>
+            <div style={{ padding: '5px 12px 8px', fontSize: 9, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+              +{tooltip.suppliers.length - 3} more in list below
+            </div>
           )}
         </div>
       )}
@@ -288,65 +363,59 @@ interface SupplierListResponse {
   total: number; page: number; per_page: number; total_pages: number;
 }
 
-// ── Meta maps ─────────────────────────────────────────────────────────────────
-const REGION_META: Record<string, { emoji: string; desc: string }> = {
-  'Middle East':        { emoji: '🕌', desc: 'UAE, Saudi Arabia, Qatar & more' },
-  'South Asia':         { emoji: '🌏', desc: 'India, Bangladesh, Pakistan & more' },
-  'Western Europe':     { emoji: '🇪🇺', desc: 'Germany, France, Netherlands & more' },
-  'Eastern Europe':     { emoji: '🏰', desc: 'Poland, Romania, Ukraine & more' },
-  'Southeast Asia':     { emoji: '🌴', desc: 'Vietnam, Malaysia, Thailand & more' },
-  'North America':      { emoji: '🦅', desc: 'USA, Canada, Mexico & more' },
-  'South America':      { emoji: '🌿', desc: 'Brazil, Chile, Colombia & more' },
-  'Sub-Saharan Africa': { emoji: '🌍', desc: 'Kenya, Nigeria, Tanzania & more' },
-  'North Africa':       { emoji: '🏜️', desc: 'Egypt, Morocco, Algeria & more' },
-  'East Asia':          { emoji: '⛩️', desc: 'China, Japan, South Korea & more' },
-  'Oceania':            { emoji: '🦘', desc: 'Australia, New Zealand & more' },
-  'CIS Countries':      { emoji: '❄️', desc: 'Russia, Kazakhstan, Georgia & more' },
+// ── Meta maps (lucide icons, no emoji) ───────────────────────────────────────
+const REGION_ICONS: Record<string, React.ReactNode> = {
+  'Middle East':        <Globe size={20} />,
+  'South Asia':         <Globe size={20} />,
+  'Western Europe':     <Factory size={20} />,
+  'Eastern Europe':     <Factory size={20} />,
+  'Southeast Asia':     <Globe size={20} />,
+  'North America':      <Factory size={20} />,
+  'South America':      <Mountain size={20} />,
+  'Sub-Saharan Africa': <Globe size={20} />,
+  'North Africa':       <Globe size={20} />,
+  'East Asia':          <Factory size={20} />,
+  'Oceania':            <Ship size={20} />,
+  'CIS Countries':      <Globe size={20} />,
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  'Textiles & Apparel': '👗', 'Metals & Minerals': '⚙️',
-  'Agriculture & Food Products': '🌾', 'Leather Goods': '👜',
-  'Machinery & Industrial Equipment': '🏭', 'Electronics & Electrical': '💡',
-  'Chemicals & Petrochemicals': '🧪', 'Construction Materials': '🏗️',
-  'Automotive Parts': '🚗', 'Handicrafts & Home Decor': '🏺',
-  'Toys & Games': '🎮', 'Paper & Packaging': '📦',
-  'Cosmetics & Personal Care': '✨', 'Seafood & Marine Products': '🦐',
-  'Furniture & Wood Products': '🪑', 'Sports & Outdoor': '⚽',
-  'Medical & Healthcare': '💊', 'Jewellery & Accessories': '💎',
-  'Beverages': '🍶', 'Jewelry & Gemstones': '💎',
+const REGION_META: Record<string, { desc: string }> = {
+  'Middle East':        { desc: 'UAE, Saudi Arabia, Qatar & more' },
+  'South Asia':         { desc: 'India, Bangladesh, Pakistan & more' },
+  'Western Europe':     { desc: 'Germany, France, Netherlands & more' },
+  'Eastern Europe':     { desc: 'Poland, Romania, Ukraine & more' },
+  'Southeast Asia':     { desc: 'Vietnam, Malaysia, Thailand & more' },
+  'North America':      { desc: 'USA, Canada, Mexico & more' },
+  'South America':      { desc: 'Brazil, Chile, Colombia & more' },
+  'Sub-Saharan Africa': { desc: 'Kenya, Nigeria, Tanzania & more' },
+  'North Africa':       { desc: 'Egypt, Morocco, Algeria & more' },
+  'East Asia':          { desc: 'China, Japan, South Korea & more' },
+  'Oceania':            { desc: 'Australia, New Zealand & more' },
+  'CIS Countries':      { desc: 'Russia, Kazakhstan, Georgia & more' },
 };
 
-const COUNTRY_FLAGS: Record<string, string> = {
-  'China': '🇨🇳', 'India': '🇮🇳', 'Germany': '🇩🇪', 'USA': '🇺🇸',
-  'United States': '🇺🇸', 'Japan': '🇯🇵', 'South Korea': '🇰🇷',
-  'Brazil': '🇧🇷', 'Italy': '🇮🇹', 'France': '🇫🇷',
-  'Turkey': '🇹🇷', 'Vietnam': '🇻🇳', 'Bangladesh': '🇧🇩',
-  'Pakistan': '🇵🇰', 'Indonesia': '🇮🇩', 'Malaysia': '🇲🇾',
-  'Thailand': '🇹🇭', 'Mexico': '🇲🇽', 'Taiwan': '🇹🇼',
-  'Spain': '🇪🇸', 'Netherlands': '🇳🇱', 'Poland': '🇵🇱',
-  'Romania': '🇷🇴', 'Ukraine': '🇺🇦', 'Saudi Arabia': '🇸🇦',
-  'UAE': '🇦🇪', 'Egypt': '🇪🇬', 'Kenya': '🇰🇪',
-  'Nigeria': '🇳🇬', 'South Africa': '🇿🇦', 'Australia': '🇦🇺',
-  'Canada': '🇨🇦', 'Morocco': '🇲🇦', 'Argentina': '🇦🇷',
-  'Colombia': '🇨🇴', 'Chile': '🇨🇱', 'Peru': '🇵🇪',
-  'Philippines': '🇵🇭', 'Sri Lanka': '🇱🇰', 'Cambodia': '🇰🇭',
-  'Ethiopia': '🇪🇹', 'Ghana': '🇬🇭', 'Tanzania': '🇹🇿',
-  'Portugal': '🇵🇹', 'Sweden': '🇸🇪', 'Switzerland': '🇨🇭',
-  'Norway': '🇳🇴', 'Denmark': '🇩🇰', 'Finland': '🇫🇮',
-  'Austria': '🇦🇹', 'Belgium': '🇧🇪', 'Czech Republic': '🇨🇿',
-  'Hungary': '🇭🇺', 'Greece': '🇬🇷', 'Russia': '🇷🇺',
-  'Kazakhstan': '🇰🇿', 'Georgia': '🇬🇪', 'Israel': '🇮🇱',
-  'Jordan': '🇯🇴', 'Qatar': '🇶🇦', 'Kuwait': '🇰🇼',
-  'Oman': '🇴🇲', 'Iraq': '🇮🇶', 'Iran': '🇮🇷',
-  'Algeria': '🇩🇿', 'Tunisia': '🇹🇳', 'Libya': '🇱🇾',
-  'Senegal': '🇸🇳', 'Ivory Coast': '🇨🇮', 'Uganda': '🇺🇬',
-  'New Zealand': '🇳🇿', 'Myanmar': '🇲🇲', 'Nepal': '🇳🇵',
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  'Textiles & Apparel': <Shirt size={18} />,
+  'Metals & Minerals': <Package size={18} />,
+  'Agriculture & Food Products': <Package size={18} />,
+  'Leather Goods': <Package size={18} />,
+  'Machinery & Industrial Equipment': <Factory size={18} />,
+  'Electronics & Electrical': <Cpu size={18} />,
+  'Chemicals & Petrochemicals': <Package size={18} />,
+  'Construction Materials': <Package size={18} />,
+  'Automotive Parts': <Package size={18} />,
+  'Handicrafts & Home Decor': <Package size={18} />,
+  'Toys & Games': <Package size={18} />,
+  'Paper & Packaging': <Package size={18} />,
+  'Cosmetics & Personal Care': <Package size={18} />,
+  'Seafood & Marine Products': <Ship size={18} />,
+  'Furniture & Wood Products': <Package size={18} />,
+  'Sports & Outdoor': <Package size={18} />,
+  'Medical & Healthcare': <Package size={18} />,
+  'Jewellery & Accessories': <Package size={18} />,
+  'Beverages': <Package size={18} />,
+  'Jewelry & Gemstones': <Package size={18} />,
 };
-
-function getFlag(country: string) {
-  return COUNTRY_FLAGS[country] || '🏳️';
-}
 
 function fmtVolume(v?: number): string {
   if (!v) return '—';
@@ -356,19 +425,21 @@ function fmtVolume(v?: number): string {
 }
 
 function StarRating({ rating }: { rating?: number }) {
-  if (!rating) return <span style={{ color: '#6b6a5e', fontSize: 11 }}>No rating</span>;
+  if (!rating) return <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>No rating</span>;
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
       {[1,2,3,4,5].map(i => (
-        <span key={i} style={{
-          fontSize: 13,
-          color: i <= full ? '#f59e0b' : (i === full + 1 && half ? '#f59e0b' : '#2a2a2c'),
-          opacity: i === full + 1 && half ? 0.6 : 1,
-        }}>★</span>
+        <Star
+          key={i}
+          size={13}
+          fill={i <= full ? '#E0A23B' : (i === full + 1 && half ? '#E0A23B' : 'none')}
+          color={i <= full ? '#E0A23B' : (i === full + 1 && half ? '#E0A23B' : 'var(--text-secondary)')}
+          opacity={i === full + 1 && half ? 0.6 : 1}
+        />
       ))}
-      <span style={{ fontSize: 10, color: '#6b6a5e', marginLeft: 4 }}>{rating.toFixed(1)}</span>
+      <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 4 }}>{rating.toFixed(1)}</span>
     </span>
   );
 }
@@ -379,74 +450,93 @@ function SupplierCard({ s }: { s: Supplier }) {
   const products = s.product_list ? s.product_list.split(',').map(p => p.trim()).slice(0, 3) : [];
 
   return (
-    <div className="sp-card">
-      <div className="sp-card-top-bar" />
-      <div className="sp-card-header">
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ height: 3, background: 'linear-gradient(90deg, #548C92, #84D7D8)', flexShrink: 0 }} />
+      <div style={{ padding: '14px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="sp-card-name">{s.business_name}</div>
-          <div className="sp-card-location">{getFlag(s.country)} {s.city ? `${s.city}, ` : ''}{s.country}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)', lineHeight: 1.3, marginBottom: 3 }}>
+            {s.business_name}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <CountryOutlineIcon countryName={s.country} size={14} />
+            {s.city ? `${s.city}, ` : ''}{s.country}
+          </div>
         </div>
-        {s.business_type && <div className="sp-card-type">{s.business_type}</div>}
+        {s.business_type && (
+          <StatusPill variant="info" label={s.business_type} style={{ fontSize: 8, padding: '2px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }} />
+        )}
       </div>
 
-      <div className="sp-card-rating-row">
+      <div style={{ padding: '8px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <StarRating rating={s.supplier_rating} />
-        {s.year_established && <span className="sp-card-est">Est. {s.year_established}</span>}
+        {s.year_established && <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace' }}>Est. {s.year_established}</span>}
       </div>
 
       {products.length > 0 && (
-        <div className="sp-card-products">
-          {products.map(p => <span key={p} className="sp-product-chip">{p}</span>)}
+        <div style={{ padding: '8px 16px 0', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {products.map(p => (
+            <span key={p} style={{ fontSize: 9, color: 'rgba(232,226,216,0.65)', background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.06)', borderRadius: 4, padding: '2px 7px' }}>
+              {p}
+            </span>
+          ))}
         </div>
       )}
 
-      <div className="sp-card-stats">
-        <div className="sp-stat">
-          <span className="sp-stat-label">Export Volume</span>
-          <span className="sp-stat-value amber">{fmtVolume(s.annual_export_volume_usd)}</span>
+      <div style={{ padding: '10px 16px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)' }}>Export Volume</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#E0A23B', fontFamily: 'JetBrains Mono, monospace' }}>{fmtVolume(s.annual_export_volume_usd)}</span>
         </div>
-        <div className="sp-stat">
-          <span className="sp-stat-label">Lead Time</span>
-          <span className="sp-stat-value">{s.lead_time_days != null ? `${s.lead_time_days}d` : '—'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)' }}>Lead Time</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)', fontFamily: 'JetBrains Mono, monospace' }}>{s.lead_time_days != null ? `${s.lead_time_days}d` : '—'}</span>
         </div>
-        <div className="sp-stat">
-          <span className="sp-stat-label">Min Order</span>
-          <span className="sp-stat-value">{s.min_order_quantity ?? '—'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)' }}>Min Order</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)', fontFamily: 'JetBrains Mono, monospace' }}>{s.min_order_quantity ?? '—'}</span>
         </div>
-        <div className="sp-stat">
-          <span className="sp-stat-label">Employees</span>
-          <span className="sp-stat-value">{s.employee_count?.toLocaleString() ?? '—'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)' }}>Employees</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)', fontFamily: 'JetBrains Mono, monospace' }}>{s.employee_count?.toLocaleString() ?? '—'}</span>
         </div>
       </div>
 
       {s.payment_terms && (
-        <div className="sp-payment">
-          <span className="sp-stat-label">Payment · </span>
-          <span style={{ fontSize: 11, color: '#9ca3a0' }}>{s.payment_terms}</span>
+        <div style={{ padding: '8px 16px 0', fontSize: 10, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)' }}>Payment · </span>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{s.payment_terms}</span>
         </div>
       )}
 
       {certs.length > 0 && (
-        <div className="sp-certs">
-          {certs.slice(0, 3).map(c => <span key={c} className="sp-cert-badge">{c}</span>)}
-          {certs.length > 3 && <span className="sp-cert-badge">+{certs.length - 3}</span>}
+        <div style={{ padding: '8px 16px 0', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {certs.slice(0, 3).map(c => (
+            <span key={c} style={{ fontSize: 8, fontWeight: 600, padding: '2px 6px', borderRadius: 3, background: 'rgba(132,215,216,0.08)', border: '1px solid rgba(132,215,216,0.14)', color: 'rgba(160,220,220,0.75)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              {c}
+            </span>
+          ))}
+          {certs.length > 3 && (
+            <span style={{ fontSize: 8, fontWeight: 600, padding: '2px 6px', borderRadius: 3, background: 'rgba(132,215,216,0.08)', border: '1px solid rgba(132,215,216,0.14)', color: 'rgba(160,220,220,0.75)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              +{certs.length - 3}
+            </span>
+          )}
         </div>
       )}
 
-      <div className="sp-card-footer">
+      <div style={{ padding: '10px 16px 14px', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid rgba(232,226,216,0.04)', flexWrap: 'wrap' }}>
         {s.email && (
-          <a href={`mailto:${s.email}`} className="sp-contact-btn">✉ Email</a>
+          <a href={`mailto:${s.email}`} style={{ fontSize: 10, fontWeight: 600, color: '#E0A23B', background: 'rgba(224,162,59,0.08)', border: '1px solid rgba(224,162,59,0.18)', borderRadius: 5, padding: '4px 10px', textDecoration: 'none', transition: 'all 0.15s', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Mail size={10} /> Email
+          </a>
         )}
         {s.website && (
-          <a
-            href={s.website.startsWith('http') ? s.website : `https://${s.website}`}
-            target="_blank" rel="noreferrer"
-            className="sp-contact-btn sp-website-btn"
-          >🌐 Website</a>
+          <a href={s.website.startsWith('http') ? s.website : `https://${s.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 600, color: '#84D7D8', background: 'rgba(132,215,216,0.07)', border: '1px solid rgba(132,215,216,0.18)', borderRadius: 5, padding: '4px 10px', textDecoration: 'none', transition: 'all 0.15s', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ExternalLink size={10} /> Website
+          </a>
         )}
-        {s.phone && <span className="sp-phone">{s.phone}</span>}
+        {s.phone && <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', marginLeft: 'auto' }}>{s.phone}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -558,65 +648,198 @@ export const SuppliersPage: React.FC = () => {
 
   const stepIndex = STEPS.indexOf(step);
 
+  const pageBg = 'var(--background)';
+  const textMain = 'var(--foreground)';
+  const textMuted = 'var(--text-secondary)';
+  const accent = '#548C92';
+  const accentGlow = 'rgba(84,140,146,0.3)';
+  const safe = '#5BA86F';
+
   return (
-    <div className="sp-page">
+    <div style={{
+      marginLeft: 224,
+      minHeight: '100vh',
+      background: pageBg,
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '0 0 80px 0',
+      color: textMain,
+      fontFamily: 'Inter, -apple-system, sans-serif',
+    }}>
       {/* Header */}
-      <div className="sp-header">
-        <div className="sp-header-left">
+      <div style={{ padding: '28px 36px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {step !== 'region' && (
-            <button className="sp-back-btn" onClick={back}>← Back</button>
+            <button
+              onClick={back}
+              style={{
+                background: 'rgba(84,140,146,0.08)',
+                border: '1px solid rgba(84,140,146,0.2)',
+                color: '#84D7D8',
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: 'Inter, sans-serif',
+                padding: '8px 14px',
+                borderRadius: 7,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease-out',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(84,140,146,0.15)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(84,140,146,0.4)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(84,140,146,0.08)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(84,140,146,0.2)'; }}
+            >
+              <ArrowLeft size={12} /> Back
+            </button>
           )}
           <div>
-            <h1 className="sp-title">
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: textMain, letterSpacing: '-0.4px', lineHeight: 1.2, margin: '0 0 4px 0' }}>
               {step === 'region'    && 'Global Supplier Directory'}
-              {step === 'country'   && <><span className="sp-breadcrumb">{REGION_META[selectedRegion]?.emoji} {selectedRegion}</span> · Select Country</>}
-              {step === 'category'  && <><span className="sp-breadcrumb">{getFlag(selectedCountry)} {selectedCountry}</span> · Select Category</>}
-              {step === 'suppliers' && <><span className="sp-breadcrumb">{selectedCategory}</span></>}
+              {step === 'country'   && (
+                <>
+                  <span style={{ color: accent }}>{selectedRegion}</span> · Select Country
+                </>
+              )}
+              {step === 'category'  && (
+                <>
+                  <span style={{ color: accent }}>{selectedCountry}</span> · Select Category
+                </>
+              )}
+              {step === 'suppliers' && (
+                <>
+                  <span style={{ color: accent }}>{selectedCategory}</span>
+                </>
+              )}
             </h1>
-            <p className="sp-subtitle">
+            <p style={{ fontSize: 12, color: textMuted, margin: 0 }}>
               {step === 'region'    && 'Choose an export market to explore verified global suppliers'}
               {step === 'country'   && `${countries.length} countries supplying to ${selectedRegion}`}
               {step === 'category'  && `${categories.length} categories from ${selectedCountry} → ${selectedRegion}`}
-              {step === 'suppliers' && `${total.toLocaleString()} verified suppliers · ${getFlag(selectedCountry)} ${selectedCountry} → ${selectedRegion}`}
+              {step === 'suppliers' && `${total.toLocaleString()} verified suppliers · ${selectedCountry} → ${selectedRegion}`}
             </p>
           </div>
         </div>
         {step === 'suppliers' && (
-          <div className="sp-header-badge">
-            <span className="sp-badge-dot" />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'rgba(91,168,111,0.07)',
+            border: '1px solid rgba(91,168,111,0.15)',
+            borderRadius: 8,
+            padding: '8px 14px',
+            fontSize: 11,
+            color: '#a8d9b4',
+            fontFamily: 'JetBrains Mono, monospace',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            <span style={{
+              width: 6, height: 6,
+              borderRadius: '50%',
+              background: safe,
+              boxShadow: `0 0 6px ${safe}`,
+              animation: 'pulse-dot 2s ease-in-out infinite',
+            }} />
             {suppliers.length} / {total.toLocaleString()} loaded
           </div>
         )}
       </div>
 
       {/* Step indicator */}
-      <div className="sp-steps">
+      <div style={{ display: 'flex', alignItems: 'center', padding: '20px 36px 24px' }}>
         {STEPS.map((s, i) => (
           <React.Fragment key={s}>
-            <div className={`sp-step${step === s ? ' active' : ''}${i < stepIndex ? ' done' : ''}`}>
-              <div className="sp-step-dot">{i < stepIndex ? '✓' : i + 1}</div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.07em',
+              color: s === step ? accent : (i < stepIndex ? safe : textMuted),
+              transition: 'color 0.2s ease-out',
+            }}>
+              <div style={{
+                width: 22, height: 22,
+                borderRadius: '50%',
+                border: `1.5px solid ${s === step ? accent : (i < stepIndex ? safe : textMuted)}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontWeight: 700,
+                transition: 'all 0.2s ease-out',
+                flexShrink: 0,
+                background: s === step ? 'rgba(84,140,146,0.12)' : (i < stepIndex ? 'rgba(91,168,111,0.12)' : 'transparent'),
+                boxShadow: s === step ? `0 0 10px ${accentGlow}` : 'none',
+              }}>
+                {i < stepIndex ? <Check size={10} /> : (i + 1)}
+              </div>
               <span>{STEP_LABELS[i]}</span>
             </div>
-            {i < STEPS.length - 1 && <div className="sp-step-line" />}
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 1, background: 'rgba(232,226,216,0.05)', margin: '0 10px', maxWidth: 60 }} />
+            )}
           </React.Fragment>
         ))}
       </div>
 
       {/* Content */}
-      <div className={`sp-content${animating ? ' sp-fade-out' : ' sp-fade-in'}`}>
+      <div style={{
+        padding: '0 36px',
+        flex: 1,
+        opacity: animating ? 0 : 1,
+        transform: animating ? 'translateY(4px)' : 'translateY(0)',
+        transition: 'all 0.18s ease-out',
+      }}>
 
         {/* Step 1: Regions */}
         {step === 'region' && (
-          <div className="sp-grid-regions">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             {regions.map(({ region, supplier_count }) => {
-              const m = REGION_META[region] ?? { emoji: '🌐', desc: '' };
+              const m = REGION_META[region] ?? { desc: '' };
+              const icon = REGION_ICONS[region] ?? <Globe size={20} />;
               return (
-                <button key={region} className="sp-region-card" onClick={() => pickRegion(region)}>
-                  <div className="sp-region-emoji">{m.emoji}</div>
-                  <div className="sp-region-name">{region}</div>
-                  <div className="sp-region-desc">{m.desc}</div>
-                  <div className="sp-region-count">{supplier_count.toLocaleString()} suppliers</div>
-                  <div className="sp-region-arrow">→</div>
+                <button
+                  key={region}
+                  onClick={() => pickRegion(region)}
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border-soft)',
+                    borderRadius: 12,
+                    padding: '20px 18px 16px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.18s ease-out',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    fontFamily: 'Inter, sans-serif',
+                    color: textMain,
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(84,140,146,0.28)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(40,82,96,0.6)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-soft)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--card)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                  }}
+                >
+                  <div style={{ fontSize: 20, lineHeight: 1, marginBottom: 10, color: accent }}>{icon}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: textMain, marginBottom: 4 }}>{region}</div>
+                  <div style={{ fontSize: 10, color: textMuted, marginBottom: 12, lineHeight: 1.4 }}>{m.desc}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#E0A23B', fontFamily: 'JetBrains Mono, monospace' }}>
+                    {supplier_count.toLocaleString()} suppliers
+                  </div>
+                  <div style={{ position: 'absolute', top: 18, right: 16, fontSize: 16, color: 'rgba(84,140,146,0.2)', transition: 'color 0.15s, transform 0.15s' }}>
+                    <ArrowRight size={16} />
+                  </div>
                 </button>
               );
             })}
@@ -625,14 +848,49 @@ export const SuppliersPage: React.FC = () => {
 
         {/* Step 2: Countries */}
         {step === 'country' && (
-          loading ? <div className="sp-loading"><div className="sp-spinner" />Loading countries…</div> : (
-            <div className="sp-grid-countries">
+          loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: textMuted, fontSize: 13, padding: '60px 0' }}>
+              <div style={{ width: 18, height: 18, border: '2px solid rgba(84,140,146,0.15)', borderTopColor: accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              Loading countries…
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
               {countries.map(({ country, supplier_count }) => (
-                <button key={country} className="sp-country-card" onClick={() => pickCountry(country)}>
-                  <div className="sp-country-flag">{getFlag(country)}</div>
-                  <div className="sp-country-name">{country}</div>
-                  <div className="sp-country-count">{supplier_count.toLocaleString()} suppliers</div>
-                  <div className="sp-cat-arrow">→</div>
+                <button
+                  key={country}
+                  onClick={() => pickCountry(country)}
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border-soft)',
+                    borderRadius: 10,
+                    padding: '14px 12px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    transition: 'all 0.15s ease-out',
+                    fontFamily: 'Inter, sans-serif',
+                    color: textMain,
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(84,140,146,0.28)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(40,82,96,0.6)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.2)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-soft)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--card)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                  }}
+                >
+                  <CountryOutlineIcon countryName={country} size={20} />
+                  <div style={{ fontSize: 12, fontWeight: 600, color: textMain, flex: 1 }}>{country}</div>
+                  <div style={{ fontSize: 9, color: '#E0A23B', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
+                    {supplier_count.toLocaleString()} suppliers
+                  </div>
                 </button>
               ))}
             </div>
@@ -641,14 +899,54 @@ export const SuppliersPage: React.FC = () => {
 
         {/* Step 3: Categories */}
         {step === 'category' && (
-          loading ? <div className="sp-loading"><div className="sp-spinner" />Loading categories…</div> : (
-            <div className="sp-grid-categories">
+          loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: textMuted, fontSize: 13, padding: '60px 0' }}>
+              <div style={{ width: 18, height: 18, border: '2px solid rgba(84,140,146,0.15)', borderTopColor: accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              Loading categories…
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
               {categories.map(({ category, supplier_count }) => (
-                <button key={category} className="sp-category-card" onClick={() => pickCategory(category)}>
-                  <div className="sp-cat-icon">{CATEGORY_ICONS[category] ?? '📦'}</div>
-                  <div className="sp-cat-name">{category}</div>
-                  <div className="sp-cat-count">{supplier_count.toLocaleString()}</div>
-                  <div className="sp-cat-arrow">→</div>
+                <button
+                  key={category}
+                  onClick={() => pickCategory(category)}
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border-soft)',
+                    borderRadius: 10,
+                    padding: '16px 14px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.18s ease-out',
+                    fontFamily: 'Inter, sans-serif',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    color: textMain,
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(84,140,146,0.28)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(40,82,96,0.6)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-soft)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--card)';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                  }}
+                >
+                  <div style={{ fontSize: 18, flexShrink: 0, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(84,140,146,0.07)', borderRadius: 8, color: accent }}>
+                    {CATEGORY_ICONS[category] ?? <Package size={18} />}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: textMain, flex: 1, lineHeight: 1.3 }}>{category}</div>
+                  <div style={{ fontSize: 10, color: '#E0A23B', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
+                    {supplier_count.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 14, color: 'rgba(84,140,146,0.2)', transition: 'color 0.15s, transform 0.15s' }}>
+                    <ArrowRight size={14} />
+                  </div>
                 </button>
               ))}
             </div>
@@ -657,25 +955,30 @@ export const SuppliersPage: React.FC = () => {
 
         {/* Step 4: Suppliers */}
         {step === 'suppliers' && (
-          loading ? <div className="sp-loading"><div className="sp-spinner" />Loading suppliers…</div> : (
+          loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: textMuted, fontSize: 13, padding: '60px 0' }}>
+              <div style={{ width: 18, height: 18, border: '2px solid rgba(84,140,146,0.15)', borderTopColor: accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              Loading suppliers…
+            </div>
+          ) : (
             <>
-              {/* Map */}
               {suppliers.length > 0 && <SupplierMap suppliers={suppliers} />}
-
-              {/* Cards */}
-              <div className="sp-grid-suppliers">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                 {suppliers.map(s => <SupplierCard key={s.id} s={s} />)}
               </div>
-              {/* Infinite scroll sentinel */}
               <div ref={sentinelRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
                 {loadingMore && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b6a5e', fontSize: 12 }}>
-                    <div className="sp-spinner" />Loading more suppliers…
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: textMuted, fontSize: 12 }}>
+                    <div style={{ width: 18, height: 18, border: '2px solid rgba(84,140,146,0.15)', borderTopColor: accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    Loading more suppliers…
                   </div>
                 )}
               </div>
               {page >= totalPages && suppliers.length > 0 && (
-                <div className="sp-end-msg">✓ All {total.toLocaleString()} suppliers loaded</div>
+                <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: safe, fontFamily: 'JetBrains Mono, monospace', paddingBottom: 20 }}>
+                  <Check size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                  All {total.toLocaleString()} suppliers loaded
+                </div>
               )}
             </>
           )
