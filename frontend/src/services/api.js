@@ -9,23 +9,6 @@ const api = axios.create({
   }
 });
 
-// Attach the Clerk session JWT to every outgoing request. window.Clerk is set
-// by @clerk/clerk-react once ClerkProvider mounts — reading it here means every
-// page gets an authenticated request for free without wiring useAuth()/getToken()
-// into each call site individually.
-api.interceptors.request.use(async (config) => {
-  try {
-    const token = await window.Clerk?.session?.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // Clerk not ready yet (e.g. very first render) — request goes out unauthenticated
-    // and the backend returns 401, which callers already handle.
-  }
-  return config;
-});
-
 // Legacy chat/handoff API (admin panel)
 export const chatAPI = {
   createCustomer: (data) => api.post('/customers', data),

@@ -1,9 +1,12 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import './AlertsPage.css';
 import api from '../services/api';
 
+const CUSTOMER_ID = 1;
+
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
+/** GET /api/v2/alerts (schemas.TariffAlertResponse). */
 interface ApiAlert {
   id: number;
   alert_type: string;
@@ -14,6 +17,7 @@ interface ApiAlert {
   created_at: string;
 }
 
+/** GET /api/v2/suppliers (schemas.SupplierResponse). */
 interface ApiSupplier {
   id: number;
   name: string;
@@ -23,6 +27,7 @@ interface ApiSupplier {
   is_active: boolean;
 }
 
+/** GET /api/v2/news (services.news_feed). */
 interface NewsItem {
   title: string;
   url: string;
@@ -55,28 +60,7 @@ function absoluteTime(iso: string): string {
 }
 
 const money = (n: number | null | undefined): string =>
-  n == null ? '—' : (n >= 1000 ? `$${Math.round(n / 1000)}K` : `$${Math.round(n)}`);
-
-// Human-readable source name — strips internal technical values
-const cleanSource = (src?: string | null): string => {
-  if (!src) return '—';
-  const lower = src.toLowerCase();
-  if (lower === 'rss' || lower === 'gemini_knowledge' || lower === 'gemini') return 'Live Trade Intelligence Feed';
-  return src;
-};
-
-// Known HS code → description (for display only — authoritative map is in backend)
-const HS_DESCRIPTIONS: Record<string, string> = {
-  '0901': 'Coffee', '0901.11': 'Green coffee beans', '0901.12': 'Decaf coffee beans',
-  '0803': 'Bananas', '0803.90': 'Fresh bananas', '0803.10': 'Plantains',
-  '2009': 'Fruit juice', '2009.11': 'Frozen OJ concentrate',
-  '7601': 'Unwrought aluminum', '7403': 'Refined copper', '7208': 'Flat-rolled steel',
-};
-const hsWithDesc = (codes: string[]): string =>
-  codes.map((c) => {
-    const desc = HS_DESCRIPTIONS[c] ?? HS_DESCRIPTIONS[c.split('.')[0]];
-    return desc ? `${c} · ${desc}` : c;
-  }).join(', ');
+  n == null ? '—' : (n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`);
 
 interface AlertView {
   id: number;
@@ -93,14 +77,11 @@ interface AlertView {
 function toView(a: ApiAlert): AlertView {
   const ao = parseAgentOutput(a.agent_output);
   const tm = ao.tariff_monitor || {};
-  // Backend sends affected_countries[] and affected_product_name — not tm.country / tm.product
-  const country = (tm.affected_countries?.[0] ?? tm.country) || '—';
-  const sector = (tm.affected_product_name ?? tm.product) || '—';
   return {
     id: a.id,
     title: tm.event || a.summary || 'Trade risk alert',
-    country,
-    sector,
+    country: tm.country || '—',
+    sector: tm.product || '—',
     severity: a.severity,
     confidence: tm.confidence != null ? Math.round(tm.confidence * 100) : null,
     timeDetected: relativeTime(a.created_at),
@@ -108,25 +89,6 @@ function toView(a: ApiAlert): AlertView {
     ao,
   };
 }
-
-// ── Pipeline log event type ───────────────────────────────────────────────────
-interface PipelineEvent { event: string; msg: string; ts: string; }
-
-const AGENT_LABELS: Record<string, string> = {
-  pipeline_start: 'Pipeline', profile_loaded: 'Profile', crew_start: 'Crew',
-  agent_start: 'Agent', agent_done: 'Agent', agent_result: 'Result',
-  db_write: 'Aurora', db_query: 'Aurora', rss_cleared: 'RSS',
-  headlines_saved: 'Headlines', run_log: 'Run', pipeline_done: 'Done',
-  hs_correction: 'HS Fix', crew_error: 'Error',
-};
-
-const EVENT_COLOR: Record<string, string> = {
-  pipeline_start: '#f59e0b', profile_loaded: '#94a3b8', crew_start: '#a78bfa',
-  agent_start: '#60a5fa', agent_done: '#10b981', agent_result: '#14b8a6',
-  db_write: '#34d399', db_query: '#6ee7b7', rss_cleared: '#94a3b8',
-  headlines_saved: '#6ee7b7', run_log: '#94a3b8', pipeline_done: '#10b981',
-  hs_correction: '#f59e0b', crew_error: '#ef4444',
-};
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
@@ -138,15 +100,9 @@ export function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
 
-  // ── Pipeline live run state ───────────────────────────────────────────────
-  const [runPhase, setRunPhase] = useState<'idle' | 'running' | 'done'>('idle');
-  const [pipelineLogs, setPipelineLogs] = useState<PipelineEvent[]>([]);
-  const [agentResults, setAgentResults] = useState<Record<string, any>>({});
-  const logEndRef = useRef<HTMLDivElement>(null);
-
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await api.get<ApiAlert[]>('/v2/alerts');
+      const res = await api.get<ApiAlert[]>('/v2/alerts', { params: { customer_id: CUSTOMER_ID } });
       setAlerts(res.data.filter((a) => a.status === 'active'));
     } catch {
       setAlerts([]);
@@ -155,60 +111,14 @@ export function AlertsPage() {
     }
   }, []);
 
+  // Supporting context for supplier-level + source intelligence panels — both
+  // reuse existing endpoints (no new APIs).
   useEffect(() => {
     fetchAlerts();
-    api.get<ApiSupplier[]>('/v2/suppliers')
+    api.get<ApiSupplier[]>('/v2/suppliers', { params: { customer_id: CUSTOMER_ID } })
       .then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
     api.get<{ items: NewsItem[] }>('/v2/news')
       .then((r) => setNews(r.data.items || [])).catch(() => setNews([]));
-  }, [fetchAlerts]);
-
-  // Auto-scroll log to bottom
-  useEffect(() => {
-    if (runPhase === 'running') logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [pipelineLogs, runPhase]);
-
-  const handleRunAnalysis = useCallback(async () => {
-    setRunPhase('running');
-    setPipelineLogs([]);
-    setAgentResults({});
-    setSelectedId(null);
-
-    let pollSince = 0;
-    const poll = async () => {
-      try {
-        const res = await api.get<{ events: PipelineEvent[]; total: number }>(
-          '/v2/monitor/pipeline-log', { params: { since: pollSince } }
-        );
-        pollSince = res.data.total;
-        for (const ev of res.data.events) {
-          if (ev.event === 'agent_result') {
-            try {
-              const { agent, output } = JSON.parse(ev.msg);
-              setAgentResults((prev) => ({ ...prev, [agent]: output }));
-            } catch { /* skip malformed */ }
-          }
-          setPipelineLogs((prev) => [...prev.slice(-200), ev]);
-        }
-      } catch { /* ignore poll errors */ }
-    };
-
-    const interval = setInterval(poll, 1500);
-    try {
-      await api.post('/v2/monitor/run');
-      await poll();
-      await fetchAlerts();
-      setRunPhase('done');
-      // Auto-select the most recent alert
-      const res = await api.get<ApiAlert[]>('/v2/alerts');
-      const active = res.data.filter((a) => a.status === 'active');
-      setAlerts(active);
-      if (active.length > 0) setSelectedId(active[0].id);
-    } catch {
-      setRunPhase('done');
-    } finally {
-      clearInterval(interval);
-    }
   }, [fetchAlerts]);
 
   const views = useMemo(() => alerts.map(toView), [alerts]);
@@ -222,6 +132,7 @@ export function AlertsPage() {
 
   const selected = useMemo(() => views.find((v) => v.id === selectedId) ?? null, [views, selectedId]);
 
+  // ── Derive the full investigation model from real agent_output + context ──
   const detail = useMemo(() => {
     if (!selected) return null;
     const ao = selected.ao;
@@ -230,39 +141,23 @@ export function AlertsPage() {
     const alts = ao.alternatives_finder || {};
     const comp = ao.import_compliance || {};
     const adv = ao.adversarial || {};
-
-    // Backend sends options[] (new schema); legacy shape used alternatives[]
-    const altRaw: any[] = Array.isArray(alts.options) ? alts.options
-      : (Array.isArray(alts.alternatives) ? alts.alternatives : []);
+    // Normalize across pipeline schema (alternatives) and legacy seed schema (options).
+    const altRaw: any[] = Array.isArray(alts.alternatives) ? alts.alternatives
+      : (Array.isArray(alts.options) ? alts.options : []);
     const altList = altRaw.map((a) => ({
-      supplier_name: a.supplier ?? a.supplier_name ?? 'Alternative',
-      country: a.country ?? a.country_full ?? '',
+      supplier_name: a.supplier_name || a.supplier || 'Alternative',
+      country: a.country_full || a.country || '',
+      country_full: a.country_full || a.country || '',
       cost_delta_pct: a.cost_delta_pct,
       lead_time_weeks: a.lead_time_weeks,
-      stability_note: a.stability_note ?? a.selection_reasoning ?? null,
-      source: a.source ?? null,
     }));
+    const topAlt = altList[0];
+    const advRecommended = adv.recommended_action || adv.recommendation || null;
 
-    // Prefer compliance-selected supplier for the "Switch To" card (most specific)
-    // Fall back to adversarial's recommended country match, then altList[0]
-    const compSupplier = comp.recommended_supplier && !comp.no_viable_option
-      ? {
-          supplier_name: comp.recommended_supplier,
-          country: comp.recommended_country ?? '',
-          cost_delta_pct: comp.cost_delta_pct,
-          lead_time_weeks: comp.lead_time_weeks,
-          stability_note: comp.rationale ?? null,
-          source: comp.source ?? null,
-        }
-      : null;
-    const topAlt = compSupplier ?? altList[0] ?? null;
-
-    const advRecommended = adv.recommendation ?? adv.recommended_action ?? null;
-
-    const country = (tm.affected_countries?.[0] ?? tm.country) || '—';
-    const product = (tm.affected_product_name ?? tm.product) || '—';
-    const countryLc = country.toLowerCase();
-    const affectedSuppliers = countryLc !== '—'
+    const countryLabel = tm.country || (selected.country !== '—' ? selected.country : 'the affected region');
+    const sectorLabel = selected.sector !== '—' ? selected.sector : 'affected goods';
+    const countryLc = (tm.country || '').toLowerCase();
+    const affectedSuppliers = countryLc
       ? suppliers.filter((s) => s.country.toLowerCase().includes(countryLc) || countryLc.includes(s.country.toLowerCase()))
       : [];
 
@@ -270,77 +165,81 @@ export function AlertsPage() {
     const riskScore = impact.risk_score != null ? Math.round(impact.risk_score) : null;
     const riskLevel = (impact.severity || selected.severity || 'unknown') as string;
     const affectedOrders = impact.affected_orders ?? null;
+    // Each affected supplier→destination shipment is a trade route at risk.
     const affectedRoutes = affectedOrders ?? affectedSuppliers.length;
 
+    // Source intelligence: the alert's own cited article(s) first…
     const tmNews: any[] = Array.isArray(tm.news) ? tm.news : [];
     const alertSources = [
       ...(tm.source_url ? [{ title: tm.event || 'Source article', url: tm.source_url, source: tm.source || 'Source', published: null as string | null }] : []),
       ...tmNews.map((n) => ({ title: n.title, url: n.url, source: n.domain || 'Source', published: n.scraped_at || null })),
     ];
 
-    // Recommended actions — most important first
+    // Recommended actions, generated from agent outputs (real) or derived.
     const recs: string[] = [];
-    if (advRecommended) recs.push(advRecommended);
-    if (topAlt && (!advRecommended || topAlt.supplier_name !== comp.recommended_supplier)) {
+    if (topAlt) {
       const cd = topAlt.cost_delta_pct;
-      recs.push(`Switch sourcing to ${topAlt.supplier_name}${topAlt.country ? ` (${topAlt.country})` : ''}${cd != null ? ` — ${cd > 0 ? '+' : ''}${cd}% cost` : ''}${topAlt.lead_time_weeks != null ? `, ${topAlt.lead_time_weeks}-week lead time` : ''}.`);
+      recs.push(`Switch sourcing to ${topAlt.supplier_name}${topAlt.country_full || topAlt.country ? ` (${topAlt.country_full || topAlt.country})` : ''}${cd != null ? ` — ${cd > 0 ? '+' : ''}${cd}% cost` : ''}${topAlt.lead_time_weeks != null ? `, ${topAlt.lead_time_weeks}-week lead time` : ''}.`);
     }
-    if (Array.isArray(comp.required_documents) && comp.required_documents.length > 0) {
-      const docs = comp.required_documents.slice(0, 2).join(', ');
-      recs.push(`Prepare customs documentation for ${comp.recommended_country || 'alternative supplier'} (${docs}…).`);
+    const compCountries = Object.keys(comp.compliance_by_country || {});
+    if (compCountries.length) {
+      const first = comp.compliance_by_country[compCountries[0]];
+      const docs = Array.isArray(first?.mandatory_documents) ? first.mandatory_documents.map((d: any) => d.document || d).slice(0, 2).join(', ') : '';
+      recs.push(`Prepare customs documentation for ${compCountries.join(', ')}${docs ? ` (${docs}…)` : ''}.`);
+    }
+    if (affectedSuppliers.length) {
+      recs.push(`Review ${affectedSuppliers.length} tracked supplier${affectedSuppliers.length !== 1 ? 's' : ''} in ${tm.country} (${affectedSuppliers.map((s) => s.name).slice(0, 3).join(', ')}${affectedSuppliers.length > 3 ? '…' : ''}).`);
     }
     if (affectedOrders) {
-      recs.push(`Recalculate costs for ${affectedOrders} pending order${affectedOrders !== 1 ? 's' : ''} against the new tariff rate.`);
+      recs.push(`Re-cost ${affectedOrders} affected order(s) for ${sectorLabel} against the ${tm.tariff_rate != null ? `${tm.tariff_rate}% ` : ''}tariff.`);
     }
-
-    // Compliance step finding — updated to use new backend schema
-    const compFinding = comp.no_viable_option
-      ? `BLOCKED — ${comp.reason || 'No viable alternative found'}`
-      : comp.recommended_supplier
-        ? `Selected ${comp.recommended_supplier} (${comp.recommended_country || ''}), feasibility: ${comp.compliance_feasibility || 'assessed'}`
-        : comp.summary ?? (altList.length > 0 ? `Assessed ${altList.length} alternative supplier${altList.length !== 1 ? 's' : ''}` : null);
-
-    const tariffMonitorFinding = ao.tariff_monitor
-      ? `${tm.event_type || 'Event'} detected in ${country}${tm.tariff_rate != null ? `, +${tm.tariff_rate}% tariff` : ''} · ${tm.affected_product_name ?? product} · confidence ${tm.confidence != null ? Math.round(tm.confidence * 100) : '?'}% · ${cleanSource(tm.source || tm.risk_source)}`
-      : null;
+    if (!topAlt) {
+      recs.push(`Run the full agent pipeline (real-LLM mode) to source compliant alternatives for ${countryLabel}.`);
+    }
+    if (advRecommended) recs.unshift(advRecommended);
+    else if (alts.recommendation_summary) recs.unshift(alts.recommendation_summary);
 
     const steps = [
       {
         key: 'tariff_monitor', name: 'TariffMonitor', done: !!ao.tariff_monitor,
-        finding: tariffMonitorFinding,
+        finding: ao.tariff_monitor
+          ? `${tm.event_type || 'Event'} detected in ${tm.country || 'region'}${tm.tariff_rate != null ? `, +${tm.tariff_rate}% tariff` : ''}${tm.confidence != null ? ` (confidence ${Math.round(tm.confidence * 100)}%)` : ''}.`
+          : null,
       },
       {
         key: 'impact_calculator', name: 'ImpactCalculator', done: !!ao.impact_calculator,
         finding: ao.impact_calculator
-          ? `Direct cost ${money(directCost)} across ${affectedOrders ?? 0} order(s); severity ${impact.severity}${impact.historical_basis ? ` · ${impact.historical_basis}` : ''}`
+          ? `Direct cost ${money(directCost)} across ${affectedOrders ?? 0} order(s); severity ${impact.severity}${impact.eta_risk ? `, ETA risk ${impact.eta_risk}` : ''}.`
           : null,
       },
       {
         key: 'alternatives_finder', name: 'AlternativesFinder', done: altList.length > 0,
         finding: altList.length
-          ? `${altList.length} candidate${altList.length !== 1 ? 's' : ''}: ${altList.map((a) => `${a.supplier_name} (${a.country}${a.cost_delta_pct != null ? `, ${a.cost_delta_pct > 0 ? '+' : ''}${a.cost_delta_pct}%` : ''})`).join(' · ')}`
+          ? `${altList.length} alternative${altList.length !== 1 ? 's' : ''} — top: ${topAlt.supplier_name} (${topAlt.country_full || topAlt.country}).`
           : null,
       },
       {
-        key: 'import_compliance', name: 'ImportCompliance', done: !!ao.import_compliance,
-        finding: compFinding,
+        key: 'import_compliance', name: 'ComplianceChecker', done: !!ao.import_compliance,
+        finding: ao.import_compliance
+          ? (comp.summary || `Assessed ${compCountries.join(', ') || 'alternatives'}.`)
+          : null,
       },
       {
-        key: 'final', name: 'CoastGuard Final Verdict', done: !!adv.verdict, final: true,
-        finding: adv.verdict
-          ? `${adv.verdict}${adv.confidence != null ? ` (${Math.round(adv.confidence * 100)}% confidence)` : ''} — ${advRecommended || ''}`
-          : null,
+        key: 'final', name: 'Final Recommendation', done: !!advRecommended, final: true,
+        finding: advRecommended,
       },
     ];
 
     return {
-      tm, impact, comp, adv, topAlt, altList,
-      country, product, directCost, riskScore, riskLevel,
+      tm, impact, comp, adv, topAlt, countryLabel,
+      directCost, riskScore, riskLevel,
       affectedSuppliersCount: affectedSuppliers.length,
-      affectedRoutes, alertSources,
+      affectedRoutes,
+      alertSources,
       relatedNews: news.slice(0, 4),
-      recs, steps,
-      summaryText: selected.raw.summary || '',
+      recs,
+      steps,
+      summaryText: tm.summary || selected.raw.summary || '',
     };
   }, [selected, suppliers, news]);
 
@@ -350,51 +249,21 @@ export function AlertsPage() {
       await api.put(`/v2/alerts/${id}/${action}`);
       setAlerts((prev) => prev.filter((a) => a.id !== id));
       setSelectedId((cur) => (cur === id ? null : cur));
-    } catch { /* leave in place on failure */ } finally {
+    } catch {
+      /* leave in place on failure */
+    } finally {
       setPendingId(null);
     }
   }, []);
 
-  // ── Derived run labels ─────────────────────────────────────────────────────
-  const phaseLabel = useMemo(() => {
-    if (!pipelineLogs.length) return null;
-    const lastCrew = [...pipelineLogs].reverse().find((e) => e.event === 'crew_start');
-    return lastCrew?.msg ?? null;
-  }, [pipelineLogs]);
-
-  const liveAgents = useMemo(() => {
-    const order = ['tariff_monitor', 'impact_calculator', 'alternatives_finder', 'import_compliance', 'adversarial'];
-    const labels: Record<string, string> = {
-      tariff_monitor: 'TariffMonitor', impact_calculator: 'ImpactCalculator',
-      alternatives_finder: 'AlternativesFinder', import_compliance: 'ImportCompliance',
-      adversarial: 'Adversarial',
-    };
-    const colors: Record<string, string> = {
-      tariff_monitor: '#f59e0b', impact_calculator: '#ef4444',
-      alternatives_finder: '#14b8a6', import_compliance: '#10b981', adversarial: '#a78bfa',
-    };
-    return order.map((key) => ({
-      key, label: labels[key], color: colors[key], done: !!agentResults[key],
-    }));
-  }, [agentResults]);
-
   return (
     <div className="ap-root">
-      {/* ── INBOX ─────────────────────────────────────────────────────────── */}
+      {/* ── INBOX ────────────────────────────────── */}
       <aside className="ap-inbox">
         <div className="ap-inbox-header">
           <span className="ap-inbox-title">Incidents</span>
           <span className="ap-inbox-count">{filtered.length}</span>
         </div>
-
-        <button
-          className={`ap-run-btn${runPhase === 'running' ? ' ap-run-btn--running' : ''}`}
-          onClick={handleRunAnalysis}
-          disabled={runPhase === 'running'}
-        >
-          <span className={`ap-run-dot${runPhase === 'running' ? ' ap-run-dot--live' : ''}`} />
-          {runPhase === 'running' ? 'Pipeline Running…' : 'Run New Analysis'}
-        </button>
 
         <input
           className="ap-search"
@@ -425,7 +294,7 @@ export function AlertsPage() {
             <div
               key={alert.id}
               className={`ap-card ap-card--${alert.severity}${selectedId === alert.id ? ' is-selected' : ''}`}
-              onClick={() => { setRunPhase('idle'); setSelectedId(alert.id); }}
+              onClick={() => setSelectedId(alert.id)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && setSelectedId(alert.id)}
@@ -450,80 +319,9 @@ export function AlertsPage() {
         </div>
       </aside>
 
-      {/* ── MAIN PANEL ────────────────────────────────────────────────────── */}
+      {/* ── INVESTIGATION PANEL (RIGHT) ──────────────────── */}
       <main className="ap-panel">
-
-        {/* ── LIVE PIPELINE VIEW ─────────────────────────────────────────── */}
-        {runPhase === 'running' && (
-          <div className="ap-live-root">
-            {/* Phase header */}
-            <div className="ap-live-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="ap-live-pulse" />
-                <span className="ap-live-title">LIVE · AI PIPELINE RUNNING</span>
-              </div>
-              {phaseLabel && <span className="ap-live-phase">{phaseLabel}</span>}
-            </div>
-
-            {/* Agent progress stepper */}
-            <div className="ap-live-agents">
-              {liveAgents.map((ag, i) => (
-                <div key={ag.key} className={`ap-live-agent${ag.done ? ' ap-live-agent--done' : ''}`}>
-                  <div className="ap-live-agent-rail">
-                    <div
-                      className="ap-live-agent-node"
-                      style={{
-                        borderColor: ag.done ? ag.color : 'rgba(150,140,100,0.25)',
-                        background: ag.done ? `${ag.color}22` : 'transparent',
-                        color: ag.done ? ag.color : 'rgba(150,140,100,0.4)',
-                      }}
-                    >
-                      {ag.done ? '✓' : i + 1}
-                    </div>
-                    {i < liveAgents.length - 1 && (
-                      <div className="ap-live-agent-line" style={{ background: ag.done ? `${ag.color}55` : 'rgba(150,140,100,0.1)' }} />
-                    )}
-                  </div>
-                  <div className="ap-live-agent-body">
-                    <span className="ap-live-agent-name" style={{ color: ag.done ? ag.color : 'rgba(150,140,100,0.5)' }}>
-                      {ag.label}
-                    </span>
-                    {ag.done && agentResults[ag.key] && (
-                      <span className="ap-live-agent-status">done</span>
-                    )}
-                    {!ag.done && pipelineLogs.some((e) => e.event === 'agent_start' && e.msg.toLowerCase().includes(ag.label.toLowerCase())) && (
-                      <span className="ap-live-agent-running">reasoning…</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Log stream */}
-            <div className="ap-live-log">
-              <div className="ap-live-log-header">Pipeline Event Log</div>
-              <div className="ap-live-log-body">
-                {pipelineLogs.map((ev, i) => {
-                  if (ev.event === 'agent_result') return null; // hide raw JSON blobs
-                  const color = EVENT_COLOR[ev.event] || '#94a3b8';
-                  const label = AGENT_LABELS[ev.event] || ev.event;
-                  const ts = new Date(ev.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                  return (
-                    <div key={i} className="ap-live-log-row">
-                      <span className="ap-live-log-ts">{ts}</span>
-                      <span className="ap-live-log-tag" style={{ color, borderColor: `${color}40`, background: `${color}12` }}>{label}</span>
-                      <span className="ap-live-log-msg">{ev.msg}</span>
-                    </div>
-                  );
-                })}
-                <div ref={logEndRef} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── ALERT DETAIL VIEW ──────────────────────────────────────────── */}
-        {runPhase !== 'running' && selected && detail && (
+        {selected && detail ? (
           <div className="ap-investigation">
             {/* Header */}
             <div className="ap-inv-header">
@@ -531,7 +329,7 @@ export function AlertsPage() {
                 <span className="ap-inv-label">Incident Report</span>
                 <h1 className="ap-inv-title">{selected.title}</h1>
                 <p className="ap-inv-sub">
-                  {detail.country} · {detail.product} · Detected {absoluteTime(selected.raw.created_at)}
+                  {selected.country} · {selected.sector} · Detected {absoluteTime(selected.raw.created_at)}
                 </p>
               </div>
               <div className="ap-inv-header-right">
@@ -547,7 +345,7 @@ export function AlertsPage() {
               </div>
             </div>
 
-            {/* Incident Summary */}
+            {/* ── Incident Summary ── */}
             <section className="ap-section">
               <h2 className="ap-section-title">Incident Summary</h2>
               <div className="ap-prose-card">
@@ -555,11 +353,11 @@ export function AlertsPage() {
                 <div className="ap-context-row" style={detail.summaryText ? undefined : { borderTop: 'none', paddingTop: 0 }}>
                   <div className="ap-context-cell">
                     <span className="ap-context-label">Country</span>
-                    <span className="ap-context-value">{detail.country}</span>
+                    <span className="ap-context-value">{selected.country}</span>
                   </div>
                   <div className="ap-context-cell">
-                    <span className="ap-context-label">Product</span>
-                    <span className="ap-context-value">{detail.product}</span>
+                    <span className="ap-context-label">Sector</span>
+                    <span className="ap-context-value">{selected.sector}</span>
                   </div>
                   <div className="ap-context-cell">
                     <span className="ap-context-label">Confidence</span>
@@ -574,20 +372,14 @@ export function AlertsPage() {
                     <span className="ap-context-value">{absoluteTime(selected.raw.created_at)}</span>
                   </div>
                   <div className="ap-context-cell">
-                    <span className="ap-context-label">Intelligence Source</span>
-                    <span className="ap-context-value">{cleanSource(detail.tm.source)}</span>
+                    <span className="ap-context-label">Source</span>
+                    <span className="ap-context-value">{detail.tm.source || selected.raw.alert_type || '—'}</span>
                   </div>
-                  {Array.isArray(detail.tm.affected_hs_codes) && detail.tm.affected_hs_codes.length > 0 && (
-                    <div className="ap-context-cell">
-                      <span className="ap-context-label">HS Codes</span>
-                      <span className="ap-context-value">{hsWithDesc(detail.tm.affected_hs_codes)}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </section>
 
-            {/* Impact Assessment */}
+            {/* ── Impact Assessment ── */}
             <section className="ap-section">
               <h2 className="ap-section-title">Impact Assessment</h2>
               <div className="ap-prose-card">
@@ -602,6 +394,7 @@ export function AlertsPage() {
                   </div>
                   <span className="ap-risk-num">{detail.riskLevel.toUpperCase()}</span>
                 </div>
+
                 <div className="ap-metric-grid">
                   <div className="ap-metric ap-metric--danger">
                     <span className="ap-metric-label">Est. Cost Impact</span>
@@ -616,7 +409,7 @@ export function AlertsPage() {
                   <div className="ap-metric">
                     <span className="ap-metric-label">Affected Suppliers</span>
                     <span className="ap-metric-value">{detail.affectedSuppliersCount}</span>
-                    <span className="ap-metric-sub">tracked in {detail.country}</span>
+                    <span className="ap-metric-sub">tracked in {detail.countryLabel}</span>
                   </div>
                   <div className="ap-metric">
                     <span className="ap-metric-label">Affected Routes</span>
@@ -627,7 +420,7 @@ export function AlertsPage() {
               </div>
             </section>
 
-            {/* Agent Reasoning Timeline */}
+            {/* ── Agent Reasoning Timeline ── */}
             <section className="ap-section">
               <h2 className="ap-section-title">Agent Reasoning Timeline</h2>
               <div className="ap-tl">
@@ -646,7 +439,7 @@ export function AlertsPage() {
                         {!step.done && <span className="ap-tl-tag ap-tl-tag--pending">Not run</span>}
                       </div>
                       <p className={`ap-tl-finding${step.done ? '' : ' ap-tl-finding--muted'}`}>
-                        {step.finding || 'Not run for this alert.'}
+                        {step.finding || 'Not run for this alert — run the full pipeline (real-LLM mode) to populate.'}
                       </p>
                     </div>
                   </div>
@@ -654,7 +447,7 @@ export function AlertsPage() {
               </div>
             </section>
 
-            {/* Source Intelligence */}
+            {/* ── Source Intelligence ── */}
             <section className="ap-section">
               <h2 className="ap-section-title">Source Intelligence</h2>
               <div className="ap-sources">
@@ -671,7 +464,7 @@ export function AlertsPage() {
                   </a>
                 ))}
                 {detail.relatedNews.length > 0 && (
-                  <span className="ap-source-group-label">General Trade Wire · May contain broader market context</span>
+                  <span className="ap-source-group-label">Related trade wire</span>
                 )}
                 {detail.relatedNews.map((n, i) => (
                   <a key={`rel-${i}`} className="ap-source" href={n.url} target="_blank" rel="noreferrer">
@@ -686,16 +479,15 @@ export function AlertsPage() {
               </div>
             </section>
 
-            {/* Recommended Actions */}
+            {/* ── Recommended Actions ── */}
             <section className="ap-section">
               <h2 className="ap-section-title">Recommended Actions</h2>
               <div className="ap-action-card">
                 {detail.topAlt ? (
                   <>
                     <div className="ap-action-top">
-                      <span className="ap-action-label">Compliance-Selected Supplier</span>
+                      <span className="ap-action-label">Switch To</span>
                       <span className="ap-action-supplier">{detail.topAlt.supplier_name}</span>
-                      {detail.topAlt.country && <span className="ap-action-country">{detail.topAlt.country}</span>}
                     </div>
                     <div className="ap-benefits">
                       <div className="ap-benefit">
@@ -709,17 +501,12 @@ export function AlertsPage() {
                         <span className="ap-benefit-value">{detail.topAlt.lead_time_weeks != null ? `${detail.topAlt.lead_time_weeks} wks` : '—'}</span>
                       </div>
                       <div className="ap-benefit">
-                        <span className="ap-benefit-label">Adversarial</span>
-                        <span className={`ap-benefit-value ap-benefit-value--${(detail.adv.verdict || '').toUpperCase() === 'CLEAR' ? 'green' : (detail.adv.verdict || '').toUpperCase() === 'BLOCK' ? 'red' : 'amber'}`}>
+                        <span className="ap-benefit-label">Verdict</span>
+                        <span className={`ap-benefit-value ap-benefit-value--${(detail.adv.verdict || '').toUpperCase() === 'CLEAR' ? 'green' : 'amber'}`}>
                           {detail.adv.verdict || 'Review'}
                         </span>
                       </div>
                     </div>
-                    {detail.topAlt.stability_note && (
-                      <p style={{ fontSize: 11, color: 'rgba(180,170,140,0.8)', marginTop: 10, lineHeight: 1.5 }}>
-                        {detail.topAlt.stability_note}
-                      </p>
-                    )}
                   </>
                 ) : (
                   <div className="ap-action-top">
@@ -732,13 +519,14 @@ export function AlertsPage() {
 
                 {detail.recs.length > 0 && (
                   <ul className="ap-rec-list">
-                    {detail.recs.map((r, i) => (
+                    {detail.recs.slice(detail.topAlt ? 0 : 1).map((r, i) => (
                       <li key={i} className="ap-rec-item"><span className="ap-rec-bullet">▸</span><span>{r}</span></li>
                     ))}
                   </ul>
                 )}
               </div>
 
+              {/* Actions — preserve dismiss/resolve functionality */}
               <div className="ap-actions">
                 <button
                   className="ap-btn ap-btn--dismiss"
@@ -757,14 +545,11 @@ export function AlertsPage() {
               </div>
             </section>
           </div>
-        )}
-
-        {/* ── EMPTY STATE ────────────────────────────────────────────────── */}
-        {runPhase !== 'running' && !selected && (
+        ) : (
           <div className="ap-empty">
             <div className="ap-empty-icon">◫</div>
             <p className="ap-empty-title">Select an incident</p>
-            <p className="ap-empty-sub">Choose an alert from the left panel, or click <strong>Run New Analysis</strong> to trigger a live pipeline run</p>
+            <p className="ap-empty-sub">Choose an alert from the left panel to open the investigation workspace</p>
           </div>
         )}
       </main>

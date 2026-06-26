@@ -9,17 +9,14 @@ import {
   Anchor,
   TrendingUp,
   Globe,
-  CreditCard,
 } from 'lucide-react';
-import { UserButton, useAuth } from '@clerk/clerk-react';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',    path: '/dashboard',    icon: LayoutDashboard },
-  { label: 'Alerts',       path: '/alerts',       icon: Bell },
-  { label: 'Suppliers',    path: '/suppliers',    icon: Building2 },
-  { label: 'Compliance',   path: '/compliance',   icon: ShieldCheck },
-  { label: 'Subscription', path: '/subscription', icon: CreditCard },
-  { label: 'Settings',     path: '/settings',     icon: Settings },
+  { label: 'Dashboard',   path: '/dashboard', icon: LayoutDashboard },
+  { label: 'Alerts',      path: '/alerts',    icon: Bell },
+  { label: 'Suppliers',   path: '/suppliers', icon: Building2 },
+  { label: 'Compliance',  path: '/compliance',icon: ShieldCheck },
+  { label: 'Settings',    path: '/settings',  icon: Settings },
 ];
 
 type DbStatus = 'checking' | 'ok' | 'error';
@@ -27,11 +24,8 @@ type DbStatus = 'checking' | 'ok' | 'error';
 export const CommonHeader: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { getToken } = useAuth();
   const [dbStatus, setDbStatus] = useState<DbStatus>('checking');
   const [dbBackend, setDbBackend] = useState<string>('');
-  const [alertCount, setAlertCount] = useState<number | null>(null);
-  const [proposedSuppliers, setProposedSuppliers] = useState<number | null>(null);
 
   useEffect(() => {
     const check = () => {
@@ -49,34 +43,6 @@ export const CommonHeader: React.FC = () => {
     };
     check();
     const id = setInterval(check, 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      const token = await getToken();
-      if (!token) return;
-      fetch('/api/v2/alerts', { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => r.json())
-        .then((data) => {
-          const alerts = Array.isArray(data) ? data : (data?.items ?? []);
-          setAlertCount(alerts.length);
-          // Count proposed alternatives from most recent alert (before compliance narrows to 1)
-          const latest = alerts[0];
-          if (latest?.agent_output) {
-            try {
-              const ao = typeof latest.agent_output === 'string'
-                ? JSON.parse(latest.agent_output)
-                : latest.agent_output;
-              const opts = ao?.alternatives_finder?.options ?? ao?.alternatives_finder?.alternatives ?? [];
-              if (opts.length > 0) setProposedSuppliers(opts.length);
-            } catch { /* ignore */ }
-          }
-        })
-        .catch(() => {});
-    };
-    fetchAlerts();
-    const id = setInterval(fetchAlerts, 15_000);
     return () => clearInterval(id);
   }, []);
 
@@ -141,6 +107,30 @@ export const CommonHeader: React.FC = () => {
           </div>
         </div>
 
+        {/* Risk snapshot bar */}
+        <div style={{
+          marginTop: 10,
+          background: 'rgba(220,38,38,0.07)',
+          border: '1px solid rgba(220,38,38,0.15)',
+          borderRadius: 6,
+          padding: '5px 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+        }}>
+          <TrendingUp size={10} color="#dc2626" />
+          <span style={{ fontSize: 10, color: 'rgba(220,100,100,0.9)', fontWeight: 600 }}>
+            4 high-risk suppliers
+          </span>
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: 9,
+            color: 'rgba(220,38,38,0.6)',
+            fontFamily: 'JetBrains Mono, monospace',
+          }}>
+            LIVE
+          </span>
+        </div>
       </div>
 
       {/* System status bar */}
@@ -229,7 +219,7 @@ export const CommonHeader: React.FC = () => {
             >
               <Icon size={15} style={{ flexShrink: 0 }} />
               {label}
-              {label === 'Alerts' && alertCount !== null && alertCount > 0 && (
+              {label === 'Alerts' && (
                 <span style={{
                   marginLeft: 'auto',
                   background: '#dc2626',
@@ -241,7 +231,7 @@ export const CommonHeader: React.FC = () => {
                   minWidth: 16,
                   textAlign: 'center',
                 }}>
-                  {alertCount}
+                  3
                 </span>
               )}
             </button>
@@ -249,22 +239,16 @@ export const CommonHeader: React.FC = () => {
         })}
       </nav>
 
-      {/* Footer – logout button */}
+      {/* Footer */}
       <div style={{
-        padding: '12px 16px',
+        padding: '12px 20px',
         borderTop: '1px solid rgba(245,158,11,0.07)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
       }}>
-        <UserButton afterSignOutUrl="/sign-in" />
-        <div>
-          <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
-            CoastGuard v0.1.0
-          </div>
-          <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
-            Trade Risk Intelligence
-          </div>
+        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
+          CoastGuard v0.1.0
+        </div>
+        <div style={{ fontSize: 9, color: 'rgba(120,110,80,0.35)', marginTop: 2 }}>
+          Trade Risk Intelligence Platform
         </div>
       </div>
     </aside>

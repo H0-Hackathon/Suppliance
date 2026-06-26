@@ -88,12 +88,7 @@ class Settings(BaseSettings):
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     clerk_issuer_url: Optional[str] = None
-    clerk_secret_key: Optional[str] = None
     admin_whitelist: Optional[str] = None
-
-    # ── Stripe ────────────────────────────────────────────────────────────────
-    stripe_secret_key: Optional[str] = None
-    stripe_webhook_secret: Optional[str] = None
 
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: str = "INFO"

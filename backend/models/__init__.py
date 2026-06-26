@@ -11,7 +11,7 @@ Tables:
   disruption_events       — structured/queryable record of every risk event
   historical_impacts      — past disruption outcomes for the Impact Agent (enriched)
   agent_runs              — permanent log of every pipeline run
-  rss_articles            — rolling 12h RSS buffer, used to de-dup articles across runs
+  rss_articles            — temporary RSS buffer per run (deleted after pipeline)
   supplier_recommendations— extracted AlternativesFinder outputs per alert
   global_suppliers        — 25,000 synthetic global exporter directory
 """
@@ -34,16 +34,8 @@ class Customer(Base):
     email = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     industry = Column(String(100), nullable=True)
-    location = Column(String(255), nullable=True)
-    years_in_business = Column(Integer, nullable=True)
-    average_revenue = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
-    is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    # Subscription / trial
-    trial_expires_at = Column(DateTime, nullable=True)
-    subscription_plan = Column(String(50), nullable=True)          # 'standard' | 'pro'
-    subscription_expires_at = Column(DateTime, nullable=True)       # None = lifetime
 
     business_profile = relationship("BusinessProfile", back_populates="customer", uselist=False)
     suppliers = relationship("Supplier", back_populates="customer")
@@ -172,7 +164,7 @@ class HistoricalImpact(Base):
     alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
     # Severity + verdict context
     severity = Column(String(50), nullable=True)
-    adversarial_verdict = Column(String(50), nullable=True)   # CLEAR / CAUTION / BLOCK / REJECTED_BY_COMPLIANCE
+    adversarial_verdict = Column(String(20), nullable=True)   # CLEAR / CAUTION / BLOCK
     # Affected trade dimensions
     affected_hs_codes = Column(JSON, nullable=True)
     affected_countries = Column(JSON, nullable=True)          # full list (country = primary)
@@ -210,7 +202,6 @@ class BusinessProfile(Base):
     avg_lead_time_days = Column(Integer, nullable=True)
     compliance_notes = Column(Text, nullable=True)
     preferred_alternative_regions = Column(JSON, nullable=True)
-    preferred_alternative_countries = Column(JSON, nullable=True)
     min_supplier_rating = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -233,7 +224,7 @@ class AgentRun(Base):
     model_used = Column(String(100), nullable=True)
     articles_matched = Column(Integer, default=0)
     alerts_generated = Column(Integer, default=0)
-    adversarial_verdict = Column(String(50), nullable=True)
+    adversarial_verdict = Column(String(20), nullable=True)
     severity = Column(String(50), nullable=True)
     extra_cost_usd = Column(Float, nullable=True)
     event_type = Column(String(100), nullable=True)
@@ -242,11 +233,9 @@ class AgentRun(Base):
 
 class RssArticle(Base):
     """
-    Rolling 12-hour Aurora buffer for scored RSS articles. Written at the
-    start of every pipeline run; a row is excluded from being re-cited by
-    any later run for the same customer+agent_target until it ages past
-    RSS_DEDUP_WINDOW_HOURS (core/crew_monitor_pipeline.py), at which point
-    it's pruned. This keeps back-to-back runs from citing the same headline twice.
+    Temporary Aurora buffer for scored RSS articles during a pipeline run.
+    Written at pipeline start, deleted at pipeline end.
+    Shows Aurora as an active data buffer in the pipeline flow (not just a result store).
     """
     __tablename__ = "rss_articles"
 
@@ -281,7 +270,7 @@ class SupplierRecommendation(Base):
     lead_time_weeks = Column(Integer, nullable=True)
     cost_delta_pct = Column(Integer, nullable=True)
     source = Column(String(100), nullable=True)             # global_suppliers_db / gemini
-    adversarial_verdict = Column(String(50), nullable=True) # verdict from the run that generated this
+    adversarial_verdict = Column(String(20), nullable=True) # verdict from the run that generated this
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -301,29 +290,6 @@ class AgentRunLog(Base):
     output_json = Column(Text, nullable=True)
     ran_at = Column(DateTime, default=datetime.utcnow)
     tariff_alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True)
-
-
-class PipelineHeadline(Base):
-    """
-    Persistent store for RSS headlines surfaced during each pipeline run.
-    Keeps the last 3 runs per customer (older runs pruned at pipeline end).
-    Powers the NewsTicker 'Live Trade Wire' with customer-relevant articles.
-    """
-    __tablename__ = "pipeline_headlines"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(String(64), nullable=False, index=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
-    title = Column(String(500), nullable=True)
-    url = Column(String(1000), nullable=True)
-    source = Column(String(255), nullable=True)
-    published_at = Column(String(100), nullable=True)
-    published_ts = Column(Float, nullable=True)
-    agent_target = Column(String(50), nullable=True)  # tariff_monitor | alternatives_finder | import_compliance
-    category = Column(String(50), nullable=True)       # Tariffs | Supply Chain | Customs
-    country_mentioned = Column(String(100), nullable=True)
-    relevance_score = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class GlobalSupplier(Base):

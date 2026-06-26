@@ -1,7 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@clerk/clerk-react';
-import { Lock } from 'lucide-react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
 import './SuppliersPage.css';
 
@@ -459,15 +456,10 @@ const STEPS: Step[] = ['region', 'country', 'category', 'suppliers'];
 const STEP_LABELS = ['Region', 'Country', 'Category', 'Suppliers'];
 
 export const SuppliersPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { getToken } = useAuth();
-  const [accessStatus, setAccessStatus] = useState<'checking' | 'allowed' | 'denied'>('checking');
-
   const [step, setStep] = useState<Step>('region');
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [exploreAllMode, setExploreAllMode] = useState(false);
 
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [countries, setCountries] = useState<CountryItem[]>([]);
@@ -484,103 +476,32 @@ export const SuppliersPage: React.FC = () => {
   const totalPagesRef = useRef(1);
   const loadingMoreRef = useRef(false);
 
-  // Check access first
+  // Load regions once
   useEffect(() => {
-    const checkAccess = async () => {
-      try {
-        const token = await getToken();
-        if (!token) return setAccessStatus('denied');
-        const res = await fetch('/api/v2/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!res.ok) return setAccessStatus('denied');
-        const data = await res.json();
-        const plan = data.subscription?.plan;
-        const status = data.subscription?.status;
-
-        // Allowed if Pro, Trial, or if it's the 149$ plan
-        if (status === 'trial' || plan === 'pro' || plan === 'price_pro') {
-          setAccessStatus('allowed');
-        } else {
-          setAccessStatus('denied');
-        }
-      } catch (e) {
-        setAccessStatus('denied');
-      }
-    };
-    checkAccess();
-  }, [getToken]);
-
-  // Load regions once or when exploreAllMode changes
-  useEffect(() => {
-    if (accessStatus !== 'allowed') return;
-    const loadRegions = async () => {
-      try {
-        const token = await getToken();
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
-        const res = await fetch(`/api/v2/global-suppliers/regions?explore_all=${exploreAllMode}`, { headers });
-        if (res.ok) setRegions(await res.json());
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    loadRegions();
-  }, [accessStatus, exploreAllMode, getToken]);
+    fetch('/api/v2/global-suppliers/regions').then(r => r.json()).then(setRegions).catch(console.error);
+  }, []);
 
   // Load countries when region picked
   useEffect(() => {
     if (!selectedRegion) return;
     setLoading(true);
-    const loadCountries = async () => {
-      try {
-        const token = await getToken();
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
-        const res = await fetch(`/api/v2/global-suppliers/countries?region=${encodeURIComponent(selectedRegion)}&explore_all=${exploreAllMode}`, { headers });
-        if (res.ok) setCountries(await res.json());
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadCountries();
-  }, [selectedRegion, exploreAllMode, getToken]);
+    fetch(`/api/v2/global-suppliers/countries?region=${encodeURIComponent(selectedRegion)}`)
+      .then(r => r.json()).then(d => { setCountries(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [selectedRegion]);
 
   // Load categories when country picked
   useEffect(() => {
     if (!selectedRegion || !selectedCountry) return;
     setLoading(true);
-    
-    const loadCats = async () => {
-      try {
-        const token = await getToken();
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
-        // Pass explore_all=true if exploreAllMode is active
-        const url = `/api/v2/global-suppliers/categories?region=${encodeURIComponent(selectedRegion)}&country=${encodeURIComponent(selectedCountry)}&explore_all=${exploreAllMode}`;
-        
-        const res = await fetch(url, { headers });
-        if (res.ok) {
-          const data = await res.json();
-          setCategories(data);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadCats();
-  }, [selectedRegion, selectedCountry, exploreAllMode, getToken]);
+    fetch(`/api/v2/global-suppliers/categories?region=${encodeURIComponent(selectedRegion)}&country=${encodeURIComponent(selectedCountry)}`)
+      .then(r => r.json()).then(d => { setCategories(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [selectedRegion, selectedCountry]);
 
   // Load first page of suppliers
   useEffect(() => {
-    if (step !== 'suppliers') return;
+    if (!selectedRegion || !selectedCountry || !selectedCategory) return;
     setLoading(true);
     setPage(1); pageRef.current = 1;
     setSuppliers([]);
@@ -591,17 +512,10 @@ export const SuppliersPage: React.FC = () => {
       totalPagesRef.current = data.total_pages;
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [selectedRegion, selectedCountry, selectedCategory, step]);
+  }, [selectedRegion, selectedCountry, selectedCategory]);
 
-  const buildUrl = (p: number) => {
-    const params = new URLSearchParams();
-    if (selectedRegion) params.append('region', selectedRegion);
-    if (selectedCountry) params.append('country', selectedCountry);
-    if (selectedCategory) params.append('category', selectedCategory);
-    params.append('page', p.toString());
-    params.append('per_page', '6');
-    return `/api/v2/global-suppliers?${params.toString()}`;
-  };
+  const buildUrl = (p: number) =>
+    `/api/v2/global-suppliers?region=${encodeURIComponent(selectedRegion)}&country=${encodeURIComponent(selectedCountry)}&category=${encodeURIComponent(selectedCategory)}&page=${p}&per_page=6`;
 
   // Infinite scroll via IntersectionObserver
   const fetchNext = useCallback(() => {
@@ -644,35 +558,6 @@ export const SuppliersPage: React.FC = () => {
 
   const stepIndex = STEPS.indexOf(step);
 
-  if (accessStatus === 'checking') {
-    return (
-      <div className="sp-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="sp-spinner" style={{ width: 40, height: 40 }} />
-      </div>
-    );
-  }
-
-  if (accessStatus === 'denied') {
-    return (
-      <div className="sp-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-        <div style={{ background: 'rgba(245,158,11,0.1)', padding: 24, borderRadius: '50%', marginBottom: 24 }}>
-          <Lock size={48} color="#f59e0b" />
-        </div>
-        <h2 style={{ color: 'white', marginBottom: 12, fontSize: 24, fontWeight: 700 }}>Pro Feature</h2>
-        <p style={{ color: 'rgba(255,255,255,0.6)', maxWidth: 450, textAlign: 'center', marginBottom: 32, fontSize: 15, lineHeight: 1.6 }}>
-          The Global Supplier Directory is available on the Pro plan or during your free trial.
-          Upgrade to unlock 25,000+ verified alternative suppliers globally and the Alternative Supplier Finder agent.
-        </p>
-        <button 
-          onClick={() => navigate('/subscription')}
-          style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', color: '#0a0f1e', border: 'none', padding: '12px 28px', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
-        >
-          Upgrade to Pro
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="sp-page">
       {/* Header */}
@@ -689,10 +574,10 @@ export const SuppliersPage: React.FC = () => {
               {step === 'suppliers' && <><span className="sp-breadcrumb">{selectedCategory}</span></>}
             </h1>
             <p className="sp-subtitle">
-              {step === 'region'    && 'Choose a region to find suppliers'}
-              {step === 'country'   && `${countries.length} countries in ${selectedRegion}`}
-              {step === 'category'  && `${categories.length} categories in ${selectedCountry}`}
-              {step === 'suppliers' && (selectedRegion ? `${total.toLocaleString()} verified suppliers · ${getFlag(selectedCountry)} ${selectedCountry} → ${selectedRegion}` : `${total.toLocaleString()} verified suppliers globally`)}
+              {step === 'region'    && 'Choose an export market to explore verified global suppliers'}
+              {step === 'country'   && `${countries.length} countries supplying to ${selectedRegion}`}
+              {step === 'category'  && `${categories.length} categories from ${selectedCountry} → ${selectedRegion}`}
+              {step === 'suppliers' && `${total.toLocaleString()} verified suppliers · ${getFlag(selectedCountry)} ${selectedCountry} → ${selectedRegion}`}
             </p>
           </div>
         </div>
@@ -722,45 +607,20 @@ export const SuppliersPage: React.FC = () => {
 
         {/* Step 1: Regions */}
         {step === 'region' && (
-          <>
-            <div className="sp-grid-regions">
-              {regions.map(({ region, supplier_count }) => {
-                const m = REGION_META[region] ?? { emoji: '🌐', desc: '' };
-                return (
-                  <button key={region} className="sp-region-card" onClick={() => pickRegion(region)}>
-                    <div className="sp-region-emoji">{m.emoji}</div>
-                    <div className="sp-region-name">{region}</div>
-                    <div className="sp-region-desc">{m.desc}</div>
-                    <div className="sp-region-count">{supplier_count.toLocaleString()} suppliers</div>
-                    <div className="sp-region-arrow">→</div>
-                  </button>
-                );
-              })}
-            </div>
-            
-            <div style={{ marginTop: 40, textAlign: 'center' }}>
-              <button
-                onClick={() => setExploreAllMode(!exploreAllMode)}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  padding: '14px 28px',
-                  borderRadius: 8,
-                  color: '#e2e8f0',
-                  cursor: 'pointer',
-                  fontSize: 15,
-                  fontWeight: 600,
-                  fontFamily: 'Inter, sans-serif',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              >
-                {exploreAllMode ? '🌍 Show Only My Profile Categories' : '🌍 Explore All Global Suppliers'}
-              </button>
-            </div>
-          </>
+          <div className="sp-grid-regions">
+            {regions.map(({ region, supplier_count }) => {
+              const m = REGION_META[region] ?? { emoji: '🌐', desc: '' };
+              return (
+                <button key={region} className="sp-region-card" onClick={() => pickRegion(region)}>
+                  <div className="sp-region-emoji">{m.emoji}</div>
+                  <div className="sp-region-name">{region}</div>
+                  <div className="sp-region-desc">{m.desc}</div>
+                  <div className="sp-region-count">{supplier_count.toLocaleString()} suppliers</div>
+                  <div className="sp-region-arrow">→</div>
+                </button>
+              );
+            })}
+          </div>
         )}
 
         {/* Step 2: Countries */}
@@ -782,38 +642,16 @@ export const SuppliersPage: React.FC = () => {
         {/* Step 3: Categories */}
         {step === 'category' && (
           loading ? <div className="sp-loading"><div className="sp-spinner" />Loading categories…</div> : (
-            <>
-              <div className="sp-grid-categories">
-                {categories.map(({ category, supplier_count }) => (
-                  <button key={category} className="sp-category-card" onClick={() => pickCategory(category)}>
-                    <div className="sp-cat-icon">{CATEGORY_ICONS[category] ?? '📦'}</div>
-                    <div className="sp-cat-name">{category}</div>
-                    <div className="sp-cat-count">{supplier_count.toLocaleString()}</div>
-                    <div className="sp-cat-arrow">→</div>
-                  </button>
-                ))}
-              </div>
-              
-              <div style={{ marginTop: 40, textAlign: 'center' }}>
-                <button
-                  onClick={() => setExploreAllMode(!exploreAllMode)}
-                  style={{
-                    background: 'transparent',
-                    border: '1px dashed rgba(255,255,255,0.2)',
-                    padding: '10px 20px',
-                    borderRadius: 8,
-                    color: '#94a3b8',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#fff'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-                >
-                  {exploreAllMode ? 'Show Only My Profile Categories' : 'Show All Global Categories'}
+            <div className="sp-grid-categories">
+              {categories.map(({ category, supplier_count }) => (
+                <button key={category} className="sp-category-card" onClick={() => pickCategory(category)}>
+                  <div className="sp-cat-icon">{CATEGORY_ICONS[category] ?? '📦'}</div>
+                  <div className="sp-cat-name">{category}</div>
+                  <div className="sp-cat-count">{supplier_count.toLocaleString()}</div>
+                  <div className="sp-cat-arrow">→</div>
                 </button>
-              </div>
-            </>
+              ))}
+            </div>
           )
         )}
 

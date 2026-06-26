@@ -14,35 +14,27 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
-from models import Customer, TariffAlert
+from models import TariffAlert
 from schemas import TariffAlertResponse
-from core.auth import get_current_user
+from config import get_settings
 
 router = APIRouter(prefix="/api/v2", tags=["Alerts"])
+settings = get_settings()
 
-ALERT_DISPLAY_CAP = 20
-
-
-def _owned_alert(alert_id: int, current_user: Customer, db: Session) -> TariffAlert:
-    alert = (
-        db.query(TariffAlert)
-        .filter(TariffAlert.id == alert_id, TariffAlert.customer_id == current_user.id)
-        .first()
-    )
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    return alert
+ALERT_DISPLAY_CAP = 10
 
 
 @router.get("/alerts", response_model=List[TariffAlertResponse])
-def list_alerts(
-    current_user: Customer = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Returns the most recent alerts for the authenticated customer, capped at ALERT_DISPLAY_CAP."""
+def list_alerts(customer_id: int = None, db: Session = Depends(get_db)):
+    """
+    Returns the most recent alerts for the active customer, capped at 10.
+    customer_id param is optional — defaults to ACTIVE_CUSTOMER_ID from config.
+    Once Clerk auth is wired, this will use the auth token instead.
+    """
+    cid = customer_id or settings.active_customer_id
     return (
         db.query(TariffAlert)
-        .filter(TariffAlert.customer_id == current_user.id)
+        .filter(TariffAlert.customer_id == cid)
         .order_by(TariffAlert.created_at.desc())
         .limit(ALERT_DISPLAY_CAP)
         .all()
@@ -50,21 +42,18 @@ def list_alerts(
 
 
 @router.get("/alerts/{alert_id}", response_model=TariffAlertResponse)
-def get_alert(
-    alert_id: int,
-    current_user: Customer = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return _owned_alert(alert_id, current_user, db)
+def get_alert(alert_id: int, db: Session = Depends(get_db)):
+    alert = db.query(TariffAlert).filter(TariffAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return alert
 
 
 @router.put("/alerts/{alert_id}/dismiss", response_model=TariffAlertResponse)
-def dismiss_alert(
-    alert_id: int,
-    current_user: Customer = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    alert = _owned_alert(alert_id, current_user, db)
+def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):
+    alert = db.query(TariffAlert).filter(TariffAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
     alert.status = "dismissed"
     alert.resolved_at = datetime.utcnow()
     db.commit()
@@ -73,12 +62,10 @@ def dismiss_alert(
 
 
 @router.put("/alerts/{alert_id}/resolve", response_model=TariffAlertResponse)
-def resolve_alert(
-    alert_id: int,
-    current_user: Customer = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    alert = _owned_alert(alert_id, current_user, db)
+def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
+    alert = db.query(TariffAlert).filter(TariffAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
     alert.status = "resolved"
     alert.resolved_at = datetime.utcnow()
     db.commit()

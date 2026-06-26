@@ -19,58 +19,77 @@ from api.v2.monitor_routes import router as monitor_router
 from api.v2.disruption_routes import router as disruption_router
 from api.v2.geo_routes import router as geo_router
 from api.v2.news_routes import router as news_router
-from api.v2.settings_routes import router as settings_router
 
 settings = get_settings()
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
-# Quiet noisy third-party loggers — they spam at INFO but carry no useful signal
-for _noisy in ("sqlalchemy.engine", "sqlalchemy.pool", "sqlalchemy.dialects",
-               "httpx", "httpcore", "google_genai", "google.auth",
-               "crewai", "crewai.crew", "crewai.agent", "crewai.task",
-               "opentelemetry", "litellm"):
-    logging.getLogger(_noisy).setLevel(logging.WARNING)
-
 import models  # noqa: F401 — registers all models with SQLAlchemy before create_all
 
 Base.metadata.create_all(bind=engine)
 
+# ── Startup pipeline status (polled by frontend loading screen) ───────────────
+startup_pipeline_status = {
+    "running": False,
+    "completed": 0,
+    "total": 3,
+    "errors": [],
+}
 
-def _migrate_customer_columns():
-    """
-    Safely add new columns to the customers table.
-    Uses ALTER TABLE ... ADD COLUMN -- skipped silently if the column already exists.
-    Works with both PostgreSQL and SQLite.
-    """
-    from database import engine
-    from sqlalchemy import text
+STARTUP_PIPELINE_RUNS = 3
 
-    new_columns = [
-        ("location",               "VARCHAR(255)"),
-        ("years_in_business",      "INTEGER"),
-        ("average_revenue",        "VARCHAR(100)"),
-        ("is_verified",            "BOOLEAN DEFAULT FALSE"),
-        ("trial_expires_at",       "TIMESTAMP"),
-        ("subscription_plan",      "VARCHAR(50)"),
-        ("subscription_expires_at","TIMESTAMP"),
-    ]
-    with engine.connect() as conn:
-        for col_name, col_type in new_columns:
+
+def _run_startup_pipelines_thread():
+    """
+    Run STARTUP_PIPELINE_RUNS pipeline runs for the active customer in a background
+    daemon thread. Daemon=True means this thread is killed cleanly when the server exits.
+    Using a thread (not asyncio task) keeps pipeline failures fully isolated from
+    the uvicorn event loop — a crash here cannot bring down the server.
+    """
+    global startup_pipeline_status
+    startup_pipeline_status["running"] = True
+    startup_pipeline_status["completed"] = 0
+    startup_pipeline_status["errors"] = []
+
+    from database import SessionLocal
+    from core.crew_orchestrator import CrewAIOrchestrator
+    from core.crew_monitor_pipeline import clear_pipeline_log
+
+    clear_pipeline_log()
+    customer_id = settings.active_customer_id
+    orchestrator = CrewAIOrchestrator()
+
+    for i in range(STARTUP_PIPELINE_RUNS):
+        db = SessionLocal()
+        try:
+            logger.info(f"Startup pipeline run {i + 1}/{STARTUP_PIPELINE_RUNS} for customer {customer_id}")
+            orchestrator.run_monitor(customer_id=customer_id, db=db)
+            startup_pipeline_status["completed"] += 1
+            logger.info(f"Startup pipeline run {i + 1} complete")
+        except BaseException as exc:
+            # Catch BaseException (including SystemExit from CrewAI internals)
+            # so a pipeline failure never propagates to the main thread
+            logger.error(f"Startup pipeline run {i + 1} failed: {exc}")
+            startup_pipeline_status["errors"].append(str(exc))
+            startup_pipeline_status["completed"] += 1
+        finally:
             try:
-                conn.execute(text(f"ALTER TABLE customers ADD COLUMN {col_name} {col_type}"))
-                conn.commit()
-                logger.info(f"Migration: added customers.{col_name}")
+                db.close()
             except Exception:
-                conn.rollback()   # Column already exists — safe to ignore
+                pass
+
+    startup_pipeline_status["running"] = False
+    logger.info("All startup pipeline runs finished.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-migrate new Customer columns (safe: skips if column already exists)
-    _migrate_customer_columns()
+    # Start pipelines in an isolated daemon thread — server stays up regardless of outcome
+    t = threading.Thread(target=_run_startup_pipelines_thread, daemon=True, name="startup-pipelines")
+    t.start()
     yield
+    # Server is shutting down — daemon thread is killed automatically
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -99,8 +118,6 @@ from api.v2.supplier_routes import router as supplier_router
 from api.v2.alert_routes import router as alert_router
 from api.v2.monitor_routes import router as monitor_router
 from api.v2.global_supplier_routes import router as global_supplier_router
-from api.v2.auth_routes import router as auth_router
-from api.v2.payment_routes import router as payment_router
 
 app.include_router(demo_router)
 app.include_router(supplier_router)
@@ -110,9 +127,6 @@ app.include_router(disruption_router)
 app.include_router(geo_router)
 app.include_router(news_router)
 app.include_router(global_supplier_router)
-app.include_router(auth_router)
-app.include_router(payment_router)
-app.include_router(settings_router)
 
 
 # ── Article cache refresh ─────────────────────────────────────────────────────
@@ -201,4 +215,5 @@ async def api_health():
         "gemini_key_set": bool(settings.gemini_api_key),
         "database": db_status,
         "article_cache": article_cache.status(),
+        "startup_pipelines": startup_pipeline_status,
     }

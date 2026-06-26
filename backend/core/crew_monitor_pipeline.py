@@ -2,27 +2,23 @@
 CoastGuard — 5-Agent Tariff Monitoring Pipeline
 
 Aurora data flow every run:
-  1. Already-seen URLs queried  → excludes articles used by any run in the
-     last RSS_DEDUP_WINDOW_HOURS, so back-to-back runs don't re-cite the same headline
-  2. RssArticle rows written    (rolling de-dup buffer — pruned by age, not by run)
-  3. HistoricalImpact queried   → enriches ImpactCalculator prompt
-  4. SupplierRecommendation queried → enriches AlternativesFinder prompt
-  5. AgentRun queried           → enriches Adversarial prompt
-  6. AgentRun row written       (permanent run log)
-  7. HistoricalImpact row written (permanent, enriched with all signal metadata)
-  8. SupplierRecommendation rows written (permanent per alternative)
-  9. RssArticle rows older than RSS_DEDUP_WINDOW_HOURS pruned (this run's rows stay
-     for the next run's de-dup check)
+  1. RssArticle rows written   (temporary buffer — deleted after run)
+  2. HistoricalImpact queried  → enriches ImpactCalculator prompt
+  3. SupplierRecommendation queried → enriches AlternativesFinder prompt
+  4. AgentRun queried          → enriches Adversarial prompt
+  5. AgentRun row written      (permanent run log)
+  6. HistoricalImpact row written (permanent, enriched with all signal metadata)
+  7. SupplierRecommendation rows written (permanent per alternative)
+  8. RssArticle rows deleted   (buffer cleared)
 """
 
-import contextvars
 import json
 import logging
 import re
 import threading
 import uuid
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import get_settings
@@ -52,13 +48,7 @@ COUNTRY_COORDS: dict[str, tuple[float, float]] = {
     "Saudi Arabia": (23.9, 45.1), "United Arab Emirates": (24.0, 53.8),
 }
 
-ALERT_CAP = 20
-
-# How long a buffered RssArticle counts as "already seen" for de-dup purposes.
-# Rows older than this are pruned at the end of each run (see step 9 above);
-# rows newer than this are excluded from the next run's candidate pool so the
-# same headline doesn't get cited by two runs in a row.
-RSS_DEDUP_WINDOW_HOURS = 12
+ALERT_CAP = 10
 
 try:
     from crewai import Agent, Task, Crew, LLM
@@ -67,74 +57,30 @@ except ImportError:
     HAS_CREWAI = False
 
 
-# ── Live pipeline log (per-customer) ──────────────────────────────────────────
+# ── Live pipeline log ─────────────────────────────────────────────────────────
 
 _log_lock = threading.Lock()
-_pipeline_logs: dict[int, deque] = {}
-
-# Set for the duration of MonitorPipeline.run() so pipeline_emit() (55 call
-# sites scattered through this module) can route events to the right
-# customer's log without threading customer_id through every call.
-_current_customer_id: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
-    "current_customer_id", default=None
-)
-
-# Only one pipeline run in flight at a time, app-wide (protects the shared
-# Gemini quota — concurrent runs would burn through the daily request cap fast).
-_run_lock = threading.Lock()
-
-
-class PipelineBusyError(Exception):
-    """Raised when a pipeline run is requested while another is already in flight."""
-    pass
-
-
-_DISPLAY_EVENTS = {
-    "pipeline_start", "profile_loaded", "profile_warning",
-    "crew_start", "agent_start", "agent_done", "agent_result",
-    "pipeline_done", "crew_error",
-}
-
-_EVENT_CATEGORY = {
-    "pipeline_start": "pipeline", "pipeline_done": "pipeline", "crew_error": "pipeline",
-    "profile_loaded": "profile", "profile_warning": "profile",
-    "crew_start": "phase",
-    "agent_start": "agent", "agent_done": "agent", "agent_result": "agent",
-    "rss_start": "data", "rss_fetched": "data", "rss_match": "data",
-    "rss_buffered": "data", "rss_read_back": "data", "rss_done": "data", "rss_error": "data",
-    "compliance_rss_start": "data", "compliance_rss_done": "data",
-    "alt_rss_start": "data", "alt_rss_done": "data",
-    "db_query": "db", "db_history": "db", "db_past_suppliers": "db",
-    "db_run_history": "db", "db_suppliers": "db", "db_write": "db", "db_error": "db",
-    "run_log": "internal", "hs_correction": "internal",
-    "headlines_saved": "internal", "rss_cleared": "internal",
-}
+_pipeline_log: deque = deque(maxlen=1000)
 
 
 def pipeline_emit(event: str, msg: str) -> None:
-    logger.debug(f"[pipeline:{event}] {msg}")
-    customer_id = _current_customer_id.get()
-    if customer_id is None:
-        return
+    logger.info(f"[pipeline:{event}] {msg}")
     with _log_lock:
-        log = _pipeline_logs.setdefault(customer_id, deque(maxlen=1000))
-        log.append({
+        _pipeline_log.append({
             "event": event,
             "msg": msg,
             "ts": datetime.now(timezone.utc).isoformat(),
-            "category": _EVENT_CATEGORY.get(event, "internal"),
-            "display": event in _DISPLAY_EVENTS,
         })
 
 
-def get_pipeline_log(customer_id: int) -> list:
+def get_pipeline_log() -> list:
     with _log_lock:
-        return list(_pipeline_logs.get(customer_id, []))
+        return list(_pipeline_log)
 
 
-def clear_pipeline_log(customer_id: int) -> None:
+def clear_pipeline_log() -> None:
     with _log_lock:
-        _pipeline_logs[customer_id] = deque(maxlen=1000)
+        _pipeline_log.clear()
 
 
 # ── LLM initializer ───────────────────────────────────────────────────────────
@@ -151,33 +97,6 @@ def _init_gemini_llm() -> "LLM":
 
 
 # ── RSS fetch + Aurora buffer ─────────────────────────────────────────────────
-
-def _seen_article_urls(customer_id: int, agent_target: str, db, hours: int = RSS_DEDUP_WINDOW_HOURS) -> set:
-    """
-    URLs already buffered for this customer+agent_target within the last
-    `hours` — i.e. cited by a previous run that hasn't aged out of the
-    rss_articles table yet. Subtract this set from a fresh RSS pull so two
-    runs in a row never cite the same headline.
-    """
-    if not db:
-        return set()
-    try:
-        from models import RssArticle
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
-        rows = (
-            db.query(RssArticle.url)
-            .filter(
-                RssArticle.customer_id == customer_id,
-                RssArticle.agent_target == agent_target,
-                RssArticle.created_at >= cutoff,
-            )
-            .all()
-        )
-        return {r[0] for r in rows if r[0]}
-    except Exception as exc:
-        logger.warning(f"Seen-URL lookup failed for {agent_target}: {exc}")
-        return set()
-
 
 def _fetch_and_buffer_articles(
     rss_keywords: list,
@@ -204,16 +123,6 @@ def _fetch_and_buffer_articles(
         logger.warning(f"RSS collector failed: {exc}")
         pipeline_emit("rss_error", f"RSS fetch failed: {exc}")
         return [], {"articles_matched": 0, "source_credibility": "", "signal_age_hours": None, "risk_source": "gemini_knowledge"}
-
-    # Drop anything already cited by a run within the last RSS_DEDUP_WINDOW_HOURS
-    seen_urls = _seen_article_urls(customer_id, "tariff_monitor", db)
-    if seen_urls:
-        before = len(raw_articles)
-        raw_articles = [a for a in raw_articles if a.get("url") not in seen_urls]
-        pipeline_emit(
-            "rss_dedup",
-            f"Excluded {before - len(raw_articles)} articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
-        )
 
     # Authoritative sources that boost credibility score
     CREDIBLE_SOURCES = {"usda", "ustr", "trade.gov", "fas.usda", "cbp", "commerce"}
@@ -495,15 +404,6 @@ def _fetch_compliance_articles(
         pipeline_emit("compliance_rss_error", f"Compliance feed fetch failed: {exc}")
         return ""
 
-    seen_urls = _seen_article_urls(customer_id, "import_compliance", db)
-    if seen_urls:
-        before = len(articles)
-        articles = [a for a in articles if a.get("url") not in seen_urls]
-        pipeline_emit(
-            "compliance_rss_dedup",
-            f"Excluded {before - len(articles)} compliance articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
-        )
-
     if not articles:
         pipeline_emit("compliance_rss_done", "No compliance articles retrieved")
         return ""
@@ -598,15 +498,6 @@ def _fetch_alternatives_articles(
         pipeline_emit("alt_rss_error", f"Alternatives feed fetch failed: {exc}")
         return ""
 
-    seen_urls = _seen_article_urls(customer_id, "alternatives_finder", db)
-    if seen_urls:
-        before = len(articles)
-        articles = [a for a in articles if a.get("url") not in seen_urls]
-        pipeline_emit(
-            "alt_rss_dedup",
-            f"Excluded {before - len(articles)} stability articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
-        )
-
     if not articles:
         pipeline_emit("alt_rss_done", "No alternatives stability articles retrieved")
         return ""
@@ -672,54 +563,6 @@ def _fetch_alternatives_articles(
             )
 
     return "\n\n".join(blocks)
-
-
-# ── HS chapter → product category mapping for supplier DB queries ─────────────
-
-_HS2_CATEGORIES: dict[str, list[str]] = {
-    "01": ["Live Animals"],
-    "02": ["Meat", "Poultry"],
-    "03": ["Fish", "Seafood"],
-    "04": ["Dairy"],
-    "07": ["Vegetables", "Agricultural", "Produce"],
-    "08": ["Fruits", "Tropical Produce", "Bananas", "Agricultural"],
-    "09": ["Coffee", "Tea", "Spices", "Agricultural"],
-    "10": ["Grain", "Cereal", "Agricultural"],
-    "15": ["Oils", "Fats", "Agricultural"],
-    "17": ["Sugar", "Agricultural"],
-    "18": ["Cocoa", "Chocolate", "Agricultural"],
-    "20": ["Food", "Processed Food", "Agricultural"],
-    "24": ["Tobacco"],
-    "44": ["Timber", "Wood"],
-    "52": ["Cotton", "Textile", "Fiber"],
-    "54": ["Textile", "Synthetic Fiber"],
-    "55": ["Textile", "Fiber"],
-    "61": ["Garments", "Apparel", "Textile"],
-    "62": ["Garments", "Apparel", "Textile"],
-    "72": ["Steel", "Iron", "Metal"],
-    "73": ["Steel Products", "Metal"],
-    "74": ["Copper", "Metal"],
-    "75": ["Nickel", "Metal"],
-    "76": ["Aluminum", "Metal"],
-    "78": ["Lead", "Metal"],
-    "79": ["Zinc", "Metal"],
-    "84": ["Machinery", "Equipment"],
-    "85": ["Electronics", "Electrical Equipment"],
-    "87": ["Vehicles", "Automotive"],
-    "90": ["Medical", "Optical", "Instruments"],
-}
-
-
-def _categories_from_hs(hs_codes: list[str], fallback: list[str]) -> list[str]:
-    """Derive supplier DB category keywords from HS codes. Falls back to customer profile."""
-    cats: list[str] = []
-    seen: set[str] = set()
-    for code in hs_codes:
-        for cat in _HS2_CATEGORIES.get(code[:2], []):
-            if cat not in seen:
-                cats.append(cat)
-                seen.add(cat)
-    return cats if cats else fallback
 
 
 # ── Global supplier lookup ────────────────────────────────────────────────────
@@ -801,16 +644,9 @@ class MonitorPipeline:
         return self._llm
 
     def run(self, customer_id: int, db: Optional[Session] = None) -> dict:
-        if not _run_lock.acquire(blocking=False):
-            raise PipelineBusyError("A pipeline run is already in progress.")
-        token = _current_customer_id.set(customer_id)
-        try:
-            if settings.use_mock_llm:
-                return self._mock_run(customer_id, db)
-            return self._real_run(customer_id, db)
-        finally:
-            _current_customer_id.reset(token)
-            _run_lock.release()
+        if settings.use_mock_llm:
+            return self._mock_run(customer_id, db)
+        return self._real_run(customer_id, db)
 
     def _load_profile(self, customer_id: int, db: Optional[Session]) -> dict:
         if db is None:
@@ -821,95 +657,24 @@ class MonitorPipeline:
             profile = db.query(BusinessProfile).filter(BusinessProfile.customer_id == customer_id).first()
             if not customer or not profile:
                 return {}
-
-            raw_hs_codes = profile.primary_hs_codes or []
-            raw_countries = profile.primary_origin_countries or []
-            raw_descriptions = profile.product_descriptions or []
-            raw_categories = profile.product_categories or []
-            raw_keywords = profile.rss_keywords or []
-            raw_alt_regions = profile.preferred_alternative_regions or []
-            raw_alt_countries = profile.preferred_alternative_countries or []
-
-            missing_fields = []
-
-            # Derive product_categories from product_descriptions if missing
-            if not raw_categories and raw_descriptions:
-                raw_categories = [d.split()[0] for d in raw_descriptions if d]
-                missing_fields.append("product_categories (derived from product_descriptions)")
-
-            # Derive rss_keywords from origin countries + HS codes if missing
-            if not raw_keywords:
-                kw_set = []
-                for country in raw_countries:
-                    kw_set.append(f"{country} tariff")
-                    kw_set.append(f"{country} import duty")
-                for hs in raw_hs_codes[:2]:
-                    kw_set.append(f"HS {hs} trade")
-                raw_keywords = kw_set
-                missing_fields.append("rss_keywords (derived from origin countries + HS codes)")
-
-            # Derive alternative regions/countries from import_region if both missing
-            REGION_FALLBACKS = {
-                "Southeast Asia": {
-                    "regions": ["Southeast Asia", "South Asia"],
-                    "countries": ["Malaysia", "Philippines", "Thailand"],
-                },
-                "South Asia": {
-                    "regions": ["East Asia", "Latin America"],
-                    "countries": ["Mexico", "China", "South Korea"],
-                },
-                "East Asia": {
-                    "regions": ["Southeast Asia", "East Asia"],
-                    "countries": ["Vietnam", "South Korea", "Malaysia"],
-                },
-                "South America": {
-                    "regions": ["Central America", "South America"],
-                    "countries": ["Ecuador", "Honduras", "Mexico"],
-                },
-                "North America": {
-                    "regions": ["East Asia", "North America"],
-                    "countries": ["Canada", "South Korea", "Japan"],
-                },
-            }
-            if not raw_alt_regions or not raw_alt_countries:
-                import_region = profile.import_region or ""
-                fallback = REGION_FALLBACKS.get(import_region, {
-                    "regions": ["Southeast Asia"],
-                    "countries": ["Mexico", "Vietnam", "India"],
-                })
-                if not raw_alt_regions:
-                    raw_alt_regions = fallback["regions"]
-                    missing_fields.append(f"preferred_alternative_regions (derived from import_region={import_region!r})")
-                if not raw_alt_countries:
-                    raw_alt_countries = fallback["countries"]
-                    missing_fields.append(f"preferred_alternative_countries (derived from import_region={import_region!r})")
-
-            if missing_fields:
-                pipeline_emit(
-                    "profile_warning",
-                    f"Customer {customer_id} has incomplete profile — derived: {'; '.join(missing_fields)}. "
-                    f"Update business_profiles to remove this warning."
-                )
-
             return {
                 "company_name": customer.company_name or customer.name,
                 "industry": customer.industry or "",
                 "business_type": profile.business_type or "",
                 "annual_import_volume_usd": profile.annual_import_volume_usd or 0,
-                "primary_hs_codes": raw_hs_codes,
-                "primary_origin_countries": raw_countries,
+                "primary_hs_codes": profile.primary_hs_codes or [],
+                "primary_origin_countries": profile.primary_origin_countries or [],
                 "destination_country": profile.destination_country or "United States",
                 "destination_port": profile.destination_port or "",
                 "import_region": profile.import_region or "",
                 "risk_tolerance": profile.risk_tolerance or "medium",
-                "product_categories": raw_categories,
-                "product_descriptions": raw_descriptions,
-                "rss_keywords": raw_keywords,
+                "product_categories": profile.product_categories or [],
+                "product_descriptions": profile.product_descriptions or [],
+                "rss_keywords": profile.rss_keywords or [],
                 "typical_order_value_usd": profile.typical_order_value_usd or 50000,
                 "avg_lead_time_days": profile.avg_lead_time_days or 30,
                 "compliance_notes": profile.compliance_notes or "",
-                "preferred_alternative_regions": raw_alt_regions,
-                "preferred_alternative_countries": raw_alt_countries,
+                "preferred_alternative_regions": profile.preferred_alternative_regions or [],
                 "min_supplier_rating": profile.min_supplier_rating or 3.0,
             }
         except Exception as exc:
@@ -939,7 +704,7 @@ class MonitorPipeline:
             ctx.get("min_supplier_rating", 3.0), limit=2,
         )
         alt_supplier = "Regional Alternative Supplier"
-        alt_country = ctx.get("preferred_alternative_countries", ctx.get("preferred_alternative_regions", ["Southeast Asia"]))[0]
+        alt_country = ctx.get("preferred_alternative_regions", ["Southeast Asia"])[0]
         if supplier_block:
             lines = [l for l in supplier_block.split("\n") if l.startswith("1.")]
             if lines:
@@ -1020,16 +785,7 @@ class MonitorPipeline:
         dest_port = ctx.get("destination_port", "US port")
         compliance_notes = ctx.get("compliance_notes", "")
         descriptions = ctx.get("product_descriptions", [])
-        # 1:1 lookup of customer's HS codes → product descriptions (zip preserves order)
-        hs4_to_desc = {code[:4]: desc for code, desc in zip(hs_codes, descriptions)}
-        hs_lookup_text = (
-            "HS CODE REFERENCE — this customer's products only:\n"
-            + "\n".join(f"  {code} = {desc}" for code, desc in zip(hs_codes, descriptions))
-            + "\nYou MUST only identify risks for these exact HS codes. "
-            "Do not substitute, extrapolate, or invent codes."
-        )
         alt_regions = ctx.get("preferred_alternative_regions", [])
-        alt_countries = ctx.get("preferred_alternative_countries", [])
 
         pipeline_emit("profile_loaded",
                       f"{company} | HS: {', '.join(hs_codes)} | Origins: {', '.join(countries)} | "
@@ -1070,9 +826,13 @@ class MonitorPipeline:
         past_suppliers_context = _get_past_supplier_recommendations(db, customer_id)
         run_history_context = _get_agent_run_history(db, customer_id)
 
-        # ── 5. Fetch compliance + alternatives RSS (Aurora-buffered, IO-bound) ─────
-        # global_suppliers query is deferred until after Phase 1 (TariffMonitor) so the
-        # event-specific product can narrow the category context passed to alternatives agents.
+        # ── 5. Query global_suppliers for alternatives ────────────────────────
+        pipeline_emit("db_query", f"Querying global_suppliers for categories: {', '.join(ctx.get('product_categories', []))}")
+        supplier_context = _get_alternative_suppliers(
+            db, ctx.get("product_categories", []), countries, ctx.get("min_supplier_rating", 3.0),
+        )
+
+        # ── 5b. Fetch compliance + alternatives RSS (both Aurora-buffered) ──────
         compliance_rss_context = _fetch_compliance_articles(
             origin_countries=countries,
             hs_codes=hs_codes,
@@ -1082,7 +842,7 @@ class MonitorPipeline:
             db=db,
         )
         alternatives_rss_context = _fetch_alternatives_articles(
-            alternative_regions=alt_countries,  # country names for headline matching
+            alternative_regions=ctx.get("preferred_alternative_regions", []),
             product_categories=ctx.get("product_categories", []),
             origin_countries=countries,
             run_id=run_id,
@@ -1090,11 +850,8 @@ class MonitorPipeline:
             db=db,
         )
 
-        # ── 6. Phase 1 — TariffMonitor only (Crew 1) ─────────────────────────
+        # ── 6. Build agents ───────────────────────────────────────────────────
         llm = self.llm
-
-        pipeline_emit("crew_start", "Phase 1/2 · TariffMonitor — scanning event type, HS codes, signal source")
-        pipeline_emit("agent_start", "1/5 · TariffMonitor — applying HS code constraint to RSS context")
 
         tariff_monitor = Agent(
             role="Tariff Risk Monitor",
@@ -1112,108 +869,6 @@ class MonitorPipeline:
             llm=llm,
             verbose=True,
         )
-
-        monitor_task = Task(
-            description=(
-                f"Analyze risk for {company}, a {ctx.get('business_type')} "
-                f"importing HS codes {', '.join(hs_codes)} from {', '.join(countries)}.\n\n"
-                f"{hs_lookup_text}\n\n"
-                f"Recent relevant news from Aurora RSS buffer:\n{rss_context}\n\n"
-                f"Identify the most significant active risk for THIS customer's specific products above. "
-                f"Classify the event_type as one of: "
-                f"tariff | port_disruption | geopolitical | supply_shortage. "
-                f"Identify which HS codes from the HS CODE REFERENCE above are affected — "
-                f"only codes listed there; do not substitute with other codes. "
-                f"Include affected_product_name (plain English name from the HS CODE REFERENCE). "
-                f"IMPORTANT — tariff_rate must match affected_product_name exactly: a source may list "
-                f"rates for many products; you must use the rate for the specific product in "
-                f"affected_product_name/affected_hs_codes, not the first or largest rate in the article. "
-                f"Set risk_source to 'rss' if news articles drove the finding, 'gemini_knowledge' otherwise. "
-                f"In the source field, name the specific agency or publication (e.g. 'U.S. Trade Representative', "
-                f"'Reuters', 'USDA', 'World Bank') — NOT the feed type ('rss'). "
-                f"Return valid JSON only."
-            ),
-            agent=tariff_monitor,
-            expected_output=(
-                'JSON: {"risk_detected": true, "event": "description", "event_type": "tariff", '
-                '"confidence": 0.9, "source": "U.S. Trade Representative", "affected_countries": ["Colombia"], '
-                '"affected_hs_codes": ["0901.11"], "affected_product_name": "Green coffee beans", '
-                '"tariff_rate": 15, "risk_source": "rss"}'
-            ),
-        )
-
-        crew1 = Crew(agents=[tariff_monitor], tasks=[monitor_task], verbose=True)
-        try:
-            crew1.kickoff()
-        except Exception as exc:
-            logger.error(f"Phase 1 (TariffMonitor) kickoff failed: {exc}")
-            pipeline_emit("crew_error", f"Phase 1 failed: {exc}")
-            if agent_run_obj and db:
-                try:
-                    agent_run_obj.status = "failed"
-                    agent_run_obj.completed_at = datetime.utcnow()
-                    db.commit()
-                except Exception:
-                    db.rollback()
-            raise
-
-        # Parse Phase 1 output immediately
-        tm = _parse_task_output(monitor_task)
-        pipeline_emit(
-            "agent_done",
-            f"1/5 · TariffMonitor → event_type={tm.get('event_type')} "
-            f"product={tm.get('affected_product_name', 'unknown')} | "
-            f"{str(tm.get('event', ''))[:80]}"
-        )
-
-        # Force-correct: only accept HS codes the customer actually imports
-        raw_affected_hs = tm.get("affected_hs_codes") or []
-        known_hs4s = {c[:4] for c in hs_codes}
-        corrected_hs4s = {code[:4] for code in raw_affected_hs if code[:4] in known_hs4s}
-        if corrected_hs4s:
-            affected_hs_codes = [c for c in hs_codes if c[:4] in corrected_hs4s]
-            event_descs = [hs4_to_desc[h4] for h4 in sorted(corrected_hs4s) if h4 in hs4_to_desc]
-            # Derive supplier search categories from the corrected HS codes (the actual affected product)
-            event_categories = _categories_from_hs(affected_hs_codes, ctx.get("product_categories", []))
-        else:
-            affected_hs_codes = hs_codes
-            event_descs = descriptions
-            # Derive categories from the customer's own HS codes (fallback to profile)
-            event_categories = _categories_from_hs(hs_codes, ctx.get("product_categories", []))
-            if raw_affected_hs:
-                pipeline_emit(
-                    "hs_correction",
-                    f"Out-of-scope HS codes {raw_affected_hs} corrected → using customer's own: {hs_codes}"
-                )
-
-        # When HS correction fell back to the customer's own codes, the TariffMonitor's
-        # affected_product_name may describe a different product (e.g. "Aluminum" for a coffee
-        # importer). Use the customer's own product description in that case so Phase 2 agents
-        # stay grounded to what the customer actually imports.
-        tm_product = tm.get("affected_product_name")
-        if corrected_hs4s and tm_product:
-            affected_product_name = tm_product
-        else:
-            affected_product_name = (
-                event_descs[0] if event_descs else (descriptions[0] if descriptions else "imported goods")
-            )
-
-        # ── 7. Phase 2 setup — narrowed supplier query then Crew 2 ───────────
-        pipeline_emit(
-            "crew_start",
-            f"Phase 2/2 · ImpactCalculator → AlternativesFinder → Compliance → Adversarial | "
-            f"product: {affected_product_name}"
-        )
-        pipeline_emit("db_query", f"Phase 2/2 · Querying global_suppliers — categories: {', '.join(event_categories)}")
-        supplier_context = _get_alternative_suppliers(
-            db, event_categories, countries, ctx.get("min_supplier_rating", 3.0),
-        )
-
-        # Serialise Phase 1 output so it can be injected into Phase 2 task descriptions
-        tm_json = json.dumps(tm, indent=2)
-
-        avg_lead_days = ctx.get("avg_lead_time_days", 30)
-        min_rating = ctx.get("min_supplier_rating", 3.0)
 
         impact_calculator = Agent(
             role="Financial Impact Calculator",
@@ -1235,8 +890,7 @@ class MonitorPipeline:
         alternatives_finder = Agent(
             role="Alternative Supplier Finder",
             goal=(
-                f"Find 2-3 backup suppliers for {company} in preferred countries: {', '.join(alt_countries)} "
-                f"(regions: {', '.join(alt_regions)}). "
+                f"Find 2-3 backup suppliers for {company} in preferred regions: {', '.join(alt_regions)}. "
                 f"Risk tolerance: {risk}. Build on what has been suggested before — don't repeat blocked suppliers."
             ),
             backstory=(
@@ -1281,16 +935,37 @@ class MonitorPipeline:
             verbose=True,
         )
 
+        # ── 7. Build tasks with enriched prompts ──────────────────────────────
+        pipeline_emit("crew_start", "Assembling 5-agent crew with enriched Aurora context")
+        pipeline_emit("agent_start", "1/5 · Tariff Risk Monitor — scanning for event type, HS codes, signal source")
+
+        monitor_task = Task(
+            description=(
+                f"Analyze risk for {company}, a {ctx.get('business_type')} "
+                f"importing HS codes {', '.join(hs_codes)} from {', '.join(countries)}.\n\n"
+                f"Recent relevant news from Aurora RSS buffer:\n{rss_context}\n\n"
+                f"Identify the most significant active risk. Classify the event_type as one of: "
+                f"tariff | port_disruption | geopolitical | supply_shortage. "
+                f"Identify which HS codes from {hs_codes} are affected. "
+                f"Set risk_source to 'rss' if news articles drove the finding, 'gemini_knowledge' otherwise. "
+                f"Return valid JSON only."
+            ),
+            agent=tariff_monitor,
+            expected_output=(
+                'JSON: {"risk_detected": true, "event": "description", "event_type": "tariff", '
+                '"confidence": 0.9, "source": "rss", "affected_countries": ["Colombia"], '
+                '"affected_hs_codes": ["0901.11"], "risk_source": "rss"}'
+            ),
+        )
+
         impact_task = Task(
             description=(
-                f"TariffMonitor (Phase 1) findings for {company}:\n{tm_json}\n\n"
-                f"Affected product: {affected_product_name} "
-                f"(HS codes: {', '.join(affected_hs_codes)}).\n"
-                f"Profile: annual import ${annual_vol:,.0f}, typical order ${typical_order:,.0f}.\n\n"
+                f"A risk event was detected affecting {company}.\n"
+                f"Profile: annual import ${annual_vol:,.0f}, typical order ${typical_order:,.0f}, "
+                f"HS codes: {', '.join(hs_codes)}.\n\n"
                 + (f"{historical_context}\n\n" if historical_context else "")
-                + f"Using the TariffMonitor findings, company profile, and historical data above, "
-                  f"calculate extra_cost_usd for {affected_product_name} specifically, "
-                  f"classify severity, and count affected_orders. "
+                + f"Using both the company profile and the historical data above, "
+                  f"calculate extra_cost_usd, classify severity, and count affected_orders. "
                   f"If historical data shows similar events had higher costs, bias upward. "
                   f"Return valid JSON only."
             ),
@@ -1303,15 +978,7 @@ class MonitorPipeline:
 
         alternatives_task = Task(
             description=(
-                f"Find 2-3 alternative suppliers for {company} to replace sourcing of "
-                f"{affected_product_name} (HS {', '.join(affected_hs_codes)}) "
-                f"from {', '.join(countries)}.\n"
-                f"CRITICAL CONSTRAINT: You must ONLY recommend suppliers whose product category "
-                f"matches '{affected_product_name}' (HS chapter {affected_hs_codes[0][:2] if affected_hs_codes else '??'}). "
-                f"Do NOT recommend suppliers from unrelated industries (e.g. do not recommend textile "
-                f"suppliers for a metal tariff, or garment suppliers for an agricultural product). "
-                f"The product category match is the first and non-negotiable filter — lead time, cost, "
-                f"and reliability rankings only apply within the correct category.\n\n"
+                f"Find 2-3 alternative suppliers for {company} to replace sourcing from {', '.join(countries)}.\n"
                 f"The ImpactCalculator (previous agent) has quantified the financial cost — use its severity "
                 f"to calibrate how urgently a stable, low-risk alternative is needed.\n\n"
                 f"LIVE REGIONAL STABILITY NEWS (from MercoPress, Latinvex, FAO, SupplyChainBrain, World Bank):\n"
@@ -1334,10 +1001,12 @@ class MonitorPipeline:
             ),
         )
 
+        avg_lead_days = ctx.get("avg_lead_time_days", 30)
+        min_rating = ctx.get("min_supplier_rating", 3.0)
+
         compliance_task = Task(
             description=(
                 f"You are evaluating alternative supplier options for {company}, which imports "
-                f"{affected_product_name} (HS {', '.join(affected_hs_codes)}) "
                 f"via {dest_port} with an average lead time of {avg_lead_days} days "
                 f"and risk tolerance: {risk}.\n\n"
                 f"Known baseline compliance requirements: {compliance_notes}\n\n"
@@ -1384,7 +1053,6 @@ class MonitorPipeline:
             description=(
                 f"You are the final decision agent for {company} (risk tolerance: {risk}, "
                 f"avg lead time: {avg_lead_days} days, min supplier rating: {min_rating}).\n\n"
-                f"Affected product: {affected_product_name}.\n\n"
                 f"The pipeline has completed. Your job:\n"
                 f"  1. Read the ImportCompliance agent's output from the previous step.\n"
                 f"  2. If it contains no_viable_option=true, issue BLOCK immediately — "
@@ -1414,17 +1082,17 @@ class MonitorPipeline:
             ),
         )
 
-        crew2 = Crew(
-            agents=[impact_calculator, alternatives_finder, import_compliance, adversarial],
-            tasks=[impact_task, alternatives_task, compliance_task, adversarial_task],
+        crew = Crew(
+            agents=[tariff_monitor, impact_calculator, alternatives_finder, import_compliance, adversarial],
+            tasks=[monitor_task, impact_task, alternatives_task, compliance_task, adversarial_task],
             verbose=True,
         )
 
         try:
-            crew2.kickoff()
+            crew.kickoff()
         except Exception as exc:
-            logger.error(f"Phase 2 kickoff failed: {exc}")
-            pipeline_emit("crew_error", f"Phase 2 failed: {exc}")
+            logger.error(f"Crew kickoff failed: {exc}")
+            pipeline_emit("crew_error", f"Crew failed: {exc}")
             if agent_run_obj and db:
                 try:
                     agent_run_obj.status = "failed"
@@ -1434,10 +1102,9 @@ class MonitorPipeline:
                     db.rollback()
             raise
 
-        # ── 8. Collect Phase 1 + Phase 2 outputs ─────────────────────────────
-        # tm was already parsed after Phase 1 (above); parse Crew2 outputs now
+        # ── 8. Parse outputs ──────────────────────────────────────────────────
         agent_outputs = {
-            "tariff_monitor": tm,
+            "tariff_monitor": _parse_task_output(monitor_task),
             "impact_calculator": _parse_task_output(impact_task),
             "alternatives_finder": _parse_task_output(alternatives_task),
             "import_compliance": _parse_task_output(compliance_task),
@@ -1449,18 +1116,6 @@ class MonitorPipeline:
         af = agent_outputs.get("alternatives_finder", {})
         comp = agent_outputs.get("import_compliance", {})
         adv = agent_outputs.get("adversarial", {})
-
-        pipeline_emit("agent_done", f"2/5 · ImpactCalculator → cost=${ic.get('extra_cost_usd',0):,} severity={ic.get('severity')}")
-        options = af.get("options", [])
-        pipeline_emit("agent_done", f"3/5 · AlternativesFinder → {len(options)} candidates: " +
-                      ", ".join(f"{o.get('supplier')} ({o.get('country')})" for o in options[:3]))
-        if comp.get("no_viable_option"):
-            pipeline_emit("agent_done", f"4/5 · ImportCompliance → NO VIABLE OPTION — {comp.get('reason','')[:80]}")
-        else:
-            pipeline_emit("agent_done",
-                f"4/5 · ImportCompliance → selected {comp.get('recommended_supplier')} ({comp.get('recommended_country')}) "
-                f"feasibility={comp.get('compliance_feasibility')} | {str(comp.get('rationale',''))[:80]}"
-            )
 
         # Auto-BLOCK if compliance found no viable option
         if comp.get("no_viable_option"):
@@ -1477,16 +1132,25 @@ class MonitorPipeline:
         else:
             pipeline_emit("agent_done", f"5/5 · Adversarial → verdict={adv.get('verdict')} confidence={adv.get('confidence')} | {str(adv.get('recommendation',''))[:80]}")
 
-        # Emit structured per-agent results for frontend polling (picked up by /monitor/pipeline-log)
-        for _agent_key in ["tariff_monitor", "impact_calculator", "alternatives_finder", "import_compliance", "adversarial"]:
-            pipeline_emit("agent_result", json.dumps({"agent": _agent_key, "output": agent_outputs[_agent_key]}))
+        pipeline_emit("agent_done", f"1/5 · TariffMonitor → event_type={tm.get('event_type')} risk={tm.get('risk_detected')} | {str(tm.get('event',''))[:80]}")
+        pipeline_emit("agent_done", f"2/5 · ImpactCalculator → cost=${ic.get('extra_cost_usd',0):,} severity={ic.get('severity')}")
+        options = af.get("options", [])
+        pipeline_emit("agent_done", f"3/5 · AlternativesFinder → {len(options)} candidates: " +
+                      ", ".join(f"{o.get('supplier')} ({o.get('country')})" for o in options[:3]))
+        if comp.get("no_viable_option"):
+            pipeline_emit("agent_done", f"4/5 · ImportCompliance → NO VIABLE OPTION — {comp.get('reason','')[:80]}")
+        else:
+            pipeline_emit("agent_done",
+                f"4/5 · ImportCompliance → selected {comp.get('recommended_supplier')} ({comp.get('recommended_country')}) "
+                f"feasibility={comp.get('compliance_feasibility')} | {str(comp.get('rationale',''))[:80]}"
+            )
 
         severity = ic.get("severity", "medium")
         recommendation = adv.get("recommendation", "Review the alert and take action.")
         extra_cost = ic.get("extra_cost_usd", 0)
         adversarial_verdict = adv.get("verdict", "CAUTION")
         event_type = tm.get("event_type", "tariff")
-        # affected_hs_codes already set in Phase 1 (force-corrected to customer's known codes)
+        affected_hs_codes = tm.get("affected_hs_codes", hs_codes)
 
         primary_country = countries[0] if countries else "Unknown"
         # Use compliance's chosen lead time; fall back to alternatives list
@@ -1538,11 +1202,7 @@ class MonitorPipeline:
             customer_id=customer_id,
             agent_outputs=agent_outputs,
             severity=severity,
-            summary=(
-                f"{company}: {affected_product_name} from {primary_country} — "
-                f"{str(tm.get('event', event_type + ' event'))[:300]}. "
-                f"(est. impact: ${extra_cost:,.0f})"
-            ),
+            summary=f"{company}: {recommendation} (est. impact: ${extra_cost:,.0f})",
             data_source="gemini",
             disruption_event_id=disruption_event_id,
         )
@@ -1673,91 +1333,15 @@ class MonitorPipeline:
                 logger.warning(f"AgentRun update failed: {exc}")
                 db.rollback()
 
-        # ── 15. Persist headlines to pipeline_headlines, then clear RSS buffer ──
+        # ── 15. Delete RSS buffer rows ────────────────────────────────────────
         if db:
             try:
-                import time as _time
-                from email.utils import parsedate_to_datetime as _parse_rfc2822
-                from sqlalchemy import func as _func
-                from models import RssArticle, PipelineHeadline
-
-                _AGENT_TO_CATEGORY = {
-                    "tariff_monitor": "Tariffs",
-                    "alternatives_finder": "Supply Chain",
-                    "import_compliance": "Customs",
-                }
-
-                def _to_ts(published_at_str):
-                    if not published_at_str:
-                        return _time.time()
-                    try:
-                        return _parse_rfc2822(published_at_str).timestamp()
-                    except Exception:
-                        pass
-                    try:
-                        from datetime import datetime as _dt
-                        return _dt.fromisoformat(published_at_str.rstrip("Z")).timestamp()
-                    except Exception:
-                        return _time.time()
-
-                rss_rows = db.query(RssArticle).filter(RssArticle.run_id == run_id).all()
-                headlines = [
-                    PipelineHeadline(
-                        run_id=row.run_id,
-                        customer_id=row.customer_id,
-                        title=row.title,
-                        url=row.url,
-                        source=row.source,
-                        published_at=row.published_at,
-                        published_ts=_to_ts(row.published_at),
-                        agent_target=row.agent_target,
-                        category=_AGENT_TO_CATEGORY.get(row.agent_target or "", "Trade"),
-                        country_mentioned=row.country_mentioned,
-                        relevance_score=row.relevance_score or 0,
-                    )
-                    for row in rss_rows
-                    if row.title and row.url
-                ]
-                db.add_all(headlines)
-                db.flush()
-
-                # Prune: keep only the last 3 distinct run_ids for this customer
-                recent_runs_sq = (
-                    db.query(PipelineHeadline.run_id)
-                    .filter(PipelineHeadline.customer_id == customer_id)
-                    .group_by(PipelineHeadline.run_id)
-                    .order_by(_func.max(PipelineHeadline.created_at).desc())
-                    .limit(3)
-                    .subquery()
-                )
-                pruned = (
-                    db.query(PipelineHeadline)
-                    .filter(
-                        PipelineHeadline.customer_id == customer_id,
-                        ~PipelineHeadline.run_id.in_(recent_runs_sq),
-                    )
-                    .delete(synchronize_session=False)
-                )
-                db.commit()
-                pipeline_emit("headlines_saved", f"Saved {len(headlines)} headlines to pipeline_headlines (pruned {pruned} old rows)")
-            except Exception as exc:
-                logger.warning(f"pipeline_headlines write failed: {exc}")
-                db.rollback()
-
-            try:
-                # Prune by age, not by run_id: this run's rows must survive so the
-                # *next* run's _seen_article_urls() lookup can exclude them.
                 from models import RssArticle
-                cutoff = datetime.utcnow() - timedelta(hours=RSS_DEDUP_WINDOW_HOURS)
-                deleted = db.query(RssArticle).filter(RssArticle.created_at < cutoff).delete()
+                deleted = db.query(RssArticle).filter(RssArticle.run_id == run_id).delete()
                 db.commit()
-                pipeline_emit(
-                    "rss_pruned",
-                    f"Pruned {deleted} rss_articles rows older than {RSS_DEDUP_WINDOW_HOURS}h "
-                    f"(this run's articles kept for the next run's de-dup check)",
-                )
+                pipeline_emit("rss_cleared", f"Deleted {deleted} rss_articles rows from Aurora buffer")
             except Exception as exc:
-                logger.warning(f"RSS buffer prune failed: {exc}")
+                logger.warning(f"RSS buffer cleanup failed: {exc}")
                 db.rollback()
 
         pipeline_emit("pipeline_done", f"Pipeline complete — severity={severity} cost=${extra_cost:,} verdict={adversarial_verdict}")
