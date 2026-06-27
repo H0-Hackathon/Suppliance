@@ -36,6 +36,7 @@ websockets>=16.0
 # --- HTTP Client ---
 httpx>=0.28.0
 requests>=2.32.0
+feedparser>=6.0.0
 
 # --- Platform-specific async event loop ---
 uvloop>=0.22.0; platform_system != "Windows"

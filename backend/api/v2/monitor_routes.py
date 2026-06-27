@@ -60,6 +60,32 @@ def startup_status():
     return startup_pipeline_status
 
 
+@router.get("/targets")
+def get_monitor_targets(customer_id: int = None, db: Session = Depends(get_db)):
+    """
+    Return the countries and HS codes to scan for a customer.
+    Used by the frontend to trigger the SSE pipeline per target.
+    """
+    customer_id = customer_id or settings.active_customer_id
+    from models import Product, Supplier
+    
+    products = db.query(Product).filter(Product.customer_id == customer_id).all()
+    suppliers = db.query(Supplier).filter(Supplier.customer_id == customer_id).all()
+    
+    targets = []
+    for p in products:
+        matching_supplier = next((s for s in suppliers if s.country == p.import_country), None)
+        targets.append({
+            "supplier_country": p.import_country or "Unknown",
+            "country_name": p.import_country or "Unknown",
+            "hs_code": p.hs_code,
+            "supplier_name": matching_supplier.name if matching_supplier else None,
+            "product_category": matching_supplier.product_category if matching_supplier else None
+        })
+        
+    return targets
+
+
 @router.get("/pipeline-log")
 def pipeline_log(since: int = 0):
     """
