@@ -1481,11 +1481,17 @@ class MonitorPipeline:
         for _agent_key in ["tariff_monitor", "impact_calculator", "alternatives_finder", "import_compliance", "adversarial"]:
             pipeline_emit("agent_result", json.dumps({"agent": _agent_key, "output": agent_outputs[_agent_key]}))
 
-        severity = ic.get("severity", "medium")
-        recommendation = adv.get("recommendation", "Review the alert and take action.")
-        extra_cost = ic.get("extra_cost_usd", 0)
-        adversarial_verdict = adv.get("verdict", "CAUTION")
-        event_type = tm.get("event_type", "tariff")
+        # NOTE: dict.get(key, default) only falls back when the key is absent —
+        # if the LLM returns the key with an explicit null, .get() still
+        # returns None and any arithmetic/string-concat on it crashes the
+        # whole pipeline run (only surfaces in real-LLM mode; mock mode never
+        # returns nulls, which is why this stayed hidden). Use `or` so an
+        # explicit null falls back too.
+        severity = ic.get("severity") or "medium"
+        recommendation = adv.get("recommendation") or "Review the alert and take action."
+        extra_cost = ic.get("extra_cost_usd") or 0
+        adversarial_verdict = adv.get("verdict") or "CAUTION"
+        event_type = tm.get("event_type") or "tariff"
         # affected_hs_codes already set in Phase 1 (force-corrected to customer's known codes)
 
         primary_country = countries[0] if countries else "Unknown"
@@ -1508,7 +1514,7 @@ class MonitorPipeline:
                     de = DisruptionEvent(
                         incident_id=incident_id,
                         event_type=event_type,
-                        title=str(tm.get("event", f"{event_type} event affecting {primary_country}"))[:500],
+                        title=str(tm.get("event") or f"{event_type} event affecting {primary_country}")[:500],
                         description=str(tm.get("event", ""))[:2000],
                         location_name=primary_country,
                         latitude=lat,
@@ -1516,7 +1522,7 @@ class MonitorPipeline:
                         hs_codes=affected_hs_codes,
                         countries_affected=countries,
                         severity=severity,
-                        confidence=float(tm.get("confidence", 0.0)),
+                        confidence=float(tm.get("confidence") or 0.0),
                         source=str(tm.get("risk_source", "gemini_knowledge")),
                         raw_data={"run_id": run_id, "customer_id": customer_id,
                                   "adversarial_verdict": adversarial_verdict},
@@ -1540,7 +1546,7 @@ class MonitorPipeline:
             severity=severity,
             summary=(
                 f"{company}: {affected_product_name} from {primary_country} — "
-                f"{str(tm.get('event', event_type + ' event'))[:300]}. "
+                f"{str(tm.get('event') or f'{event_type} event')[:300]}. "
                 f"(est. impact: ${extra_cost:,.0f})"
             ),
             data_source="gemini",

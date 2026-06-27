@@ -16,16 +16,16 @@ interface NewsTickerProps {
 }
 
 const CATEGORY_COLOR: Record<string, string> = {
-  Tariffs: '#f59e0b',
-  Trade: '#fbbf24',
-  Shipping: '#38bdf8',
-  'Supply Chain': '#14b8a6',
-  Customs: '#a78bfa',
-  Manufacturing: '#f97316',
-  Geopolitics: '#ef4444',
-  Logistics: '#10b981',
+  Tariffs: '#E0A23B',
+  Trade: '#84D7D8',
+  Shipping: '#84D7D8',
+  'Supply Chain': '#548C92',
+  Customs: '#A89072',
+  Manufacturing: '#E0A23B',
+  Geopolitics: '#E24B4A',
+  Logistics: '#5BA86F',
 };
-const catColor = (c: string) => CATEGORY_COLOR[c] || '#94a3b8';
+const catColor = (c: string) => CATEGORY_COLOR[c] || '#9DAAAD';
 
 const REFRESH_MS = 5 * 60 * 1000; // auto-refresh every 5 min
 
@@ -115,16 +115,15 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
         title={`${it.title} — ${it.source}`}
       >
         <span style={{
-          fontSize: 8, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
-          color, background: `${color}1f`, border: `1px solid ${color}40`,
-          borderRadius: 3, padding: '1px 5px', flexShrink: 0,
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+          color, background: `${color}1f`, borderRadius: 5, padding: '2px 6px', flexShrink: 0,
         }}>{it.category}</span>
         <span style={{ width: 4, height: 4, borderRadius: '50%', background: color, flexShrink: 0 }} />
-        <span style={{ color: '#e8e3d8', fontWeight: 600, whiteSpace: 'nowrap' }}>{it.title}</span>
-        <span style={{ color: 'rgba(150,140,100,0.85)', whiteSpace: 'nowrap' }}>· {it.source}</span>
-        {rel && <span style={{ color: 'rgba(120,110,80,0.7)', whiteSpace: 'nowrap' }}>· {rel}</span>}
-        <ExternalLink size={9} color="rgba(150,140,100,0.5)" style={{ flexShrink: 0 }} />
-        <span style={{ color: 'rgba(245,158,11,0.25)', padding: '0 4px' }}>•</span>
+        <span style={{ color: 'var(--foreground)', fontWeight: 600, whiteSpace: 'nowrap' }}>{it.title}</span>
+        <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {it.source}</span>
+        {rel && <span style={{ color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>· {rel}</span>}
+        <ExternalLink size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+        <span style={{ color: 'var(--border-soft)', padding: '0 4px' }}>•</span>
       </a>
     );
   };
@@ -132,19 +131,23 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
   return (
     <div style={{
       height: '100%', display: 'flex', alignItems: 'center',
-      background: 'rgba(20,20,18,0.95)', borderTop: '1px solid rgba(245,158,11,0.12)',
-      overflow: 'hidden',
+      background: 'var(--card)', borderTop: '1px solid var(--border-soft)',
+      overflow: 'hidden', position: 'relative',
     }}>
+      {/* Animated scan-line — a thin pulse of light sweeping the top edge,
+          reinforcing "this feed is live" the way a stock ticker glows. */}
+      <div className="ticker-scanline" />
+
       {/* Live label */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-        padding: '0 14px', height: '100%',
-        background: 'linear-gradient(90deg, rgba(220,38,38,0.18), rgba(220,38,38,0))',
-        borderRight: '1px solid rgba(245,158,11,0.1)',
+        display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+        padding: '0 16px', height: '100%',
+        background: 'linear-gradient(90deg, rgba(132,215,216,0.12), transparent)',
+        borderRight: '1px solid var(--border-soft)',
       }}>
-        <Radio size={12} color="#ef4444" style={{ animation: 'pulse-dot 1.4s ease-in-out infinite' }} />
-        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fca5a5' }}>LIVE</span>
-        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(200,185,140,0.85)' }}>TRADE WIRE</span>
+        <Radio size={13} color="var(--seafoam)" style={{ animation: 'pulse-dot 1.4s ease-in-out infinite' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--seafoam)' }}>LIVE</span>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>TRADE WIRE</span>
       </div>
 
       {/* Marquee viewport */}
@@ -166,18 +169,18 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
           {loop.map(renderItem)}
         </div>
         {/* edge fades */}
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 24, background: 'linear-gradient(90deg, rgba(20,20,18,0.95), transparent)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 40, background: 'linear-gradient(270deg, rgba(20,20,18,0.95), transparent)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 24, background: 'linear-gradient(90deg, var(--card), transparent)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 40, background: 'linear-gradient(270deg, var(--card), transparent)', pointerEvents: 'none' }} />
       </div>
 
       {/* Updated stamp */}
       {updatedAt && (
         <div style={{
-          flexShrink: 0, padding: '0 12px', fontSize: 8.5,
-          color: 'rgba(120,110,80,0.7)', fontFamily: 'JetBrains Mono, monospace',
-          borderLeft: '1px solid rgba(245,158,11,0.08)', height: '100%', display: 'flex', alignItems: 'center', gap: 4,
+          flexShrink: 0, padding: '0 14px', fontSize: 11,
+          color: 'var(--text-dim)', fontFamily: 'JetBrains Mono, monospace',
+          borderLeft: '1px solid var(--border-soft)', height: '100%', display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 5px #10b981' }} />
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--safe)', boxShadow: '0 0 5px var(--safe)' }} />
           {new Date(updatedAt * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
@@ -188,12 +191,32 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
+        @keyframes ticker-scanline-sweep {
+          0%   { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .ticker-scanline {
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 2px;
+          overflow: hidden;
+          pointer-events: none;
+        }
+        .ticker-scanline::after {
+          content: '';
+          position: absolute;
+          top: 0; bottom: 0;
+          width: 35%;
+          background: linear-gradient(90deg, transparent, var(--seafoam), transparent);
+          opacity: 0.55;
+          animation: ticker-scanline-sweep 4.5s ease-in-out infinite;
+        }
         .ticker-item {
           display: inline-flex;
           align-items: center;
           gap: 6px;
           font-size: 11px;
-          font-family: Inter, system-ui, sans-serif;
+          font-family: var(--font);
           text-decoration: none;
           padding: 0 2px;
           transition: opacity 0.15s;

@@ -5,10 +5,10 @@ import { SectionHeader, SettingsCard, ToggleSwitch, SaveButton } from './Setting
 interface Props { onSave: () => void; saving: boolean; }
 
 const THEMES = [
-  { id: 'coastguard',    label: 'CoastGuard',    desc: 'Warm sand and ocean tones — default', preview: { bg: '#faf8f5', accent: '#548C92', border: 'rgba(84,140,146,0.25)' } },
-  { id: 'sea-glass',     label: 'Sea Glass',      desc: 'Light and airy with soft teal accents', preview: { bg: '#f5f1ec', accent: '#B4D7D8', border: 'rgba(180,215,216,0.4)' } },
-  { id: 'harbor',        label: 'Harbor',         desc: 'Deep ocean tones for focused work', preview: { bg: '#2B5260', accent: '#B4D7D8', border: 'rgba(180,215,216,0.3)' } },
-  { id: 'high-contrast', label: 'High Contrast',  desc: 'Maximum legibility', preview: { bg: '#ffffff', accent: '#2B5260', border: 'rgba(43,82,96,0.3)' } },
+  { id: 'suppliance',    label: 'Suppliance',     desc: 'Deep teal-navy with seafoam accents — default', preview: { bg: '#285260', accent: '#84D7D8', border: 'rgba(132,215,216,0.3)' } },
+  { id: 'harbor',        label: 'Harbor',         desc: 'Darker ocean tones for focused work', preview: { bg: '#16323A', accent: '#548C92', border: 'rgba(84,140,146,0.35)' } },
+  { id: 'sand',          label: 'Sand',           desc: 'Light, warm neutral surface', preview: { bg: '#E0D7CF', accent: '#548C92', border: 'rgba(84,140,146,0.3)' } },
+  { id: 'high-contrast', label: 'High Contrast',  desc: 'Maximum legibility', preview: { bg: '#0E2025', accent: '#84D7D8', border: 'rgba(132,215,216,0.4)' } },
 ] as const;
 
 const DENSITIES = [
@@ -18,7 +18,7 @@ const DENSITIES = [
 ] as const;
 
 export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
-  const [theme, setTheme]                 = useState('coastguard');
+  const [theme, setTheme]                 = useState('suppliance');
   const [density, setDensity]             = useState('comfortable');
   const [animations, setAnimations]       = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -32,7 +32,7 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
       <SectionHeader
         icon={Palette}
         title="Appearance"
-        subtitle="Customise the CoastGuard interface to match your workflow and reduce cognitive load during monitoring sessions."
+        subtitle="Customise the Suppliance interface to match your workflow and reduce cognitive load during monitoring sessions."
       />
 
       <SettingsCard title="Dashboard Theme" description="Visual style of the platform. All themes are optimised for extended screen time.">
@@ -45,7 +45,7 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                 onClick={() => setTheme(id)}
                 style={{
                   padding: 0, borderRadius: 10,
-                  border: `2px solid ${isSelected ? preview.accent : 'rgba(255,255,255,0.07)'}`,
+                  border: `2px solid ${isSelected ? preview.accent : 'rgba(232,226,216,0.07)'}`,
                   background: 'transparent', cursor: 'pointer', overflow: 'hidden',
                   transition: 'all 0.15s',
                   boxShadow: isSelected ? `0 0 16px ${preview.accent}30` : 'none', textAlign: 'left',
@@ -57,17 +57,17 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                 }}>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <div style={{ height: 3, width: '40%', borderRadius: 1, background: preview.accent, opacity: 0.8 }} />
-                    <div style={{ height: 3, width: '25%', borderRadius: 1, background: 'rgba(255,255,255,0.15)' }} />
+                    <div style={{ height: 3, width: '25%', borderRadius: 1, background: 'rgba(232,226,216,0.15)' }} />
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <div style={{ height: 3, width: '60%', borderRadius: 1, background: 'rgba(255,255,255,0.08)' }} />
+                    <div style={{ height: 3, width: '60%', borderRadius: 1, background: 'rgba(232,226,216,0.08)' }} />
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <div style={{ height: 5, width: '30%', borderRadius: 2, background: preview.accent, opacity: 0.3 }} />
-                    <div style={{ height: 5, width: '30%', borderRadius: 2, background: 'rgba(255,255,255,0.05)' }} />
+                    <div style={{ height: 5, width: '30%', borderRadius: 2, background: 'rgba(232,226,216,0.05)' }} />
                   </div>
                 </div>
-                <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ padding: '8px 12px', background: 'rgba(232,226,216,0.02)' }}>
                   <div style={{
                     fontSize: 12, fontWeight: isSelected ? 600 : 400,
                     color: isSelected ? 'var(--ocean)' : 'var(--text-muted)',
@@ -80,7 +80,7 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'rgba(120,110,80,0.4)', marginTop: 2, fontFamily: 'var(--font)' }}>{desc}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2, fontFamily: 'var(--font)' }}>{desc}</div>
                 </div>
               </button>
             );
@@ -98,14 +98,14 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                 onClick={() => setDensity(id)}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 8,
-                  border: `1px solid ${isSelected ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.07)'}`,
-                  background: isSelected ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${isSelected ? 'rgba(132,215,216,0.35)' : 'rgba(232,226,216,0.07)'}`,
+                  background: isSelected ? 'rgba(132,215,216,0.08)' : 'rgba(232,226,216,0.02)',
                   cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'center', transition: 'all 0.15s',
                 }}
               >
-                <LayoutGrid size={isSelected ? 18 : 16} color={isSelected ? '#548C92' : 'rgba(160,150,120,0.35)'} style={{ marginBottom: 6 }} />
+                <LayoutGrid size={isSelected ? 18 : 16} color={isSelected ? '#548C92' : '#9DAAAD'} style={{ marginBottom: 6 }} />
                 <div style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--ocean)' : 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 10.5, color: 'rgba(120,110,80,0.4)', lineHeight: 1.4 }}>{desc}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{desc}</div>
               </button>
             );
           })}

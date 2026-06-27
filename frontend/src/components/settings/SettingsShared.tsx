@@ -57,20 +57,21 @@ export const SettingsCard: React.FC<SettingsCardProps> = ({ title, description, 
   <DriftCard index={index} hoverLift={false} style={{
     background: 'var(--surface)', border: '1px solid var(--border-soft)',
     borderRadius: 12, padding: '24px 28px', marginBottom: 20,
+    boxShadow: 'var(--shadow-sm)',
   }}>
     <div style={{ marginBottom: 20 }}>
       <h3 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ocean)', margin: 0, letterSpacing: '-0.2px' }}>
         {title}
       </h3>
       {description && (
-        <p style={{ fontSize: 11.5, color: 'rgba(130,120,90,0.55)', margin: '4px 0 0', lineHeight: 1.6 }}>
+        <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: 1.6 }}>
           {description}
         </p>
       )}
       {impact && (
         <div style={{
           marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5,
-          fontSize: 10.5, color: 'rgba(245,158,11,0.65)', background: 'rgba(245,158,11,0.06)',
+          fontSize: 10.5, color: 'rgba(132,215,216,0.65)', background: 'rgba(132,215,216,0.06)',
           border: '1px solid var(--border-soft)', borderRadius: 4, padding: '2px 8px',
         }}>
           <span style={{ fontSize: 8 }}>◆</span>
@@ -97,7 +98,7 @@ export const FieldRow: React.FC<FieldRowProps> = ({ label, hint, children, full 
   }}>
     <div>
       <label style={{
-        fontSize: 12, fontWeight: 500, color: 'rgba(180,170,140,0.75)',
+        fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)',
         display: 'block', paddingTop: full ? 0 : 9,
       }}>
         {label}
@@ -114,7 +115,7 @@ export const FieldRow: React.FC<FieldRowProps> = ({ label, hint, children, full 
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '9px 12px',
-  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+  background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.09)',
   borderRadius: 7, color: 'var(--ocean)', fontSize: 12.5,
   fontFamily: 'var(--font)', outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box',
 };
@@ -131,7 +132,7 @@ export const TextInput: React.FC<TextInputProps> = ({ monospace, style, ...props
       style={{
         ...inputBase,
         fontFamily: monospace ? 'JetBrains Mono, monospace' : 'var(--font)',
-        borderColor: focused ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)',
+        borderColor: focused ? 'rgba(132,215,216,0.45)' : 'rgba(232,226,216,0.09)',
         boxShadow: focused ? '0 0 0 3px var(--border-soft)' : 'none',
         ...style,
       }}
@@ -151,10 +152,10 @@ export const SelectInput: React.FC<SelectInputProps> = ({ style, ...props }) => 
       style={{
         ...inputBase,
         appearance: 'none',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(160,150,100,0.6)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(157,170,173,0.9)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
         backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
         cursor: 'pointer',
-        borderColor: focused ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)',
+        borderColor: focused ? 'rgba(132,215,216,0.45)' : 'rgba(232,226,216,0.09)',
         boxShadow: focused ? '0 0 0 3px var(--border-soft)' : 'none',
         ...style,
       }}
@@ -176,14 +177,14 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, l
     style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '10px 14px',
-      background: checked ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.02)',
-      border: `1px solid ${checked ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.06)'}`,
+      background: checked ? 'rgba(132,215,216,0.05)' : 'rgba(232,226,216,0.02)',
+      border: `1px solid ${checked ? 'rgba(132,215,216,0.15)' : 'rgba(232,226,216,0.06)'}`,
       borderRadius: 8, marginBottom: 8, cursor: 'pointer', transition: 'all 0.15s',
     }}
     onClick={() => onChange(!checked)}
   >
     <div>
-      <div style={{ fontSize: 12.5, fontWeight: 500, color: checked ? 'var(--ocean)' : 'rgba(160,150,120,0.7)' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 500, color: checked ? 'var(--ocean)' : 'var(--text-secondary)' }}>
         {label}
       </div>
       {description && (
@@ -192,9 +193,9 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, l
     </div>
     <div style={{
       width: 40, height: 22, borderRadius: 11,
-      background: checked ? '#548C92' : 'rgba(255,255,255,0.1)',
+      background: checked ? '#548C92' : 'rgba(232,226,216,0.1)',
       position: 'relative', flexShrink: 0, transition: 'background 0.2s',
-      boxShadow: checked ? '0 0 10px rgba(245,158,11,0.3)' : 'none',
+      boxShadow: checked ? '0 0 10px rgba(132,215,216,0.3)' : 'none',
     }}>
       <div style={{
         width: 16, height: 16, borderRadius: '50%', background: '#fff',
@@ -222,20 +223,20 @@ export const TagInput: React.FC<TagInputProps> = ({ tags, onChange, placeholder 
 
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+      background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.09)',
       borderRadius: 7, padding: '8px 10px', minHeight: 42,
     }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: tags.length ? 6 : 0 }}>
         {tags.map((tag, i) => (
           <span key={i} style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
-            background: 'var(--border-soft)', border: '1px solid rgba(245,158,11,0.25)',
+            background: 'var(--border-soft)', border: '1px solid rgba(132,215,216,0.25)',
             color: '#548C92', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4,
           }}>
             {tag}
             <button
               onClick={() => onChange(tags.filter((_, j) => j !== i))}
-              style={{ background: 'none', border: 'none', color: 'rgba(245,158,11,0.6)', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+              style={{ background: 'none', border: 'none', color: 'rgba(132,215,216,0.6)', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center' }}
             >×</button>
           </span>
         ))}
@@ -265,12 +266,12 @@ export const SaveButton: React.FC<SaveButtonProps> = ({ onSave, saving, label = 
       disabled={saving}
       style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '11px 28px', borderRadius: 8,
-        background: saving ? 'rgba(245,158,11,0.1)' : 'linear-gradient(135deg, #548C92 0%, #d97706 100%)',
-        border: saving ? '1px solid rgba(245,158,11,0.3)' : 'none',
+        background: saving ? 'rgba(132,215,216,0.1)' : 'linear-gradient(135deg, #548C92 0%, #548C92 100%)',
+        border: saving ? '1px solid rgba(132,215,216,0.3)' : 'none',
         color: saving ? 'var(--harbor)' : 'white',
         fontSize: 13, fontWeight: 700, fontFamily: 'var(--font)',
         cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.02em', transition: 'all 0.2s',
-        boxShadow: saving ? 'none' : '0 4px 20px rgba(245,158,11,0.3)',
+        boxShadow: saving ? 'none' : '0 4px 20px rgba(132,215,216,0.3)',
       }}
     >
       <Save size={14} />

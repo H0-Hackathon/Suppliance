@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Globe, { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
 import { useAuth } from '@clerk/clerk-react';
+import { PALETTE } from '../styles/palette';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -29,17 +30,17 @@ interface Arc {
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<Supplier['status'], string> = {
-  impacted:    '#ff2a2a', // Brighter neon red
-  healthy:     '#00ff9d', // Neon emerald green
-  alternative: '#ffb700', // Neon amber
-  customer:    '#00e5ff', // Neon cyan
+  impacted:    PALETTE.critical, // semantic red
+  healthy:     PALETTE.safe,     // semantic green
+  alternative: PALETTE.warning,  // semantic amber
+  customer:    PALETTE.seafoam,  // brand seafoam (destination/HQ)
 };
 
-// Gradient from supplier color to customer color
+// Gradient from supplier color to the seafoam destination color
 const ARC_COLORS: Record<Arc['routeStatus'], [string, string]> = {
-  impacted:    ['#ff2a2a', '#00e5ff'],
-  healthy:     ['#00ff9d', '#00e5ff'],
-  alternative: ['#ffb700', '#00e5ff'],
+  impacted:    [PALETTE.critical, PALETTE.seafoam],
+  healthy:     [PALETTE.safe, PALETTE.seafoam],
+  alternative: [PALETTE.warning, PALETTE.seafoam],
 };
 
 const ARC_WIDTH: Record<1|2|3, number> = { 1: 0.8, 2: 1.4, 3: 2.2 };
@@ -166,19 +167,51 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
       canvas.height = 1024;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Deep-space gradient — near-black at the poles, a hint of teal at the equator
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, '#02040a');
-        gradient.addColorStop(1, '#060a14');
+        gradient.addColorStop(0, '#050B0F');
+        gradient.addColorStop(0.5, '#0C1F26');
+        gradient.addColorStop(1, '#050B0F');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        for (let i = 0; i < 3000; i++) {
+        // A couple of faint nebula glows for depth, like distant illuminated dust
+        const nebula = (x: number, y: number, r: number, color: string) => {
+          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, color);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        };
+        nebula(canvas.width * 0.22, canvas.height * 0.3, 420, 'rgba(84,140,146,0.14)');
+        nebula(canvas.width * 0.78, canvas.height * 0.65, 380, 'rgba(132,215,216,0.10)');
+
+        // Dense field of small, mostly white/cream stars
+        for (let i = 0; i < 2200; i++) {
           const x = Math.random() * canvas.width;
           const y = Math.random() * canvas.height;
-          const size = Math.random() * 1.5;
-          const brightness = Math.random() * 0.8 + 0.2;
-          ctx.fillStyle = `rgba(140, 200, 255, ${brightness * 0.6})`;
+          const size = Math.random() * 1.3 + 0.3;
+          const brightness = Math.random() * 0.6 + 0.4;
+          ctx.fillStyle = `rgba(232, 230, 222, ${brightness})`;
           ctx.fillRect(x, y, size, size);
+        }
+
+        // Sparse layer of slightly larger, brighter "hero" stars with a soft glow —
+        // the bit that actually reads as stars at a glance rather than noise
+        for (let i = 0; i < 90; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const size = Math.random() * 1.6 + 1.4;
+          const tint = Math.random() > 0.7 ? '132, 215, 216' : '255, 255, 255';
+          const glow = ctx.createRadialGradient(x, y, 0, x, y, size * 4);
+          glow.addColorStop(0, `rgba(${tint}, 0.9)`);
+          glow.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = glow;
+          ctx.fillRect(x - size * 4, y - size * 4, size * 8, size * 8);
+          ctx.fillStyle = `rgba(${tint}, 1)`;
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
@@ -356,7 +389,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
         
         showAtmosphere
-        atmosphereColor="#3b82f6" // Bright glowing blue
+        atmosphereColor={PALETTE.seafoam}
         atmosphereAltitude={0.15}
         
         // ── (Removed the old pointsData lines; rendering bgPoints as labels/rings instead) ──
@@ -431,36 +464,36 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
           position: 'absolute',
           bottom: 16,
           left: 16,
-          background: 'rgba(6,10,20,0.88)',
+          background: 'rgba(22,50,58,0.82)',
           backdropFilter: 'blur(14px)',
-          border: '1px solid rgba(245,158,11,0.12)',
-          borderRadius: 10,
-          padding: '12px 16px',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: 11,
-          color: '#cbd5e1',
+          border: '1px solid var(--border-soft)',
+          borderRadius: 12,
+          padding: '14px 18px',
+          fontFamily: 'var(--font)',
+          fontSize: 12,
+          color: 'var(--foreground)',
           minWidth: 210,
           zIndex: 10,
         }}
       >
         <div
           style={{
-            fontWeight: 700,
-            fontSize: 9,
-            letterSpacing: '0.12em',
-            color: 'rgba(245,158,11,0.7)',
+            fontWeight: 600,
+            fontSize: 11,
+            letterSpacing: '0.08em',
+            color: 'var(--text-muted)',
             textTransform: 'uppercase',
-            marginBottom: 10,
+            marginBottom: 12,
           }}
         >
           Trade Exposure Globe
         </div>
 
         {[
-          { color: '#dc2626', label: 'Impacted Supplier' },
-          { color: '#10b981', label: 'Healthy Supplier' },
-          { color: '#f59e0b', label: 'Alternative Supplier' },
-          { color: '#38bdf8', label: 'Customer Destination' },
+          { color: PALETTE.critical, label: 'Impacted Supplier' },
+          { color: PALETTE.safe, label: 'Healthy Supplier' },
+          { color: PALETTE.warning, label: 'Alternative Supplier' },
+          { color: PALETTE.seafoam, label: 'Your HQ / Destination' },
         ].map(({ color, label }) => (
           <div
             key={label}
@@ -468,7 +501,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              marginBottom: 5,
+              marginBottom: 6,
             }}
           >
             <div
@@ -481,16 +514,16 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{label}</span>
           </div>
         ))}
 
-        <div style={{ borderTop: '1px solid rgba(245,158,11,0.1)', margin: '9px 0' }} />
+        <div style={{ borderTop: '1px solid var(--border-soft)', margin: '10px 0' }} />
 
         {[
-          { color: '#f59e0b', label: 'Exposure route (gold)' },
-          { color: '#dc2626', label: 'Disrupted route (crimson)' },
-          { color: '#10b981', label: 'Alternative route (emerald)' },
+          { color: PALETTE.warning, label: 'Exposure route' },
+          { color: PALETTE.critical, label: 'Disrupted route' },
+          { color: PALETTE.safe, label: 'Alternative route' },
         ].map(({ color, label }) => (
           <div
             key={label}
@@ -510,18 +543,18 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{label}</span>
           </div>
         ))}
 
         <div
           style={{
-            borderTop: '1px solid rgba(245,158,11,0.1)',
-            marginTop: 9,
-            paddingTop: 8,
-            fontSize: 9,
-            color: 'rgba(100,116,139,0.6)',
-            letterSpacing: '0.04em',
+            borderTop: '1px solid var(--border-soft)',
+            marginTop: 10,
+            paddingTop: 10,
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            letterSpacing: '0.02em',
           }}
         >
           Pulse speed = financial exposure velocity
@@ -535,11 +568,11 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
             position: 'fixed',
             left: (tooltipPos?.x || 0) + 16,
             top: (tooltipPos?.y || 0) - 10,
-            background: 'rgba(6,10,20,0.97)',
+            background: 'rgba(22,50,58,0.97)',
             border: `1px solid ${STATUS_COLOR[hoveredSupplier.status]}55`,
             borderRadius: 8,
             padding: '10px 14px',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: 'var(--font)',
             zIndex: 9999,
             pointerEvents: 'none',
             minWidth: 175,
@@ -584,10 +617,10 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
                     fontFamily: 'JetBrains Mono, monospace',
                     color:
                       hoveredSupplier.riskScore > 60
-                        ? '#dc2626'
+                        ? PALETTE.critical
                         : hoveredSupplier.riskScore > 35
-                          ? '#f59e0b'
-                          : '#10b981',
+                          ? PALETTE.warning
+                          : PALETTE.safe,
                   }}
                 >
                   {hoveredSupplier.riskScore}
@@ -618,8 +651,8 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
             style={{
               marginTop: 8,
               paddingTop: 8,
-              borderTop: '1px solid rgba(245,158,11,0.1)',
-              fontSize: 9,
+              borderTop: '1px solid var(--border-soft)',
+              fontSize: 11,
               fontWeight: 700,
               letterSpacing: '0.08em',
               color: STATUS_COLOR[hoveredSupplier.status],
@@ -653,7 +686,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
             color: '#f8fafc',
             boxShadow: `0 12px 40px rgba(0, 0, 0, 0.5), 0 0 30px ${STATUS_COLOR[selectedSupplier.status]}30`,
             zIndex: 30,
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: 'var(--font)',
             animation: 'fadeIn 0.2s ease-out',
           }}
         >

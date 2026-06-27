@@ -12,6 +12,7 @@ import { AdminPage } from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import OnboardingPage from './pages/OnboardingPage';
+import { Logo } from './components/common/Logo';
 
 import {
   ClerkProvider,
@@ -26,23 +27,30 @@ import {
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-// ── Spinner ───────────────────────────────────────────────────────────────────
+// ── Branded loading screen ────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', background: '#0e0e10', gap: 16,
+      alignItems: 'center', justifyContent: 'center',
+      background: 'linear-gradient(160deg, #16323A 0%, #285260 55%, #16323A 100%)',
+      gap: 28,
     }}>
-      <div style={{
-        width: 36, height: 36,
-        border: '3px solid rgba(245,158,11,0.2)',
-        borderTopColor: '#f59e0b', borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-      }}/>
-      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>
-        Loading CoastGuard…
-      </span>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <Logo size={64} variant="splash" />
+      <div style={{ width: 160, height: 3, borderRadius: 999, background: 'rgba(132,215,216,0.15)', overflow: 'hidden' }}>
+        <div style={{
+          width: '40%', height: '100%', borderRadius: 999,
+          background: 'linear-gradient(90deg, var(--dusty-teal), var(--seafoam))',
+          animation: 'loading-slide 1.1s ease-in-out infinite',
+        }}/>
+      </div>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes loading-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(350%); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -134,10 +142,11 @@ function AppRoutes() {
             path="/sign-in/*"
             element={
               <div style={{
-                minHeight: '100vh', display: 'flex',
+                minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 32,
                 alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg,#02040a 0%,#0e0e10 50%,#111108 100%)',
+                background: 'linear-gradient(160deg,#16323A 0%,#285260 55%,#16323A 100%)',
               }}>
+                <Logo size={56} variant="splash" />
                 <SignIn routing="path" path="/sign-in" afterSignInUrl="/" afterSignUpUrl="/" />
               </div>
             }

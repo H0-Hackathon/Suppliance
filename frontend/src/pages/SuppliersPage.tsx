@@ -1,8 +1,17 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
-import { Lock } from 'lucide-react';
+import {
+  Lock, ArrowRight, Check, Mail, Globe, Star,
+  Landmark, Compass, Building2, Church, TreePalm, Mountain, TreePine, Globe2, Sun, Ship, Waves, Snowflake,
+  Shirt, Cog, Wheat, ShoppingBag, Factory, Cpu, FlaskConical, HardHat, Car, Palette,
+  Gamepad2, Package, Sparkles, Fish, Armchair, Dumbbell, Stethoscope, Gem, CupSoda,
+  LucideIcon,
+} from 'lucide-react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
+import { CountryOutlineIcon } from '../components/common/CountryOutlineIcon';
+import { WaveAccent } from '../components/common/WaveAccent';
+import { PALETTE } from '../styles/palette';
 import './SuppliersPage.css';
 
 // ── World topojson (public CDN) ───────────────────────────────────────────────
@@ -52,7 +61,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   'Tajikistan': [71, 39], 'Turkmenistan': [58, 39], 'Azerbaijan': [48, 40],
   'Armenia': [45, 40], 'Mongolia': [105, 47], 'Laos': [103, 18],
   'Brunei': [115, 4], 'Singapore': [104, 1], 'Papua New Guinea': [147, -6],
-  'Fiji': [178, -18], 'Cameroon': [12, 4], 'Ivory Coast': [-5, 7], 'Sri Lanka': [81, 8],
+  'Fiji': [178, -18], 'Cameroon': [12, 4], 'Ivory Coast': [-5, 7],
   'Sudan': [30, 15], 'Mozambique': [35, -18], 'Madagascar': [47, -20],
   'Angola': [18, -12], 'Zambia': [28, -14], 'Zimbabwe': [30, -20],
   'Malawi': [34, -14], 'Rwanda': [30, -2], 'Burundi': [30, -3],
@@ -66,7 +75,6 @@ interface MapTooltip {
   x: number;
   y: number;
   country: string;
-  flag: string;
   suppliers: Supplier[];
 }
 
@@ -109,7 +117,7 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
     if (x + 270 > rect.width) x = e.clientX - rect.left - 280;
     if (y + 250 > rect.height) y = rect.height - 260;
     if (y < 36) y = 36;
-    setTooltip({ x, y, country, flag: getFlag(country), suppliers: items });
+    setTooltip({ x, y, country, suppliers: items });
   };
 
   const dotR = (count: number) => Math.min(3.5 + Math.sqrt(count) * 0.9, 11);
@@ -138,12 +146,12 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill="#1b1b1e"
-                  stroke="#28282c"
-                  strokeWidth={0.4}
+                  fill="#22454E"
+                  stroke="rgba(168,144,114,0.18)"
+                  strokeWidth={0.5}
                   style={{
                     default: { outline: 'none' },
-                    hover:   { fill: '#222226', outline: 'none' },
+                    hover:   { fill: '#2A525C', outline: 'none' },
                     pressed: { outline: 'none' },
                   }}
                 />
@@ -162,17 +170,17 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
               {/* Pulsing outer ring */}
               <circle
                 r={ringR(count)}
-                fill="rgba(16,185,129,0.13)"
+                fill="rgba(91,168,111,0.13)"
                 className="sp-dot-pulse"
                 style={{ pointerEvents: 'none' }}
               />
-              {/* Core green dot */}
+              {/* Core supplier dot */}
               <circle
                 r={dotR(count)}
-                fill="#10b981"
-                stroke="#0e0e10"
+                fill={PALETTE.safe}
+                stroke="#16323A"
                 strokeWidth={1.2}
-                style={{ filter: 'drop-shadow(0 0 4px rgba(16,185,129,0.7))' }}
+                style={{ filter: 'drop-shadow(0 0 5px rgba(91,168,111,0.55))' }}
               />
             </Marker>
           ))}
@@ -188,7 +196,7 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
         >
           {/* Tooltip header */}
           <div className="sp-tt-header">
-            <span className="sp-tt-flag">{tooltip.flag}</span>
+            <span className="sp-tt-flag"><CountryOutlineIcon country={tooltip.country} size={22} color="var(--seafoam)" /></span>
             <div>
               <div className="sp-tt-country">{tooltip.country}</div>
               <div className="sp-tt-count">
@@ -213,8 +221,8 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
                 </div>
                 <div className="sp-tt-stats">
                   {s.supplier_rating && (
-                    <span className="sp-tt-rating">
-                      ★ {s.supplier_rating.toFixed(1)}
+                    <span className="sp-tt-rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Star size={11} color={PALETTE.warning} fill={PALETTE.warning} strokeWidth={1.5} /> {s.supplier_rating.toFixed(1)}
                     </span>
                   )}
                   {s.annual_export_volume_usd && (
@@ -232,7 +240,7 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
                   <div className="sp-tt-links">
                     {s.email && (
                       <a href={`mailto:${s.email}`} className="sp-tt-link" onClick={e => e.stopPropagation()}>
-                        ✉ Email
+                        <Mail size={12} /> Email
                       </a>
                     )}
                     {s.website && (
@@ -242,7 +250,7 @@ function SupplierMap({ suppliers }: { suppliers: Supplier[] }) {
                         className="sp-tt-link sp-tt-web"
                         onClick={e => e.stopPropagation()}
                       >
-                        🌐 Web
+                        <Globe size={12} /> Web
                       </a>
                     )}
                   </div>
@@ -291,65 +299,35 @@ interface SupplierListResponse {
   total: number; page: number; per_page: number; total_pages: number;
 }
 
-// ── Meta maps ─────────────────────────────────────────────────────────────────
-const REGION_META: Record<string, { emoji: string; desc: string }> = {
-  'Middle East':        { emoji: '🕌', desc: 'UAE, Saudi Arabia, Qatar & more' },
-  'South Asia':         { emoji: '🌏', desc: 'India, Bangladesh, Pakistan & more' },
-  'Western Europe':     { emoji: '🇪🇺', desc: 'Germany, France, Netherlands & more' },
-  'Eastern Europe':     { emoji: '🏰', desc: 'Poland, Romania, Ukraine & more' },
-  'Southeast Asia':     { emoji: '🌴', desc: 'Vietnam, Malaysia, Thailand & more' },
-  'North America':      { emoji: '🦅', desc: 'USA, Canada, Mexico & more' },
-  'South America':      { emoji: '🌿', desc: 'Brazil, Chile, Colombia & more' },
-  'Sub-Saharan Africa': { emoji: '🌍', desc: 'Kenya, Nigeria, Tanzania & more' },
-  'North Africa':       { emoji: '🏜️', desc: 'Egypt, Morocco, Algeria & more' },
-  'East Asia':          { emoji: '⛩️', desc: 'China, Japan, South Korea & more' },
-  'Oceania':            { emoji: '🦘', desc: 'Australia, New Zealand & more' },
-  'CIS Countries':      { emoji: '❄️', desc: 'Russia, Kazakhstan, Georgia & more' },
+// ── Meta maps (Lucide icons — no emoji) ───────────────────────────────────────
+const REGION_META: Record<string, { icon: LucideIcon; desc: string }> = {
+  'Middle East':        { icon: Landmark,  desc: 'UAE, Saudi Arabia, Qatar & more' },
+  'South Asia':         { icon: Compass,   desc: 'India, Bangladesh, Pakistan & more' },
+  'Western Europe':     { icon: Building2, desc: 'Germany, France, Netherlands & more' },
+  'Eastern Europe':     { icon: Church,    desc: 'Poland, Romania, Ukraine & more' },
+  'Southeast Asia':     { icon: TreePalm,  desc: 'Vietnam, Malaysia, Thailand & more' },
+  'North America':      { icon: Mountain,  desc: 'USA, Canada, Mexico & more' },
+  'South America':      { icon: TreePine,  desc: 'Brazil, Chile, Colombia & more' },
+  'Sub-Saharan Africa': { icon: Globe2,    desc: 'Kenya, Nigeria, Tanzania & more' },
+  'North Africa':       { icon: Sun,       desc: 'Egypt, Morocco, Algeria & more' },
+  'East Asia':          { icon: Ship,      desc: 'China, Japan, South Korea & more' },
+  'Oceania':            { icon: Waves,     desc: 'Australia, New Zealand & more' },
+  'CIS Countries':      { icon: Snowflake, desc: 'Russia, Kazakhstan, Georgia & more' },
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  'Textiles & Apparel': '👗', 'Metals & Minerals': '⚙️',
-  'Agriculture & Food Products': '🌾', 'Leather Goods': '👜',
-  'Machinery & Industrial Equipment': '🏭', 'Electronics & Electrical': '💡',
-  'Chemicals & Petrochemicals': '🧪', 'Construction Materials': '🏗️',
-  'Automotive Parts': '🚗', 'Handicrafts & Home Decor': '🏺',
-  'Toys & Games': '🎮', 'Paper & Packaging': '📦',
-  'Cosmetics & Personal Care': '✨', 'Seafood & Marine Products': '🦐',
-  'Furniture & Wood Products': '🪑', 'Sports & Outdoor': '⚽',
-  'Medical & Healthcare': '💊', 'Jewellery & Accessories': '💎',
-  'Beverages': '🍶', 'Jewelry & Gemstones': '💎',
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  'Textiles & Apparel': Shirt, 'Metals & Minerals': Cog,
+  'Agriculture & Food Products': Wheat, 'Leather Goods': ShoppingBag,
+  'Machinery & Industrial Equipment': Factory, 'Electronics & Electrical': Cpu,
+  'Chemicals & Petrochemicals': FlaskConical, 'Construction Materials': HardHat,
+  'Automotive Parts': Car, 'Handicrafts & Home Decor': Palette,
+  'Toys & Games': Gamepad2, 'Paper & Packaging': Package,
+  'Cosmetics & Personal Care': Sparkles, 'Seafood & Marine Products': Fish,
+  'Furniture & Wood Products': Armchair, 'Sports & Outdoor': Dumbbell,
+  'Medical & Healthcare': Stethoscope, 'Jewellery & Accessories': Gem,
+  'Beverages': CupSoda, 'Jewelry & Gemstones': Gem,
 };
-
-const COUNTRY_FLAGS: Record<string, string> = {
-  'China': '🇨🇳', 'India': '🇮🇳', 'Germany': '🇩🇪', 'USA': '🇺🇸',
-  'United States': '🇺🇸', 'Japan': '🇯🇵', 'South Korea': '🇰🇷',
-  'Brazil': '🇧🇷', 'Italy': '🇮🇹', 'France': '🇫🇷',
-  'Turkey': '🇹🇷', 'Vietnam': '🇻🇳', 'Bangladesh': '🇧🇩',
-  'Pakistan': '🇵🇰', 'Indonesia': '🇮🇩', 'Malaysia': '🇲🇾',
-  'Thailand': '🇹🇭', 'Mexico': '🇲🇽', 'Taiwan': '🇹🇼',
-  'Spain': '🇪🇸', 'Netherlands': '🇳🇱', 'Poland': '🇵🇱',
-  'Romania': '🇷🇴', 'Ukraine': '🇺🇦', 'Saudi Arabia': '🇸🇦',
-  'UAE': '🇦🇪', 'Egypt': '🇪🇬', 'Kenya': '🇰🇪',
-  'Nigeria': '🇳🇬', 'South Africa': '🇿🇦', 'Australia': '🇦🇺',
-  'Canada': '🇨🇦', 'Morocco': '🇲🇦', 'Argentina': '🇦🇷',
-  'Colombia': '🇨🇴', 'Chile': '🇨🇱', 'Peru': '🇵🇪',
-  'Philippines': '🇵🇭', 'Sri Lanka': '🇱🇰', 'Cambodia': '🇰🇭',
-  'Ethiopia': '🇪🇹', 'Ghana': '🇬🇭', 'Tanzania': '🇹🇿',
-  'Portugal': '🇵🇹', 'Sweden': '🇸🇪', 'Switzerland': '🇨🇭',
-  'Norway': '🇳🇴', 'Denmark': '🇩🇰', 'Finland': '🇫🇮',
-  'Austria': '🇦🇹', 'Belgium': '🇧🇪', 'Czech Republic': '🇨🇿',
-  'Hungary': '🇭🇺', 'Greece': '🇬🇷', 'Russia': '🇷🇺',
-  'Kazakhstan': '🇰🇿', 'Georgia': '🇬🇪', 'Israel': '🇮🇱',
-  'Jordan': '🇯🇴', 'Qatar': '🇶🇦', 'Kuwait': '🇰🇼',
-  'Oman': '🇴🇲', 'Iraq': '🇮🇶', 'Iran': '🇮🇷',
-  'Algeria': '🇩🇿', 'Tunisia': '🇹🇳', 'Libya': '🇱🇾',
-  'Senegal': '🇸🇳', 'Ivory Coast': '🇨🇮', 'Uganda': '🇺🇬',
-  'New Zealand': '🇳🇿', 'Myanmar': '🇲🇲', 'Nepal': '🇳🇵',
-};
-
-function getFlag(country: string) {
-  return COUNTRY_FLAGS[country] || '🏳️';
-}
+const categoryIcon = (cat: string): LucideIcon => CATEGORY_ICONS[cat] ?? Package;
 
 function fmtVolume(v?: number): string {
   if (!v) return '—';
@@ -359,19 +337,25 @@ function fmtVolume(v?: number): string {
 }
 
 function StarRating({ rating }: { rating?: number }) {
-  if (!rating) return <span style={{ color: '#6b6a5e', fontSize: 11 }}>No rating</span>;
+  if (!rating) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No rating</span>;
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-      {[1,2,3,4,5].map(i => (
-        <span key={i} style={{
-          fontSize: 13,
-          color: i <= full ? '#f59e0b' : (i === full + 1 && half ? '#f59e0b' : '#2a2a2c'),
-          opacity: i === full + 1 && half ? 0.6 : 1,
-        }}>★</span>
-      ))}
-      <span style={{ fontSize: 10, color: '#6b6a5e', marginLeft: 4 }}>{rating.toFixed(1)}</span>
+      {[1,2,3,4,5].map(i => {
+        const lit = i <= full || (i === full + 1 && half);
+        return (
+          <Star
+            key={i}
+            size={14}
+            color={lit ? PALETTE.warning : 'rgba(157,170,173,0.25)'}
+            fill={lit ? PALETTE.warning : 'none'}
+            strokeWidth={1.5}
+            style={{ opacity: i === full + 1 && half ? 0.55 : 1 }}
+          />
+        );
+      })}
+      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>{rating.toFixed(1)}</span>
     </span>
   );
 }
@@ -387,7 +371,10 @@ function SupplierCard({ s }: { s: Supplier }) {
       <div className="sp-card-header">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="sp-card-name">{s.business_name}</div>
-          <div className="sp-card-location">{getFlag(s.country)} {s.city ? `${s.city}, ` : ''}{s.country}</div>
+          <div className="sp-card-location" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CountryOutlineIcon country={s.country} size={16} color="var(--clay)" />
+            {s.city ? `${s.city}, ` : ''}{s.country}
+          </div>
         </div>
         {s.business_type && <div className="sp-card-type">{s.business_type}</div>}
       </div>
@@ -438,14 +425,14 @@ function SupplierCard({ s }: { s: Supplier }) {
 
       <div className="sp-card-footer">
         {s.email && (
-          <a href={`mailto:${s.email}`} className="sp-contact-btn">✉ Email</a>
+          <a href={`mailto:${s.email}`} className="sp-contact-btn"><Mail size={13} /> Email</a>
         )}
         {s.website && (
           <a
             href={s.website.startsWith('http') ? s.website : `https://${s.website}`}
             target="_blank" rel="noreferrer"
             className="sp-contact-btn sp-website-btn"
-          >🌐 Website</a>
+          ><Globe size={13} /> Website</a>
         )}
         {s.phone && <span className="sp-phone">{s.phone}</span>}
       </div>
@@ -655,17 +642,18 @@ export const SuppliersPage: React.FC = () => {
   if (accessStatus === 'denied') {
     return (
       <div className="sp-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-        <div style={{ background: 'rgba(245,158,11,0.1)', padding: 24, borderRadius: '50%', marginBottom: 24 }}>
-          <Lock size={48} color="#f59e0b" />
+        <div style={{ background: 'rgba(132,215,216,0.12)', padding: 24, borderRadius: '50%', marginBottom: 24 }}>
+          <Lock size={48} color="var(--seafoam)" />
         </div>
-        <h2 style={{ color: 'white', marginBottom: 12, fontSize: 24, fontWeight: 700 }}>Pro Feature</h2>
-        <p style={{ color: 'rgba(255,255,255,0.6)', maxWidth: 450, textAlign: 'center', marginBottom: 32, fontSize: 15, lineHeight: 1.6 }}>
+        <h2 style={{ color: 'var(--foreground)', marginBottom: 12, fontSize: 24, fontWeight: 700 }}>Pro Feature</h2>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: 450, textAlign: 'center', marginBottom: 32, fontSize: 15, lineHeight: 1.6 }}>
           The Global Supplier Directory is available on the Pro plan or during your free trial.
           Upgrade to unlock 25,000+ verified alternative suppliers globally and the Alternative Supplier Finder agent.
         </p>
-        <button 
+        <button
+          className="btn-accent"
           onClick={() => navigate('/subscription')}
-          style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', color: '#0a0f1e', border: 'none', padding: '12px 28px', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+          style={{ padding: '12px 28px', fontSize: 15 }}
         >
           Upgrade to Pro
         </button>
@@ -677,6 +665,7 @@ export const SuppliersPage: React.FC = () => {
     <div className="sp-page">
       {/* Header */}
       <div className="sp-header">
+        <WaveAccent style={{ top: -16, right: 8, opacity: 0.85, zIndex: -1 }} />
         <div className="sp-header-left">
           {step !== 'region' && (
             <button className="sp-back-btn" onClick={back}>← Back</button>
@@ -684,15 +673,15 @@ export const SuppliersPage: React.FC = () => {
           <div>
             <h1 className="sp-title">
               {step === 'region'    && 'Global Supplier Directory'}
-              {step === 'country'   && <><span className="sp-breadcrumb">{REGION_META[selectedRegion]?.emoji} {selectedRegion}</span> · Select Country</>}
-              {step === 'category'  && <><span className="sp-breadcrumb">{getFlag(selectedCountry)} {selectedCountry}</span> · Select Category</>}
+              {step === 'country'   && <><span className="sp-breadcrumb">{selectedRegion}</span> · Select Country</>}
+              {step === 'category'  && <><span className="sp-breadcrumb" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CountryOutlineIcon country={selectedCountry} size={18} color="var(--seafoam)" /> {selectedCountry}</span> · Select Category</>}
               {step === 'suppliers' && <><span className="sp-breadcrumb">{selectedCategory}</span></>}
             </h1>
             <p className="sp-subtitle">
               {step === 'region'    && 'Choose a region to find suppliers'}
               {step === 'country'   && `${countries.length} countries in ${selectedRegion}`}
               {step === 'category'  && `${categories.length} categories in ${selectedCountry}`}
-              {step === 'suppliers' && (selectedRegion ? `${total.toLocaleString()} verified suppliers · ${getFlag(selectedCountry)} ${selectedCountry} → ${selectedRegion}` : `${total.toLocaleString()} verified suppliers globally`)}
+              {step === 'suppliers' && (selectedRegion ? `${total.toLocaleString()} verified suppliers · ${selectedCountry} → ${selectedRegion}` : `${total.toLocaleString()} verified suppliers globally`)}
             </p>
           </div>
         </div>
@@ -709,7 +698,7 @@ export const SuppliersPage: React.FC = () => {
         {STEPS.map((s, i) => (
           <React.Fragment key={s}>
             <div className={`sp-step${step === s ? ' active' : ''}${i < stepIndex ? ' done' : ''}`}>
-              <div className="sp-step-dot">{i < stepIndex ? '✓' : i + 1}</div>
+              <div className="sp-step-dot">{i < stepIndex ? <Check size={13} strokeWidth={3} /> : i + 1}</div>
               <span>{STEP_LABELS[i]}</span>
             </div>
             {i < STEPS.length - 1 && <div className="sp-step-line" />}
@@ -725,14 +714,15 @@ export const SuppliersPage: React.FC = () => {
           <>
             <div className="sp-grid-regions">
               {regions.map(({ region, supplier_count }) => {
-                const m = REGION_META[region] ?? { emoji: '🌐', desc: '' };
+                const m = REGION_META[region] ?? { icon: Globe2, desc: '' };
+                const RegionIcon = m.icon;
                 return (
                   <button key={region} className="sp-region-card" onClick={() => pickRegion(region)}>
-                    <div className="sp-region-emoji">{m.emoji}</div>
+                    <div className="sp-region-emoji"><RegionIcon size={26} strokeWidth={1.75} color="var(--seafoam)" /></div>
                     <div className="sp-region-name">{region}</div>
                     <div className="sp-region-desc">{m.desc}</div>
                     <div className="sp-region-count">{supplier_count.toLocaleString()} suppliers</div>
-                    <div className="sp-region-arrow">→</div>
+                    <div className="sp-region-arrow"><ArrowRight size={16} /></div>
                   </button>
                 );
               })}
@@ -742,22 +732,23 @@ export const SuppliersPage: React.FC = () => {
               <button
                 onClick={() => setExploreAllMode(!exploreAllMode)}
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  padding: '14px 28px',
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: 'rgba(232,226,216,0.05)',
+                  border: '1px solid var(--border-soft)',
+                  padding: '12px 24px',
                   borderRadius: 8,
-                  color: '#e2e8f0',
+                  color: 'var(--foreground)',
                   cursor: 'pointer',
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: 600,
-                  fontFamily: 'Inter, sans-serif',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  fontFamily: 'var(--font)',
+                  transition: 'background 0.2s ease, border-color 0.2s ease',
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(232,226,216,0.09)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(232,226,216,0.05)'; e.currentTarget.style.borderColor = 'var(--border-soft)'; }}
               >
-                {exploreAllMode ? '🌍 Show Only My Profile Categories' : '🌍 Explore All Global Suppliers'}
+                <Globe2 size={16} />
+                {exploreAllMode ? 'Show Only My Profile Categories' : 'Explore All Global Suppliers'}
               </button>
             </div>
           </>
@@ -769,10 +760,10 @@ export const SuppliersPage: React.FC = () => {
             <div className="sp-grid-countries">
               {countries.map(({ country, supplier_count }) => (
                 <button key={country} className="sp-country-card" onClick={() => pickCountry(country)}>
-                  <div className="sp-country-flag">{getFlag(country)}</div>
+                  <div className="sp-country-flag"><CountryOutlineIcon country={country} size={40} color="var(--seafoam)" /></div>
                   <div className="sp-country-name">{country}</div>
                   <div className="sp-country-count">{supplier_count.toLocaleString()} suppliers</div>
-                  <div className="sp-cat-arrow">→</div>
+                  <div className="sp-cat-arrow"><ArrowRight size={16} /></div>
                 </button>
               ))}
             </div>
@@ -784,14 +775,17 @@ export const SuppliersPage: React.FC = () => {
           loading ? <div className="sp-loading"><div className="sp-spinner" />Loading categories…</div> : (
             <>
               <div className="sp-grid-categories">
-                {categories.map(({ category, supplier_count }) => (
-                  <button key={category} className="sp-category-card" onClick={() => pickCategory(category)}>
-                    <div className="sp-cat-icon">{CATEGORY_ICONS[category] ?? '📦'}</div>
-                    <div className="sp-cat-name">{category}</div>
-                    <div className="sp-cat-count">{supplier_count.toLocaleString()}</div>
-                    <div className="sp-cat-arrow">→</div>
-                  </button>
-                ))}
+                {categories.map(({ category, supplier_count }) => {
+                  const CatIcon = categoryIcon(category);
+                  return (
+                    <button key={category} className="sp-category-card" onClick={() => pickCategory(category)}>
+                      <div className="sp-cat-icon"><CatIcon size={24} strokeWidth={1.75} color="var(--seafoam)" /></div>
+                      <div className="sp-cat-name">{category}</div>
+                      <div className="sp-cat-count">{supplier_count.toLocaleString()}</div>
+                      <div className="sp-cat-arrow"><ArrowRight size={16} /></div>
+                    </button>
+                  );
+                })}
               </div>
               
               <div style={{ marginTop: 40, textAlign: 'center' }}>
@@ -799,16 +793,17 @@ export const SuppliersPage: React.FC = () => {
                   onClick={() => setExploreAllMode(!exploreAllMode)}
                   style={{
                     background: 'transparent',
-                    border: '1px dashed rgba(255,255,255,0.2)',
+                    border: '1px dashed var(--border-soft)',
                     padding: '10px 20px',
                     borderRadius: 8,
-                    color: '#94a3b8',
+                    color: 'var(--text-muted)',
                     cursor: 'pointer',
                     fontSize: 14,
-                    transition: 'all 0.2s ease',
+                    fontFamily: 'var(--font)',
+                    transition: 'color 0.2s ease, border-color 0.2s ease',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#fff'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--foreground)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-soft)'; }}
                 >
                   {exploreAllMode ? 'Show Only My Profile Categories' : 'Show All Global Categories'}
                 </button>
@@ -831,13 +826,15 @@ export const SuppliersPage: React.FC = () => {
               {/* Infinite scroll sentinel */}
               <div ref={sentinelRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
                 {loadingMore && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b6a5e', fontSize: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
                     <div className="sp-spinner" />Loading more suppliers…
                   </div>
                 )}
               </div>
               {page >= totalPages && suppliers.length > 0 && (
-                <div className="sp-end-msg">✓ All {total.toLocaleString()} suppliers loaded</div>
+                <div className="sp-end-msg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Check size={14} strokeWidth={3} /> All {total.toLocaleString()} suppliers loaded
+                </div>
               )}
             </>
           )

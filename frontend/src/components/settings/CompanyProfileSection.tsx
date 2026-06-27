@@ -60,7 +60,7 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
       <SectionHeader
         icon={Building2}
         title="Company Profile"
-        subtitle="Defines how CoastGuard classifies your trade exposure and benchmarks risk against industry peers."
+        subtitle="Defines how Suppliance classifies your trade exposure and benchmarks risk against industry peers."
         badge="Core"
       />
 
@@ -124,8 +124,8 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
                   onClick={() => setForm(prev => ({ ...prev, revenueRange: v }))}
                   style={{
                     padding: '9px 12px', borderRadius: 7,
-                    border: `1px solid ${isSelected ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                    background: isSelected ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${isSelected ? 'rgba(132,215,216,0.4)' : 'rgba(232,226,216,0.07)'}`,
+                    background: isSelected ? 'rgba(132,215,216,0.1)' : 'rgba(232,226,216,0.02)',
                     color: isSelected ? '#548C92' : 'var(--text-muted)',
                     fontSize: 11.5, fontWeight: isSelected ? 600 : 400,
                     fontFamily: 'var(--font)', cursor: 'pointer', textAlign: 'left',
@@ -152,11 +152,11 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
       </SettingsCard>
 
       <div style={{
-        background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.1)',
+        background: 'rgba(132,215,216,0.04)', border: '1px solid rgba(132,215,216,0.1)',
         borderRadius: 10, padding: '16px 20px', display: 'flex', gap: 14, alignItems: 'flex-start',
       }}>
         <div style={{
-          width: 28, height: 28, borderRadius: 7, background: 'rgba(245,158,11,0.12)',
+          width: 28, height: 28, borderRadius: 7, background: 'rgba(132,215,216,0.12)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
           <Globe size={13} color="#548C92" />

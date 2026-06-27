@@ -50,13 +50,13 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving, initialData })
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 20, padding: '20px 24px',
-        background: 'linear-gradient(135deg, rgba(245,158,11,0.07) 0%, rgba(255,255,255,0.02) 100%)',
-        border: '1px solid rgba(245,158,11,0.12)', borderRadius: 12, marginBottom: 20,
+        background: 'linear-gradient(135deg, rgba(132,215,216,0.07) 0%, rgba(232,226,216,0.02) 100%)',
+        border: '1px solid rgba(132,215,216,0.12)', borderRadius: 12, marginBottom: 20,
       }}>
         <div style={{
           width: 60, height: 60, borderRadius: '50%',
-          background: 'linear-gradient(135deg, rgba(245,158,11,0.3) 0%, rgba(245,158,11,0.1) 100%)',
-          border: '2px solid rgba(245,158,11,0.35)',
+          background: 'linear-gradient(135deg, rgba(132,215,216,0.3) 0%, rgba(132,215,216,0.1) 100%)',
+          border: '2px solid rgba(132,215,216,0.35)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 22, fontWeight: 700, color: '#548C92', flexShrink: 0,
         }}>
@@ -67,15 +67,15 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving, initialData })
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{email}</div>
           <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
             {selectedRole && (
-              <span style={{ fontSize: 10, fontWeight: 600, background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#548C92', padding: '2px 7px', borderRadius: 4, letterSpacing: '0.06em' }}>
+              <span style={{ fontSize: 10, fontWeight: 600, background: 'rgba(132,215,216,0.12)', border: '1px solid rgba(132,215,216,0.25)', color: '#548C92', padding: '2px 7px', borderRadius: 4, letterSpacing: '0.06em' }}>
                 {selectedRole.badge}
               </span>
             )}
-            <span style={{ fontSize: 11, color: 'rgba(140,130,100,0.5)' }}>{selectedRole?.label ?? '—'}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{selectedRole?.label ?? '—'}</span>
           </div>
         </div>
         {twoFa && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: '#3d7a6e', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', padding: '4px 9px', borderRadius: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: '#5BA86F', background: 'rgba(91,168,111,0.08)', border: '1px solid rgba(91,168,111,0.2)', padding: '4px 9px', borderRadius: 5 }}>
             <ShieldCheck size={11} />
             2FA Active
           </div>
@@ -116,13 +116,13 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving, initialData })
                 onClick={() => setRole(id)}
                 style={{
                   padding: '10px 14px', borderRadius: 8,
-                  border: `1px solid ${isSelected ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.07)'}`,
-                  background: isSelected ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${isSelected ? 'rgba(132,215,216,0.35)' : 'rgba(232,226,216,0.07)'}`,
+                  background: isSelected ? 'rgba(132,215,216,0.08)' : 'rgba(232,226,216,0.02)',
                   cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
                   transition: 'all 0.15s', fontFamily: 'var(--font)',
                 }}
               >
-                <span style={{ fontSize: 9.5, fontWeight: 700, background: isSelected ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.07)', color: isSelected ? '#548C92' : 'rgba(160,150,120,0.5)', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.06em', flexShrink: 0 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 700, background: isSelected ? 'rgba(132,215,216,0.15)' : 'rgba(232,226,216,0.07)', color: isSelected ? '#548C92' : 'var(--text-secondary)', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.06em', flexShrink: 0 }}>
                   {badge}
                 </span>
                 <span style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--ocean)' : 'var(--text-secondary)' }}>
@@ -134,46 +134,46 @@ export const AccountSection: React.FC<Props> = ({ onSave, saving, initialData })
         </div>
       </SettingsCard>
 
-      <SettingsCard title="Security" description="Authentication and access controls for your CoastGuard account." index={2}>
+      <SettingsCard title="Security" description="Authentication and access controls for your Suppliance account." index={2}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px',
-          background: twoFa ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)',
-          border: `1px solid ${twoFa ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}`,
+          background: twoFa ? 'rgba(91,168,111,0.05)' : 'rgba(239,68,68,0.05)',
+          border: `1px solid ${twoFa ? 'rgba(91,168,111,0.15)' : 'rgba(239,68,68,0.15)'}`,
           borderRadius: 8, marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ShieldCheck size={15} color={twoFa ? '#3d7a6e' : '#b54a3a'} />
+            <ShieldCheck size={15} color={twoFa ? '#5BA86F' : '#b54a3a'} />
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ocean)' }}>Two-Factor Authentication</div>
-              <div style={{ fontSize: 11, color: 'rgba(120,110,80,0.5)' }}>{twoFa ? 'Authenticator app configured' : 'Not configured — account at risk'}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{twoFa ? 'Authenticator app configured' : 'Not configured — account at risk'}</div>
             </div>
           </div>
           <button
             onClick={() => setTwoFa(!twoFa)}
-            style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: `1px solid ${twoFa ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`, background: twoFa ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)', color: twoFa ? '#3d7a6e' : '#548C92', cursor: 'pointer', fontFamily: 'var(--font)' }}
+            style={{ fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: `1px solid ${twoFa ? 'rgba(91,168,111,0.25)' : 'rgba(132,215,216,0.25)'}`, background: twoFa ? 'rgba(91,168,111,0.08)' : 'rgba(132,215,216,0.08)', color: twoFa ? '#5BA86F' : '#548C92', cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             {twoFa ? 'Manage' : 'Enable'}
           </button>
         </div>
-        <button style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, color: 'rgba(160,150,120,0.65)', fontSize: 12.5, fontFamily: 'var(--font)', cursor: 'pointer' }}>
+        <button style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', background: 'rgba(232,226,216,0.02)', border: '1px solid rgba(232,226,216,0.07)', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12.5, fontFamily: 'var(--font)', cursor: 'pointer' }}>
           <Key size={13} />
           Change Password
         </button>
       </SettingsCard>
 
-      <SettingsCard title="API Access" description="Use this key to integrate CoastGuard risk signals with your internal systems or BI tools." index={3}>
-        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.09)' }}>
-          <div style={{ flex: 1, padding: '9px 12px', background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)', fontSize: 11.5, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em' }}>
+      <SettingsCard title="API Access" description="Use this key to integrate Suppliance risk signals with your internal systems or BI tools." index={3}>
+        <div style={{ display: 'flex', alignItems: 'center', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(232,226,216,0.09)' }}>
+          <div style={{ flex: 1, padding: '9px 12px', background: 'rgba(232,226,216,0.03)', color: 'var(--text-muted)', fontSize: 11.5, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em' }}>
             {apiKey.slice(0, 14)}{'•'.repeat(12)}
           </div>
           <button
             onClick={copyKey}
-            style={{ padding: '9px 14px', background: copied ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.08)', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.09)', color: copied ? '#3d7a6e' : '#548C92', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'var(--font)', fontWeight: 600, transition: 'all 0.15s', flexShrink: 0 }}
+            style={{ padding: '9px 14px', background: copied ? 'rgba(91,168,111,0.1)' : 'rgba(132,215,216,0.08)', border: 'none', borderLeft: '1px solid rgba(232,226,216,0.09)', color: copied ? '#5BA86F' : '#548C92', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'var(--font)', fontWeight: 600, transition: 'all 0.15s', flexShrink: 0 }}
           >
             {copied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy Key</>}
           </button>
         </div>
-        <p style={{ fontSize: 11, color: 'rgba(120,110,80,0.4)', marginTop: 8, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5 }}>
           Keep this key secret. Regenerating will revoke all existing integrations.
         </p>
       </SettingsCard>

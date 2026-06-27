@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import './AlertsPage.css';
 import api from '../services/api';
+import { ClampText } from '../components/common/ClampText';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -35,6 +36,20 @@ interface NewsItem {
 function parseAgentOutput(s: string | null): Record<string, any> {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
+}
+
+/**
+ * The LLM sometimes returns a full descriptive sentence as the "event" field
+ * instead of a short headline — that reads fine in the prose summary lower
+ * on the page, but makes a terrible list title. Prefer the first sentence if
+ * it's short enough, otherwise hard-truncate at a word boundary.
+ */
+function shortTitle(text: string, maxLen = 64): string {
+  const trimmed = (text || '').trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  const firstSentence = trimmed.match(/^[^.!?]+[.!?]/)?.[0]?.trim();
+  if (firstSentence && firstSentence.length <= maxLen) return firstSentence;
+  return `${trimmed.slice(0, maxLen).replace(/\s+\S*$/, '')}…`;
 }
 
 function relativeTime(iso?: string | null): string {
@@ -98,7 +113,7 @@ function toView(a: ApiAlert): AlertView {
   const sector = (tm.affected_product_name ?? tm.product) || '—';
   return {
     id: a.id,
-    title: tm.event || a.summary || 'Trade risk alert',
+    title: shortTitle(tm.event || a.summary || 'Trade risk event'),
     country,
     sector,
     severity: a.severity,
@@ -121,11 +136,11 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 const EVENT_COLOR: Record<string, string> = {
-  pipeline_start: '#f59e0b', profile_loaded: '#94a3b8', crew_start: '#a78bfa',
-  agent_start: '#60a5fa', agent_done: '#10b981', agent_result: '#14b8a6',
-  db_write: '#34d399', db_query: '#6ee7b7', rss_cleared: '#94a3b8',
-  headlines_saved: '#6ee7b7', run_log: '#94a3b8', pipeline_done: '#10b981',
-  hs_correction: '#f59e0b', crew_error: '#ef4444',
+  pipeline_start: '#84D7D8', profile_loaded: '#9DAAAD', crew_start: '#548C92',
+  agent_start: '#84D7D8', agent_done: '#5BA86F', agent_result: '#548C92',
+  db_write: '#5BA86F', db_query: '#93CDA3', rss_cleared: '#9DAAAD',
+  headlines_saved: '#93CDA3', run_log: '#9DAAAD', pipeline_done: '#5BA86F',
+  hs_correction: '#E0A23B', crew_error: '#E24B4A',
 };
 
 export function AlertsPage() {
@@ -326,7 +341,7 @@ export function AlertsPage() {
         finding: compFinding,
       },
       {
-        key: 'final', name: 'CoastGuard Final Verdict', done: !!adv.verdict, final: true,
+        key: 'final', name: 'Suppliance Final Verdict', done: !!adv.verdict, final: true,
         finding: adv.verdict
           ? `${adv.verdict}${adv.confidence != null ? ` (${Math.round(adv.confidence * 100)}% confidence)` : ''} — ${advRecommended || ''}`
           : null,
@@ -370,8 +385,8 @@ export function AlertsPage() {
       adversarial: 'Adversarial',
     };
     const colors: Record<string, string> = {
-      tariff_monitor: '#f59e0b', impact_calculator: '#ef4444',
-      alternatives_finder: '#14b8a6', import_compliance: '#10b981', adversarial: '#a78bfa',
+      tariff_monitor: '#84D7D8', impact_calculator: '#E24B4A',
+      alternatives_finder: '#5BA86F', import_compliance: '#548C92', adversarial: '#E0A23B',
     };
     return order.map((key) => ({
       key, label: labels[key], color: colors[key], done: !!agentResults[key],
@@ -383,7 +398,7 @@ export function AlertsPage() {
       {/* ── INBOX ─────────────────────────────────────────────────────────── */}
       <aside className="ap-inbox">
         <div className="ap-inbox-header">
-          <span className="ap-inbox-title">Incidents</span>
+          <span className="ap-inbox-title">Past Events</span>
           <span className="ap-inbox-count">{filtered.length}</span>
         </div>
 
@@ -473,19 +488,19 @@ export function AlertsPage() {
                     <div
                       className="ap-live-agent-node"
                       style={{
-                        borderColor: ag.done ? ag.color : 'rgba(150,140,100,0.25)',
+                        borderColor: ag.done ? ag.color : 'rgba(157,170,173,0.25)',
                         background: ag.done ? `${ag.color}22` : 'transparent',
-                        color: ag.done ? ag.color : 'rgba(150,140,100,0.4)',
+                        color: ag.done ? ag.color : 'var(--text-muted)',
                       }}
                     >
                       {ag.done ? '✓' : i + 1}
                     </div>
                     {i < liveAgents.length - 1 && (
-                      <div className="ap-live-agent-line" style={{ background: ag.done ? `${ag.color}55` : 'rgba(150,140,100,0.1)' }} />
+                      <div className="ap-live-agent-line" style={{ background: ag.done ? `${ag.color}55` : 'rgba(157,170,173,0.15)' }} />
                     )}
                   </div>
                   <div className="ap-live-agent-body">
-                    <span className="ap-live-agent-name" style={{ color: ag.done ? ag.color : 'rgba(150,140,100,0.5)' }}>
+                    <span className="ap-live-agent-name" style={{ color: ag.done ? ag.color : 'var(--text-muted)' }}>
                       {ag.label}
                     </span>
                     {ag.done && agentResults[ag.key] && (
@@ -551,7 +566,11 @@ export function AlertsPage() {
             <section className="ap-section">
               <h2 className="ap-section-title">Incident Summary</h2>
               <div className="ap-prose-card">
-                {detail.summaryText && <p className="ap-prose">{detail.summaryText}</p>}
+                {detail.summaryText && (
+                  <p className="ap-prose">
+                    <ClampText text={detail.summaryText} maxChars={200} />
+                  </p>
+                )}
                 <div className="ap-context-row" style={detail.summaryText ? undefined : { borderTop: 'none', paddingTop: 0 }}>
                   <div className="ap-context-cell">
                     <span className="ap-context-label">Country</span>
@@ -646,7 +665,7 @@ export function AlertsPage() {
                         {!step.done && <span className="ap-tl-tag ap-tl-tag--pending">Not run</span>}
                       </div>
                       <p className={`ap-tl-finding${step.done ? '' : ' ap-tl-finding--muted'}`}>
-                        {step.finding || 'Not run for this alert.'}
+                        {step.finding ? <ClampText text={step.finding} maxChars={140} /> : 'Not run for this event.'}
                       </p>
                     </div>
                   </div>
@@ -659,7 +678,7 @@ export function AlertsPage() {
               <h2 className="ap-section-title">Source Intelligence</h2>
               <div className="ap-sources">
                 {detail.alertSources.length === 0 && detail.relatedNews.length === 0 && (
-                  <div className="ap-prose-card"><p className="ap-prose" style={{ margin: 0 }}>No linked sources for this alert.</p></div>
+                  <div className="ap-prose-card"><p className="ap-prose" style={{ margin: 0 }}>No linked sources for this event.</p></div>
                 )}
                 {detail.alertSources.map((s, i) => (
                   <a key={`src-${i}`} className="ap-source" href={s.url} target="_blank" rel="noreferrer">
@@ -716,7 +735,7 @@ export function AlertsPage() {
                       </div>
                     </div>
                     {detail.topAlt.stability_note && (
-                      <p style={{ fontSize: 11, color: 'rgba(180,170,140,0.8)', marginTop: 10, lineHeight: 1.5 }}>
+                      <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 10, lineHeight: 1.5 }}>
                         {detail.topAlt.stability_note}
                       </p>
                     )}
@@ -763,8 +782,8 @@ export function AlertsPage() {
         {runPhase !== 'running' && !selected && (
           <div className="ap-empty">
             <div className="ap-empty-icon">◫</div>
-            <p className="ap-empty-title">Select an incident</p>
-            <p className="ap-empty-sub">Choose an alert from the left panel, or click <strong>Run New Analysis</strong> to trigger a live pipeline run</p>
+            <p className="ap-empty-title">Select an event</p>
+            <p className="ap-empty-sub">Choose an event from the left panel, or click <strong>Run New Analysis</strong> to trigger a live pipeline run</p>
           </div>
         )}
       </main>

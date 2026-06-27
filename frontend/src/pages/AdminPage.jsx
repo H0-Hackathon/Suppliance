@@ -40,7 +40,7 @@ export function AdminPage() {
         Admin Panel
       </h1>
       <p style={{ fontSize: 13, color: '#64748B', marginBottom: 24 }}>
-        Internal CoastGuard admin — for development use.
+        Internal Suppliance admin — for development use.
       </p>
 
       {/* Backend health */}

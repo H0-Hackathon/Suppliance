@@ -1,34 +1,29 @@
 import React from 'react';
 import {
   RefreshCw,
-  Globe,
   AlertTriangle,
-  Layers,
   DollarSign,
   Users,
   MapPin,
   Activity,
 } from 'lucide-react';
 import { TradeGlobe, DisruptionPoint, TradeGlobeSupplier, TradeGlobeHQ, TradeGlobeAlternateSupplier } from '../components/TradeGlobe';
-import { AgentDebugPanel, AgentState, AgentDebugTarget } from '../components/AgentDebugPanel';
 import { NewsTicker } from '../components/dashboard/NewsTicker';
 import { LiveAgentResults, AgentResults } from '../components/dashboard/LiveAgentResults';
+import { MetricCard } from '../components/common/MetricCard';
+import { TopProgressBar } from '../components/common/TopProgressBar';
+import { WaveAccent } from '../components/common/WaveAccent';
+import { GlowOrb } from '../components/common/GlowOrb';
+import { ICON_SIZE, ICON_STROKE } from '../components/common/iconDefaults';
 import api from '../services/api';
 
 /**
- * AlertsDashboard — Main CoastGuard command center.
+ * Dashboard — Suppliance command center.
  *
- * Visual design / layout: frontend redesign (map-centric command center).
- * Backend integration preserved from the Samved branch:
- *   - GET  /api/v2/alerts?customer_id=N            alert feed
- *   - GET  /api/v2/disruptions?customer_id=N       globe markers
- *   - GET  /api/v2/suppliers + /api/v2/geo/...     suppliers with coordinates
- *   - POST /api/v2/monitor/run                     trigger pipeline run
- *   - GET  /api/v2/monitor/pipeline-log?since=N    poll live log during run
- *   - PUT  /api/v2/alerts/{id}/dismiss|resolve     alert actions
- *
- * Customer is resolved server-side from the Clerk session token (attached
- * automatically by the axios interceptor in services/api.js).
+ * Backend integration (customer resolved server-side from the Clerk token):
+ *   GET  /v2/alerts · /v2/disruptions · /v2/suppliers · /v2/geo/supplier-coords
+ *   GET  /v2/settings (HQ) · /v2/auth/me (auto-run gate)
+ *   POST /v2/monitor/run · GET /v2/monitor/pipeline-log?since=N
  */
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
@@ -66,28 +61,8 @@ interface SupplierWithGeo extends ApiSupplier {
   countryCode: string | null;
 }
 
-export interface MonitorTarget {
-  supplier_country: string;
-  country_name: string;
-  hs_code: string;
-  supplier_name: string | null;
-  product_category: string | null;
-}
-
-interface DebugState {
-  target?: AgentDebugTarget | null;
-  targetIndex?: number;
-  totalTargets?: number;
-  agentStates: Record<string, AgentState>;
-  logs: string[];
-}
-
-const MAP_LAYERS = [
-  { id: 'suppliers',   label: 'Suppliers',       color: '#10b981' },
-  { id: 'routes',      label: 'Exposure Routes', color: '#f59e0b' },
-  { id: 'risk',        label: 'Risk Zones',      color: '#dc2626' },
-  { id: 'alt',         label: 'Alternatives',    color: '#14b8a6' },
-];
+// Pipeline-log event → cumulative progress percentage (monotonic).
+const AGENT_COUNT = 5;
 
 export const AlertsDashboard: React.FC = () => {
   const [alerts, setAlerts] = React.useState<ApiAlert[]>([]);
@@ -96,22 +71,16 @@ export const AlertsDashboard: React.FC = () => {
   const [hqLocation, setHqLocation] = React.useState<TradeGlobeHQ | null>(null);
   const [alternateSuppliers, setAlternateSuppliers] = React.useState<TradeGlobeAlternateSupplier[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
-  const [debugState, setDebugState] = React.useState<DebugState | null>(null);
-  const [activeLayers, setActiveLayers] = React.useState<Set<string>>(
-    new Set(['suppliers', 'routes', 'risk'])
-  );
+  const [progressPct, setProgressPct] = React.useState<number | null>(null);
   const [lastSync] = React.useState(() => new Date().toISOString());
 
-  // Real agent outputs (TariffMonitor, ImpactCalculator, AlternativesFinder,
-  // ImportCompliance, Adversarial), surfaced live from the SSE stream during a
-  // run and from the latest persisted alert (TariffAlert.agent_output) on load.
   const [agentResults, setAgentResults] = React.useState<AgentResults>({});
   const [agentStatus, setAgentStatus] = React.useState<Record<string, 'running' | 'done'>>({});
   const [agentsUpdatedAt, setAgentsUpdatedAt] = React.useState<string | null>(null);
   const [agentSupplier, setAgentSupplier] = React.useState<string | null>(null);
   const [lastRunAt, setLastRunAt] = React.useState<string | null>(null);
 
-  // ── Data fetching (backend integration) ──────────────────────────────────
+  // ── Data fetching ─────────────────────────────────────────────────────────
   async function fetchAlerts() {
     const res = await api.get<ApiAlert[]>('/v2/alerts');
     setAlerts(res.data);
@@ -137,8 +106,6 @@ export const AlertsDashboard: React.FC = () => {
     setSuppliers(withGeo);
   }
 
-  // HQ/destination pin — resolved server-side from this customer's BusinessProfile
-  // (destination_country/destination_port), then geocoded the same way suppliers are.
   async function fetchHQLocation() {
     try {
       const res = await api.get<{ destination_country: string | null; destination_port: string | null }>('/v2/settings');
@@ -166,25 +133,20 @@ export const AlertsDashboard: React.FC = () => {
       } catch (err) {
         console.error('Failed to load dashboard data', err);
       }
-
-      // Dashboard (globe + suppliers) is now visible — silently auto-run the
-      // pipeline exactly once for accounts that have never had a run, without
-      // blocking the page on it.
+      // Auto-run the pipeline exactly once for accounts that have never run it.
       try {
         const me = await api.get<{ has_run_pipeline: boolean }>('/v2/auth/me');
         if (!me.data.has_run_pipeline) {
           handleRunMonitor();
         }
       } catch {
-        // best-effort — skip auto-run if /auth/me fails
+        /* best-effort */
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Alternate suppliers surfaced by the latest AlternativesFinder run — geocoded
-  // the same way the customer's own suppliers are, so the globe can swap to
-  // routes from these instead of the (now-disrupted) main suppliers.
+  // Geocode alternate suppliers from the latest AlternativesFinder output.
   React.useEffect(() => {
     const options: any[] = agentResults.alternatives_finder?.options
       ?? agentResults.alternatives_finder?.alternatives
@@ -222,9 +184,7 @@ export const AlertsDashboard: React.FC = () => {
     return () => { cancelled = true; };
   }, [agentResults]);
 
-  // Surface the most recent persisted agent run (TariffAlert.agent_output) so
-  // real Agent 1/2 data is visible on page load without re-running. Skipped
-  // while a live run is streaming (SSE updates take precedence).
+  // Surface the most recent persisted agent run on load (skipped while live).
   React.useEffect(() => {
     if (isRunning) return;
     for (const a of alerts) {
@@ -238,36 +198,31 @@ export const AlertsDashboard: React.FC = () => {
           break;
         }
       } catch {
-        // non-JSON agent_output — skip
+        /* non-JSON — skip */
       }
     }
   }, [alerts, isRunning]);
 
-  // ── Alert actions (backend integration) ──────────────────────────────────
-  async function handleDismiss(id: number) {
-    await api.put(`/v2/alerts/${id}/dismiss`);
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'dismissed' } : a)));
-  }
-
-  async function handleResolve(id: number) {
-    await api.put(`/v2/alerts/${id}/resolve`);
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'resolved' } : a)));
-  }
-
-  // ── Monitor run: POST /monitor/run + poll /monitor/pipeline-log ──────────
-  // Fires the synchronous pipeline endpoint and polls the live log every
-  // 1.5 s so the user sees text progress during the 1–3 min run.
-  // Structured `agent_result` events (emitted by the pipeline after parsing)
-  // are picked up by the poller and surface in LiveAgentResults + AgentDebugPanel.
+  // ── Monitor run + live progress ───────────────────────────────────────────
   async function handleRunMonitor() {
+    if (isRunning) return;
     setIsRunning(true);
-    setDebugState({ agentStates: {}, logs: [] });
+    setProgressPct(0);
     setAgentResults({});
     setAgentStatus({});
     setAgentsUpdatedAt(null);
     setAgentSupplier(null);
 
     let pollSince = 0;
+    let maxPct = 0;
+    let agentsDone = 0;
+    let agentsStarted = 0;
+    const bump = (p: number) => {
+      if (p > maxPct) {
+        maxPct = p;
+        setProgressPct(p);
+      }
+    };
 
     const poll = async () => {
       try {
@@ -278,34 +233,38 @@ export const AlertsDashboard: React.FC = () => {
         const { events, total } = res.data;
         pollSince = total;
         for (const ev of events) {
+          // progress milestones
+          switch (ev.event) {
+            case 'pipeline_start': bump(5); break;
+            case 'profile_loaded': bump(10); break;
+            case 'crew_start': bump(15); break;
+            case 'agent_start':
+              agentsStarted = Math.min(agentsStarted + 1, AGENT_COUNT);
+              bump(Math.min(15 + agentsStarted * 12 - 6, 88));
+              break;
+            case 'pipeline_done': bump(100); break;
+            default: break;
+          }
+
           if (ev.event === 'agent_result') {
+            agentsDone = Math.min(agentsDone + 1, AGENT_COUNT);
+            bump(Math.min(15 + agentsDone * 15, 92));
             try {
               const payload = JSON.parse(ev.msg) as { agent: string; output: Record<string, unknown> };
               const { agent, output } = payload;
               setAgentResults((prev) => ({ ...prev, [agent]: output }));
               setAgentStatus((prev) => ({ ...prev, [agent]: 'done' }));
-              setDebugState((prev) =>
-                prev
-                  ? { ...prev, agentStates: { ...prev.agentStates, [agent]: { status: 'done', output } } }
-                  : prev,
-              );
               setAgentsUpdatedAt(new Date().toISOString());
               if (agent === 'tariff_monitor') {
                 setAgentSupplier((output as { country?: string }).country ?? null);
               }
             } catch {
-              // malformed agent_result payload — skip
+              /* malformed — skip */
             }
-          } else {
-            // Text log event — surface in the debug log panel
-            const text = `[${ev.event}] ${ev.msg}`;
-            setDebugState((prev) =>
-              prev ? { ...prev, logs: [...prev.logs.slice(-300), text] } : prev,
-            );
           }
         }
       } catch {
-        // Poll failure — ignore, will retry on next interval
+        /* poll failure — retry next interval */
       }
     };
 
@@ -313,8 +272,8 @@ export const AlertsDashboard: React.FC = () => {
 
     try {
       await api.post('/v2/monitor/run');
-      // Final poll to catch any events emitted in the last interval window
       await poll();
+      bump(100);
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
       setLastRunAt(new Date().toISOString());
     } catch (err) {
@@ -322,16 +281,10 @@ export const AlertsDashboard: React.FC = () => {
     } finally {
       clearInterval(pollInterval);
       setIsRunning(false);
+      // Let the bar finish at 100% then fade out.
+      setProgressPct(100);
+      setTimeout(() => setProgressPct(null), 1000);
     }
-  }
-
-  function toggleLayer(id: string) {
-    setActiveLayers((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -339,13 +292,6 @@ export const AlertsDashboard: React.FC = () => {
   const critical = active.filter((a) => a.severity === 'critical').length;
   const countryCount = new Set(suppliers.map((s) => s.country)).size;
 
-  // Real direct-cost figure from Agent 2 (ImpactCalculator); null until a run.
-  const agentMonitor = agentResults.tariff_monitor;
-  const agentImpact = agentResults.impact_calculator;
-  const exposureValue = agentImpact?.direct_cost ?? agentImpact?.extra_cost_usd ?? null;
-
-  // ── KPI cards derived from real monitor results (no hardcoded values) ──────
-  // Cumulative direct-cost exposure across active alerts' ImpactCalculator output.
   const activeParsed = active.map((a) => {
     try { return a.agent_output ? JSON.parse(a.agent_output) : {}; } catch { return {}; }
   });
@@ -361,300 +307,176 @@ export const AlertsDashboard: React.FC = () => {
   const fmtMoney = (n: number) =>
     n >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${Math.round(n)}`;
 
-  // Each card is only shown when its underlying real data exists; otherwise it
-  // is hidden (no placeholder values).
-  const kpiCards = [
-    {
-      key: 'exposure',
-      available: totalExposure > 0,
-      label: 'Trade Exposure',
-      value: fmtMoney(totalExposure),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: DollarSign, color: '#dc2626', bg: 'rgba(220,38,38,0.07)', border: 'rgba(220,38,38,0.18)',
-    },
-    {
-      key: 'proposed',
-      available: proposedSuppliersCount > 0,
-      label: 'Proposed Suppliers',
-      value: String(proposedSuppliersCount),
-      sub: 'before compliance review',
-      icon: Users, color: '#ea580c', bg: 'rgba(234,88,12,0.07)', border: 'rgba(234,88,12,0.18)',
-    },
-    {
-      key: 'events',
-      available: active.length > 0,
-      label: 'Critical Trade Events',
-      value: String(criticalEvents),
-      sub: `${active.length} active alert${active.length !== 1 ? 's' : ''}`,
-      icon: AlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)',
-    },
-    {
-      key: 'countries',
-      available: suppliers.length > 0,
-      label: 'Countries Monitored',
-      value: String(countryCount),
-      sub: `${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`,
-      icon: MapPin, color: '#10b981', bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)',
-    },
-  ].filter((c) => c.available);
-
-  // Suppliers with resolved coordinates feed the globe (backend-driven risk).
   const tradeGlobeSuppliers: TradeGlobeSupplier[] = suppliers
     .filter((s): s is SupplierWithGeo & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
     .map((s) => ({ name: s.name, country: s.country, countryCode: s.countryCode, latitude: s.latitude, longitude: s.longitude }));
 
   const syncTime = new Date(lastSync).toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour: '2-digit', minute: '2-digit',
   });
 
   return (
-    <main className="page-with-sidebar" style={{
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--bg)',
-      overflow: 'hidden',
-    }}>
-      {/* ── Top Hero Bar ── */}
-      <div style={{
-        padding: '12px 24px',
-        borderBottom: '1px solid rgba(245,158,11,0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-        background: 'rgba(14,14,10,0.95)',
-        backdropFilter: 'blur(12px)',
-      }}>
+    <main
+      className="page-with-sidebar"
+      style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}
+    >
+      <TopProgressBar percent={progressPct} label="Generating analysis" />
+
+      {/* ── Header ── */}
+      <header
+        style={{
+          padding: '20px 32px',
+          borderBottom: '1px solid var(--border-soft)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <WaveAccent style={{ top: -10, right: 0, opacity: 0.9, zIndex: -1 }} />
         <div>
-          <h1 style={{
-            fontSize: 17,
-            fontWeight: 800,
-            color: '#e8e3d8',
-            letterSpacing: '-0.3px',
-            fontFamily: 'Inter, sans-serif',
-            lineHeight: 1,
-            marginBottom: 4,
-          }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
             Trade Risk Intelligence
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'rgba(130,120,90,0.8)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{
-                width: 5, height: 5, borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 5px #10b981',
-                display: 'inline-block',
-                animation: 'pulse-dot 2s ease-in-out infinite',
-              }} />
-              Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
-            </span>
-            <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
-              Updated {syncTime}
-            </span>
-            {critical > 0 && (
-              <>
-                <span style={{ color: 'rgba(100,90,60,0.4)' }}>|</span>
-                <span style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  color: '#dc2626', fontWeight: 600,
-                }}>
-                  <AlertTriangle size={11} />
-                  {critical} critical alert{critical !== 1 ? 's' : ''}
-                </span>
-              </>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 13, color: 'var(--text-muted)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--safe)', boxShadow: '0 0 6px var(--safe)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+            Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
+            <span style={{ color: 'var(--text-dim)' }}>·</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>Updated {syncTime}</span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.18)',
-            borderRadius: 6,
-            padding: '5px 12px',
-            fontSize: 10,
-            color: '#6ee7b7',
-            fontWeight: 600,
-          }}>
-            <Activity size={10} color="#10b981" />
-            SYSTEMS NOMINAL
-          </div>
-
+        <div style={{ position: 'relative', display: 'flex' }}>
+          <GlowOrb color="var(--seafoam)" size={140} blur={50} opacity={0.3} style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
           <button
             className="btn-accent"
             onClick={handleRunMonitor}
             disabled={isRunning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}
           >
-            <RefreshCw
-              size={12}
-              style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }}
-            />
-            {isRunning ? 'Scanning…' : 'Run Analysis'}
+            <RefreshCw size={ICON_SIZE} strokeWidth={ICON_STROKE} style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }} />
+            {isRunning ? 'Analyzing…' : 'Run Analysis'}
           </button>
+        </div>
+      </header>
+
+      {/* ── Stat row — faint starfield echo in the surrounding gutters so the
+            globe's space/ocean texture feels continuous with the rest of the
+            canvas, instead of being isolated inside one box ── */}
+      <div
+        style={{
+          padding: '20px 32px 0',
+          flexShrink: 0,
+          backgroundImage:
+            'radial-gradient(1px 1px at 6% 15%, rgba(232,226,216,0.4), transparent),' +
+            'radial-gradient(1px 1px at 96% 80%, rgba(132,215,216,0.35), transparent),' +
+            'radial-gradient(1px 1px at 50% 90%, rgba(232,226,216,0.3), transparent)',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          <MetricCard
+            hero
+            label="Trade Exposure"
+            value={fmtMoney(totalExposure)}
+            sub={`${active.length} active event${active.length !== 1 ? 's' : ''}`}
+            icon={DollarSign}
+            accent={totalExposure > 0 ? 'var(--critical)' : undefined}
+          />
+          <MetricCard
+            label="Proposed Suppliers"
+            value={proposedSuppliersCount}
+            sub="before compliance review"
+            icon={Users}
+            accent={proposedSuppliersCount > 0 ? 'var(--seafoam)' : undefined}
+          />
+          <MetricCard
+            label="Critical Events"
+            value={criticalEvents}
+            sub={`${active.length} active event${active.length !== 1 ? 's' : ''}`}
+            icon={AlertTriangle}
+            accent={criticalEvents > 0 ? 'var(--warning)' : undefined}
+          />
+          <MetricCard
+            label="Countries Monitored"
+            value={countryCount}
+            sub={`${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''}`}
+            icon={MapPin}
+            accent={countryCount > 0 ? 'var(--safe)' : undefined}
+          />
         </div>
       </div>
 
-      {/* ── Main Body ── */}
-      <div style={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: '1fr 276px',
-        minHeight: 0,
-        overflow: 'hidden',
-      }}>
-        {/* ── Centre: Map ── */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
+      {/* ── Main body: globe + right rail ── */}
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: '1fr 380px',
+          gap: 16,
+          padding: '20px 32px',
           minHeight: 0,
           overflow: 'hidden',
-        }}>
-          {/* Map container */}
-          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <TradeGlobe
-              suppliers={tradeGlobeSuppliers}
-              disruptions={disruptions}
-              hqLocation={hqLocation}
-              alternateSuppliers={alternateSuppliers}
-            />
-
-            {/* Layer toggles overlay */}
-            <div style={{
-              position: 'absolute',
-              top: 14, right: 14,
-              background: 'rgba(14,14,10,0.88)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(245,158,11,0.12)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              zIndex: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'rgba(150,140,100,0.7)',
-                display: 'flex', alignItems: 'center', gap: 5,
-                marginBottom: 2,
-              }}>
-                <Layers size={9} color="#f59e0b" />
-                <span>Map Layers</span>
-              </div>
-              {MAP_LAYERS.map((layer) => {
-                const on = activeLayers.has(layer.id);
-                return (
-                  <button
-                    key={layer.id}
-                    onClick={() => toggleLayer(layer.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 7,
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      padding: '2px 0',
-                    }}
-                  >
-                    <div style={{
-                      width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                      background: on ? layer.color : 'rgba(255,255,255,0.06)',
-                      border: `1px solid ${on ? layer.color : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'background 0.15s',
-                    }} />
-                    <span style={{
-                      fontSize: 10.5,
-                      color: on ? '#e8e3d8' : 'rgba(130,120,90,0.6)',
-                      fontFamily: 'Inter, sans-serif',
-                    }}>
-                      {layer.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-          </div>
-
-          {/* Bottom: live trade/supply-chain news ticker */}
-          <div style={{ height: 56, flexShrink: 0 }}>
-            <NewsTicker lastRunAt={lastRunAt} />
-          </div>
+          position: 'relative',
+        }}
+      >
+        <GlowOrb color="var(--seafoam)" size={320} blur={90} opacity={0.22} style={{ top: -60, left: '28%' }} />
+        {/* Globe */}
+        <div
+          style={{
+            position: 'relative',
+            minHeight: 0,
+            borderRadius: 12,
+            overflow: 'hidden',
+            border: '1px solid var(--border-soft)',
+            background: 'var(--card)',
+          }}
+        >
+          <TradeGlobe
+            suppliers={tradeGlobeSuppliers}
+            disruptions={disruptions}
+            hqLocation={hqLocation}
+            alternateSuppliers={alternateSuppliers}
+          />
         </div>
 
-        {/* ── Right Sidebar ── */}
-        <div style={{
-          borderLeft: '1px solid rgba(245,158,11,0.08)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          background: 'rgba(14,14,10,0.5)',
-        }}>
-          {/* Intelligence KPI cards — derived from real monitor results;
-              individual cards hide when their underlying data is unavailable. */}
-          {kpiCards.length > 0 && (
-            <div style={{
-              padding: '12px 14px',
-              borderBottom: '1px solid rgba(245,158,11,0.07)',
+        {/* Right rail — live agent reasoning (frosted glass over the mesh background) */}
+        <div
+          style={{
+            borderRadius: 12,
+            border: '1px solid var(--border-soft)',
+            background: 'rgba(40, 82, 96, 0.72)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: 'var(--shadow-sm)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minHeight: 0,
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-soft)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
               flexShrink: 0,
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-                marginBottom: 9,
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <Globe size={9} color="#f59e0b" />
-                Trade Intelligence
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-                {kpiCards.map(({ key, label, value, sub, icon: Icon, color, bg, border }) => (
-                  <div key={key} style={{
-                    background: bg,
-                    border: `1px solid ${border}`,
-                    borderRadius: 8,
-                    padding: '10px 11px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                      <Icon size={10} color={color} />
-                      <span style={{ fontSize: 8.5, color: 'rgba(150,140,100,0.7)', lineHeight: 1.2 }}>{label}</span>
-                    </div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 800,
-                      color, fontVariantNumeric: 'tabular-nums',
-                      lineHeight: 1, marginBottom: 3,
-                    }}>
-                      {value}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'rgba(130,120,90,0.7)' }}>{sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Analysis Pipeline — live agent debug stream while running, else status */}
-          <div style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: '12px 14px',
-            scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(245,158,11,0.1) transparent',
-          }}>
-            <div style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-              textTransform: 'uppercase', color: 'rgba(150,140,100,0.55)',
-              marginBottom: 9,
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}>
-              <Activity size={9} color="#f59e0b" />
-              Live Agent Results
-            </div>
-
-            {/* Real agent output: TariffMonitor, ImpactCalculator, and (real
-                LLM mode) AlternativesFinder, ImportCompliance, Adversarial */}
+            }}
+          >
+            <Activity size={ICON_SIZE} strokeWidth={ICON_STROKE} color="var(--seafoam)" />
+            <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>Live Agent Results</span>
+            {critical > 0 && (
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--critical)', fontWeight: 600 }}>
+                <AlertTriangle size={13} />
+                {critical} critical
+              </span>
+            )}
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px', minHeight: 0 }}>
             <LiveAgentResults
               agents={agentResults}
               agentStatus={agentStatus}
@@ -662,18 +484,13 @@ export const AlertsDashboard: React.FC = () => {
               updatedAt={agentsUpdatedAt}
               live={isRunning}
             />
-
-            {/* Raw agent stream (start/done/log events) while a run is in flight */}
-            {debugState && (
-              <div style={{ marginTop: 10 }}>
-                <AgentDebugPanel
-                  agentStates={debugState.agentStates}
-                  logs={debugState.logs}
-                />
-              </div>
-            )}
           </div>
         </div>
+      </div>
+
+      {/* ── Ticker ── */}
+      <div style={{ height: 52, flexShrink: 0 }}>
+        <NewsTicker lastRunAt={lastRunAt} />
       </div>
     </main>
   );

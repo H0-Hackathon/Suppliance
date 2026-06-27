@@ -93,30 +93,31 @@ export const SettingsPage: React.FC = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--bg, #0e0e0e)',
+      marginLeft: 'var(--sidebar-w)',
+      background: 'var(--bg)',
       display: 'flex',
       flexDirection: 'column',
     }}>
       {/* ── Page header ── */}
       <div style={{
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: '1px solid var(--border-soft)',
         padding: '28px 40px 20px',
         display: 'flex', alignItems: 'center', gap: 14,
       }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: 'linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(84,140,146,0.1) 100%)',
-          border: '1px solid rgba(245,158,11,0.2)',
+          width: 40, height: 40, borderRadius: 10,
+          background: 'rgba(132,215,216,0.10)',
+          border: '1px solid var(--border-soft)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <Settings size={16} color="#548C92" />
+          <Settings size={18} color="var(--seafoam)" />
         </div>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ocean, #548C92)', letterSpacing: '-0.4px' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.02em' }}>
             Settings
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(160,150,120,0.55)', marginTop: 1 }}>
-            Personalise CoastGuard to match your supply chain footprint
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 2 }}>
+            Personalise Suppliance to match your supply chain footprint
           </div>
         </div>
       </div>
@@ -126,9 +127,9 @@ export const SettingsPage: React.FC = () => {
 
         {/* ── Sidebar nav ── */}
         <nav style={{
-          width: 220, flexShrink: 0,
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          padding: '20px 12px',
+          width: 240, flexShrink: 0,
+          borderRight: '1px solid var(--border-soft)',
+          padding: '24px 14px',
         }}>
           {SECTIONS.map(({ id, icon: Icon, label, sub }) => {
             const isActive = active === id;
@@ -137,31 +138,32 @@ export const SettingsPage: React.FC = () => {
                 key={id}
                 onClick={() => setActive(id)}
                 style={{
-                  width: '100%', textAlign: 'left', padding: '10px 12px',
+                  width: '100%', textAlign: 'left', padding: '12px 14px',
                   borderRadius: 9, marginBottom: 4,
-                  background: isActive ? 'rgba(245,158,11,0.08)' : 'transparent',
-                  border: `1px solid ${isActive ? 'rgba(245,158,11,0.2)' : 'transparent'}`,
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-                  transition: 'all 0.15s', fontFamily: 'var(--font)',
+                  background: isActive ? 'rgba(132,215,216,0.12)' : 'transparent',
+                  border: 'none',
+                  boxShadow: isActive ? 'inset 2px 0 0 var(--seafoam)' : 'none',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+                  transition: 'background 0.15s', fontFamily: 'var(--font)',
                 }}
               >
-                <Icon size={15} color={isActive ? '#548C92' : 'rgba(160,150,120,0.4)'} style={{ flexShrink: 0 }} />
+                <Icon size={16} color={isActive ? 'var(--seafoam)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--ocean, #548C92)' : 'rgba(200,190,160,0.6)', lineHeight: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: isActive ? 600 : 500, color: isActive ? 'var(--foreground)' : 'var(--text-muted)', lineHeight: 1.2 }}>
                     {label}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'rgba(140,130,100,0.4)', marginTop: 2 }}>{sub}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 3 }}>{sub}</div>
                 </div>
-                {isActive && <ChevronRight size={12} color="rgba(84,140,146,0.4)" />}
+                {isActive && <ChevronRight size={14} color="var(--text-muted)" />}
               </button>
             );
           })}
         </nav>
 
         {/* ── Content panel ── */}
-        <main style={{ flex: 1, padding: '32px 40px', overflowY: 'auto', maxWidth: 780 }}>
+        <main style={{ flex: 1, padding: '32px 40px', overflowY: 'auto', maxWidth: 820 }}>
           {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(160,150,120,0.5)', fontSize: 13, paddingTop: 40 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 14, paddingTop: 40 }}>
               <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
               Loading settings…
             </div>

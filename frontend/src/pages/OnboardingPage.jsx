@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { Building2, Package, Globe, Tag, ChevronRight, ChevronLeft, Check, Anchor, ChevronDown, Plus, X } from 'lucide-react';
+import { Logo } from '../components/common/Logo';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -139,13 +140,13 @@ const STEPS = [
 const s = {
   input: {
     width:'100%', padding:'10px 14px',
-    background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)',
+    background:'rgba(232,226,216,0.05)', border:'1px solid rgba(232,226,216,0.1)',
     borderRadius:8, color:'white', fontSize:13, fontFamily:'Inter, sans-serif',
     outline:'none', transition:'border-color 0.2s', boxSizing:'border-box',
   },
   label: {
     display:'block', fontSize:11, fontWeight:600,
-    color:'rgba(255,255,255,0.45)', marginBottom:6,
+    color:'rgba(232,226,216,0.45)', marginBottom:6,
     letterSpacing:'0.05em', textTransform:'uppercase',
   },
 };
@@ -164,14 +165,14 @@ const PillSelect = ({ options, value, onChange, colorFn }) => (
       const v = typeof opt === 'object' ? opt.value : opt;
       const l = typeof opt === 'object' ? opt.label : opt;
       const sel = value === v || value === l;
-      const accent = colorFn ? colorFn(l) : 'rgba(245,158,11,0.15)';
-      const border = colorFn ? colorFn(l, true) : 'rgba(245,158,11,0.5)';
+      const accent = colorFn ? colorFn(l) : 'rgba(132,215,216,0.15)';
+      const border = colorFn ? colorFn(l, true) : 'rgba(132,215,216,0.5)';
       return (
         <button key={l} type="button" onClick={() => onChange(v)}
           style={{ padding:'7px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'Inter, sans-serif',
-            background: sel ? accent : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${sel ? border : 'rgba(255,255,255,0.08)'}`,
-            color: sel ? 'white' : 'rgba(255,255,255,0.4)', transition:'all 0.15s' }}>
+            background: sel ? accent : 'rgba(232,226,216,0.04)',
+            border: `1px solid ${sel ? border : 'rgba(232,226,216,0.08)'}`,
+            color: sel ? 'white' : 'rgba(232,226,216,0.4)', transition:'all 0.15s' }}>
           {l}
         </button>
       );
@@ -184,13 +185,13 @@ const Select = ({ value, onChange, options, placeholder }) => (
   <div style={{ position:'relative' }}>
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{ ...s.input, appearance:'none', paddingRight:36, cursor:'pointer' }}
-      onFocus={e => e.target.style.borderColor='rgba(245,158,11,0.5)'}
-      onBlur={e  => e.target.style.borderColor='rgba(255,255,255,0.1)'}
+      onFocus={e => e.target.style.borderColor='rgba(132,215,216,0.5)'}
+      onBlur={e  => e.target.style.borderColor='rgba(232,226,216,0.1)'}
     >
       {placeholder && <option value="" disabled style={{ color: '#000', background: '#fff' }}>{placeholder}</option>}
       {options.map(o => <option key={typeof o==='object'?o.value:o} value={typeof o==='object'?o.value:o} style={{ color: '#000', background:'#fff' }}>{typeof o==='object'?o.label:o}</option>)}
     </select>
-    <ChevronDown size={14} color="rgba(255,255,255,0.3)" style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+    <ChevronDown size={14} color="rgba(232,226,216,0.3)" style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
   </div>
 );
 
@@ -212,9 +213,9 @@ const TagPicker = ({ options, selected, onChange, max }) => {
         return (
           <button key={v} type="button" onClick={() => toggle(v)}
             style={{ padding:'6px 12px', borderRadius:20, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'Inter, sans-serif',
-              background: sel ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${sel ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.08)'}`,
-              color: sel ? '#F59E0B' : 'rgba(255,255,255,0.4)',
+              background: sel ? 'rgba(132,215,216,0.15)' : 'rgba(232,226,216,0.04)',
+              border: `1px solid ${sel ? 'rgba(132,215,216,0.5)' : 'rgba(232,226,216,0.08)'}`,
+              color: sel ? '#84D7D8' : 'rgba(232,226,216,0.4)',
               display:'flex', alignItems:'center', gap:5, transition:'all 0.15s' }}>
             {sel && <Check size={10} strokeWidth={3}/>}
             {l}
@@ -240,16 +241,16 @@ const SupplierList = ({ suppliers, onChange }) => {
         <div key={i} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
           <input style={{ ...s.input, flex: 1.3 }} placeholder="Supplier name"
             value={row.name} onChange={e => update(i, 'name', e.target.value)}
-            onFocus={e => e.target.style.borderColor='rgba(245,158,11,0.5)'}
-            onBlur={e  => e.target.style.borderColor='rgba(255,255,255,0.1)'}/>
+            onFocus={e => e.target.style.borderColor='rgba(132,215,216,0.5)'}
+            onBlur={e  => e.target.style.borderColor='rgba(232,226,216,0.1)'}/>
           <div style={{ flex: 1 }}>
             <Select value={row.country} onChange={v => update(i, 'country', v)}
               options={COUNTRIES} placeholder="Country…"/>
           </div>
           <button type="button" onClick={() => remove(i)} disabled={suppliers.length <= 1}
             style={{ width:32, height:32, flexShrink:0, borderRadius:8, cursor: suppliers.length <= 1 ? 'not-allowed' : 'pointer',
-              background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
-              color: suppliers.length <= 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.5)',
+              background:'rgba(232,226,216,0.04)', border:'1px solid rgba(232,226,216,0.08)',
+              color: suppliers.length <= 1 ? 'rgba(232,226,216,0.15)' : 'rgba(232,226,216,0.5)',
               display:'flex', alignItems:'center', justifyContent:'center' }}>
             <X size={14}/>
           </button>
@@ -257,8 +258,8 @@ const SupplierList = ({ suppliers, onChange }) => {
       ))}
       <button type="button" onClick={add}
         style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', marginTop:2,
-          background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', borderRadius:8,
-          color:'#f59e0b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'Inter, sans-serif' }}>
+          background:'rgba(132,215,216,0.08)', border:'1px solid rgba(132,215,216,0.25)', borderRadius:8,
+          color:'#84D7D8', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'Inter, sans-serif' }}>
         <Plus size={13}/> Add another supplier
       </button>
     </div>
@@ -388,19 +389,19 @@ export default function OnboardingPage({ onComplete }) {
           <React.Fragment key={i}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>
               <div style={{ width:36, height:36, borderRadius:'50%',
-                background: done ? 'linear-gradient(135deg,#10b981,#059669)' : cur ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
-                border: done ? 'none' : cur ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)',
+                background: done ? 'linear-gradient(135deg,#5BA86F,#4A9460)' : cur ? 'rgba(132,215,216,0.15)' : 'rgba(232,226,216,0.04)',
+                border: done ? 'none' : cur ? '2px solid #84D7D8' : '1px solid rgba(232,226,216,0.1)',
                 display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.3s' }}>
-                {done ? <Check size={15} color="white" strokeWidth={3}/> : <Icon size={15} color={cur ? '#f59e0b' : 'rgba(255,255,255,0.2)'}/>}
+                {done ? <Check size={15} color="white" strokeWidth={3}/> : <Icon size={15} color={cur ? '#84D7D8' : 'rgba(232,226,216,0.2)'}/>}
               </div>
               <span style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase',
-                color: cur ? '#f59e0b' : done ? '#10b981' : 'rgba(255,255,255,0.2)' }}>
+                color: cur ? '#84D7D8' : done ? '#5BA86F' : 'rgba(232,226,216,0.2)' }}>
                 {s.label}
               </span>
             </div>
             {i < STEPS.length-1 && (
               <div style={{ width:52, height:1, margin:'0 6px', marginBottom:18,
-                background: i < step ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.07)',
+                background: i < step ? 'rgba(91,168,111,0.4)' : 'rgba(232,226,216,0.07)',
                 transition:'background 0.3s' }}/>
             )}
           </React.Fragment>
@@ -418,8 +419,8 @@ export default function OnboardingPage({ onComplete }) {
         <Field label="Company Name *">
           <input style={s.input} placeholder="Acme Imports LLC" value={form.company_name}
             onChange={e => set('company_name', e.target.value)}
-            onFocus={e => e.target.style.borderColor='rgba(245,158,11,0.5)'}
-            onBlur={e  => e.target.style.borderColor='rgba(255,255,255,0.1)'}/>
+            onFocus={e => e.target.style.borderColor='rgba(132,215,216,0.5)'}
+            onBlur={e  => e.target.style.borderColor='rgba(232,226,216,0.1)'}/>
         </Field>
         <Field label="Industry / Sector *">
           <Select value={form.industry} onChange={v => set('industry',v)}
@@ -462,8 +463,8 @@ export default function OnboardingPage({ onComplete }) {
             value={form.risk_tolerance}
             onChange={v => set('risk_tolerance',v)}
             colorFn={(l, border) => {
-              const map = { low: border?'rgba(16,185,129,0.5)':'rgba(16,185,129,0.15)', medium: border?'rgba(245,158,11,0.5)':'rgba(245,158,11,0.15)', high: border?'rgba(239,68,68,0.5)':'rgba(239,68,68,0.15)' };
-              return map[l] || (border?'rgba(245,158,11,0.5)':'rgba(245,158,11,0.15)');
+              const map = { low: border?'rgba(91,168,111,0.5)':'rgba(91,168,111,0.15)', medium: border?'rgba(132,215,216,0.5)':'rgba(132,215,216,0.15)', high: border?'rgba(226,75,74,0.5)':'rgba(226,75,74,0.15)' };
+              return map[l] || (border?'rgba(132,215,216,0.5)':'rgba(132,215,216,0.15)');
             }}
           />
         </Field>
@@ -507,7 +508,7 @@ export default function OnboardingPage({ onComplete }) {
     return (
       <>
         {form.industry && (
-          <p style={{ margin:'0 0 16px', fontSize:12, color:'rgba(245,158,11,0.7)', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.15)', borderRadius:8, padding:'8px 12px' }}>
+          <p style={{ margin:'0 0 16px', fontSize:12, color:'rgba(132,215,216,0.7)', background:'rgba(132,215,216,0.06)', border:'1px solid rgba(132,215,216,0.15)', borderRadius:8, padding:'8px 12px' }}>
             Pre-filled for <strong>{form.industry}</strong> — adjust as needed
           </p>
         )}
@@ -533,8 +534,8 @@ export default function OnboardingPage({ onComplete }) {
           <textarea style={{ ...s.input, minHeight:68, resize:'vertical' }}
             placeholder="Any special compliance requirements…"
             value={form.compliance_notes} onChange={e => set('compliance_notes',e.target.value)}
-            onFocus={e => e.target.style.borderColor='rgba(245,158,11,0.5)'}
-            onBlur={e  => e.target.style.borderColor='rgba(255,255,255,0.1)'}/>
+            onFocus={e => e.target.style.borderColor='rgba(132,215,216,0.5)'}
+            onBlur={e  => e.target.style.borderColor='rgba(232,226,216,0.1)'}/>
         </Field>
       </>
     );
@@ -542,35 +543,26 @@ export default function OnboardingPage({ onComplete }) {
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center',
-      background:'linear-gradient(135deg,#02040a 0%,#0e0e10 50%,#111108 100%)',
+      background:'linear-gradient(135deg,#16323A 0%,#285260 50%,#16323A 100%)',
       fontFamily:'Inter, sans-serif', padding:'40px 20px' }}>
 
       {/* Glow */}
       <div style={{ position:'fixed', width:600, height:600, borderRadius:'50%',
-        background:'radial-gradient(circle,rgba(245,158,11,0.06) 0%,transparent 70%)',
+        background:'radial-gradient(circle,rgba(132,215,216,0.06) 0%,transparent 70%)',
         top:'50%', left:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none' }}/>
 
       <div style={{ width:'100%', maxWidth:580, position:'relative', zIndex:10 }}>
 
         {/* Logo */}
-        <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ display:'inline-flex', alignItems:'center', gap:10, marginBottom:6 }}>
-            <div style={{ width:36, height:36, borderRadius:10,
-              background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.35)',
-              display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Anchor size={18} color="#f59e0b"/>
-            </div>
-            <span style={{ fontSize:20, fontWeight:800, color:'#e8e3d8' }}>
-              Coast<span style={{ color:'#f59e0b' }}>Guard</span>
-            </span>
-          </div>
-          <p style={{ margin:0, color:'rgba(255,255,255,0.35)', fontSize:12 }}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:28, gap:8 }}>
+          <Logo size={44} variant="splash" />
+          <p style={{ margin:0, color:'var(--text-muted)', fontSize:13 }}>
             Personalize your trade risk intelligence in 2 minutes.
           </p>
         </div>
 
         {/* Card */}
-        <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)',
+        <div style={{ background:'rgba(232,226,216,0.03)', border:'1px solid rgba(232,226,216,0.08)',
           borderRadius:16, padding:'32px 32px 24px' }}>
 
           <StepBar/>
@@ -582,8 +574,8 @@ export default function OnboardingPage({ onComplete }) {
           {renderStep()}
 
           {error && (
-            <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)',
-              borderRadius:8, padding:'10px 14px', marginBottom:14, color:'#fca5a5', fontSize:12 }}>
+            <div style={{ background:'rgba(226,75,74,0.1)', border:'1px solid rgba(226,75,74,0.25)',
+              borderRadius:8, padding:'10px 14px', marginBottom:14, color:'#EC8C8B', fontSize:12 }}>
               {error}
             </div>
           )}
@@ -592,9 +584,9 @@ export default function OnboardingPage({ onComplete }) {
           <div style={{ display:'flex', gap:10, marginTop:10 }}>
             {step > 0 && (
               <button type="button" onClick={() => setStep(s => s-1)}
-                style={{ flex:1, padding:'11px', background:'rgba(255,255,255,0.05)',
-                  border:'1px solid rgba(255,255,255,0.1)', borderRadius:8,
-                  color:'rgba(255,255,255,0.6)', fontSize:13, fontWeight:600,
+                style={{ flex:1, padding:'11px', background:'rgba(232,226,216,0.05)',
+                  border:'1px solid rgba(232,226,216,0.1)', borderRadius:8,
+                  color:'rgba(232,226,216,0.6)', fontSize:13, fontWeight:600,
                   cursor:'pointer', fontFamily:'Inter, sans-serif',
                   display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
                 <ChevronLeft size={15}/> Back
@@ -603,9 +595,9 @@ export default function OnboardingPage({ onComplete }) {
             {step < STEPS.length - 1 ? (
               <button type="button" onClick={() => canNext() && setStep(s => s+1)}
                 style={{ flex:2, padding:'11px',
-                  background: canNext() ? 'linear-gradient(135deg,#d97706,#f59e0b)' : 'rgba(255,255,255,0.05)',
+                  background: canNext() ? 'linear-gradient(135deg,#548C92,#84D7D8)' : 'rgba(232,226,216,0.05)',
                   border:'none', borderRadius:8,
-                  color: canNext() ? '#0a0f1e' : 'rgba(255,255,255,0.2)',
+                  color: canNext() ? '#0E2025' : 'rgba(232,226,216,0.2)',
                   fontSize:13, fontWeight:700,
                   cursor: canNext() ? 'pointer' : 'not-allowed',
                   fontFamily:'Inter, sans-serif',
@@ -615,18 +607,18 @@ export default function OnboardingPage({ onComplete }) {
             ) : (
               <button type="button" onClick={handleSubmit} disabled={loading}
                 style={{ flex:2, padding:'11px',
-                  background:'linear-gradient(135deg,#d97706,#f59e0b)',
-                  border:'none', borderRadius:8, color:'#0a0f1e',
+                  background:'linear-gradient(135deg,#548C92,#84D7D8)',
+                  border:'none', borderRadius:8, color:'#0E2025',
                   fontSize:13, fontWeight:700,
                   cursor: loading ? 'wait' : 'pointer',
                   fontFamily:'Inter, sans-serif', opacity: loading ? 0.7 : 1,
                   display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {loading ? 'Setting up…' : <><Anchor size={14}/> Launch CoastGuard</>}
+                {loading ? 'Setting up…' : <><Anchor size={14}/> Launch Suppliance</>}
               </button>
             )}
           </div>
 
-          <p style={{ textAlign:'center', margin:'14px 0 0', fontSize:11, color:'rgba(255,255,255,0.2)' }}>
+          <p style={{ textAlign:'center', margin:'14px 0 0', fontSize:11, color:'rgba(232,226,216,0.2)' }}>
             Step {step+1} of {STEPS.length} — 24 hours free access after setup
           </p>
         </div>

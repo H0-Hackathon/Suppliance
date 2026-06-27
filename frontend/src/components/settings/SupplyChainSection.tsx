@@ -64,7 +64,7 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
       <SectionHeader
         icon={Globe2}
         title="Supply Chain Profile"
-        subtitle="Maps your sourcing footprint so CoastGuard can surface the disruption signals most relevant to your trade flows."
+        subtitle="Maps your sourcing footprint so Suppliance can surface the disruption signals most relevant to your trade flows."
         badge="Critical"
       />
 
@@ -107,11 +107,11 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
             {supplierCountries.map((country, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 10px', background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6,
-                fontSize: 11, color: 'rgba(160,150,120,0.7)',
+                padding: '5px 10px', background: 'rgba(232,226,216,0.03)',
+                border: '1px solid rgba(232,226,216,0.07)', borderRadius: 6,
+                fontSize: 11, color: 'var(--text-secondary)',
               }}>
-                <MapPin size={10} color="rgba(245,158,11,0.5)" />
+                <MapPin size={10} color="rgba(132,215,216,0.5)" />
                 {country}
               </div>
             ))}
@@ -132,10 +132,10 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
         <div style={{
           marginTop: 8, padding: '10px 14px', background: 'rgba(239,68,68,0.05)',
           border: '1px solid rgba(239,68,68,0.12)', borderRadius: 7,
-          fontSize: 11.5, color: 'rgba(239,120,120,0.7)', display: 'flex', alignItems: 'flex-start', gap: 8,
+          fontSize: 11.5, color: '#E8A5A5', display: 'flex', alignItems: 'flex-start', gap: 8,
         }}>
           <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-          Any event in these regions will generate a <strong style={{ color: 'rgba(239,120,120,0.85)' }}>Critical</strong> alert regardless of your minimum severity threshold.
+          Any event in these regions will generate a <strong style={{ color: '#F0BFBF' }}>Critical</strong> alert regardless of your minimum severity threshold.
         </div>
       </SettingsCard>
 
@@ -154,21 +154,21 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
                 onClick={() => setRiskTolerance(id)}
                 style={{
                   flex: 1, padding: '14px 12px', borderRadius: 9,
-                  border: `1px solid ${isSelected ? color + '40' : 'rgba(255,255,255,0.07)'}`,
-                  background: isSelected ? color + '10' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${isSelected ? color + '40' : 'rgba(232,226,216,0.07)'}`,
+                  background: isSelected ? color + '10' : 'rgba(232,226,216,0.02)',
                   cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', fontFamily: 'var(--font)',
                 }}
               >
                 <div style={{
                   width: 10, height: 10, borderRadius: '50%',
-                  background: isSelected ? color : 'rgba(255,255,255,0.2)',
+                  background: isSelected ? color : 'rgba(232,226,216,0.2)',
                   margin: '0 auto 8px',
                   boxShadow: isSelected ? `0 0 8px ${color}` : 'none', transition: 'all 0.2s',
                 }} />
                 <div style={{ fontSize: 12.5, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : 'var(--text-muted)', marginBottom: 5 }}>
                   {label}
                 </div>
-                <div style={{ fontSize: 10.5, color: isSelected ? 'rgba(180,170,140,0.55)' : 'rgba(120,110,80,0.35)', lineHeight: 1.4 }}>
+                <div style={{ fontSize: 10.5, color: isSelected ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
                   {desc}
                 </div>
               </button>

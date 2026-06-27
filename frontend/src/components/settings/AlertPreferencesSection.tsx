@@ -44,7 +44,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
         impact="Reducing threshold increases alert volume significantly"
       >
         <div style={{ position: 'relative', marginTop: 8 }}>
-          <div style={{ position: 'relative', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 2, margin: '24px 0 40px' }}>
+          <div style={{ position: 'relative', height: 4, background: 'rgba(232,226,216,0.07)', borderRadius: 2, margin: '24px 0 40px' }}>
             <div style={{
               position: 'absolute', left: 0, height: '100%',
               width: `${(3 - activeIndex) / 3 * 100}%`,
@@ -62,8 +62,8 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                     position: 'absolute', left: `${x}%`, top: '50%',
                     transform: 'translate(-50%, -50%)',
                     width: 18, height: 18, borderRadius: '50%',
-                    background: isActive ? cfg.color : 'rgba(255,255,255,0.12)',
-                    border: `2px solid ${isActive ? cfg.color : 'rgba(255,255,255,0.15)'}`,
+                    background: isActive ? cfg.color : 'rgba(232,226,216,0.12)',
+                    border: `2px solid ${isActive ? cfg.color : 'rgba(232,226,216,0.15)'}`,
                     cursor: 'pointer', transition: 'all 0.15s',
                     boxShadow: isActive ? `0 0 8px ${cfg.color}60` : 'none', padding: 0,
                   }}
@@ -71,7 +71,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                   <span style={{
                     position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
                     fontSize: 10.5, fontWeight: minSeverity === sev ? 700 : 400,
-                    color: minSeverity === sev ? cfg.color : 'rgba(140,130,100,0.5)',
+                    color: minSeverity === sev ? cfg.color : 'var(--text-secondary)',
                     whiteSpace: 'nowrap', fontFamily: 'var(--font)', transition: 'color 0.15s',
                   }}>
                     {cfg.label}
@@ -82,9 +82,9 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
           </div>
         </div>
         <div style={{
-          padding: '10px 14px', background: 'rgba(245,158,11,0.05)',
-          border: '1px solid rgba(245,158,11,0.12)', borderRadius: 7,
-          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'rgba(200,190,160,0.8)',
+          padding: '10px 14px', background: 'rgba(132,215,216,0.05)',
+          border: '1px solid rgba(132,215,216,0.12)', borderRadius: 7,
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-secondary)',
         }}>
           <BellRing size={13} color="#548C92" />
           Showing <strong style={{ color: 'var(--ocean)' }}>{minSeverity.charAt(0).toUpperCase() + minSeverity.slice(1)}</strong> and above.{' '}
@@ -121,13 +121,13 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
           <div style={{ marginTop: 12 }}>
             <FieldRow label="Delivery Time" hint="In your local timezone">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Clock size={14} color="rgba(245,158,11,0.5)" style={{ flexShrink: 0 }} />
+                <Clock size={14} color="rgba(132,215,216,0.5)" style={{ flexShrink: 0 }} />
                 <input
                   type="time"
                   value={briefTime}
                   onChange={e => setBriefTime(e.target.value)}
                   style={{
-                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+                    background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.09)',
                     borderRadius: 7, color: 'var(--ocean)', fontSize: 12.5, fontFamily: 'var(--font)',
                     padding: '9px 12px', outline: 'none', colorScheme: 'dark',
                   }}
