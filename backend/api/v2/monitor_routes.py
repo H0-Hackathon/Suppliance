@@ -47,6 +47,19 @@ def run_monitor(
     )
 
 
+@router.get("/status")
+def monitor_status(current_user: Customer = Depends(get_current_user)):
+    """
+    Whether a pipeline run is currently in flight app-wide, and whether it's
+    this customer's own run — lets the frontend show a progress indicator
+    even when the run was triggered elsewhere (another tab, the auto-run-once
+    gate, or another customer holding the shared Gemini-quota slot).
+    """
+    from core.crew_monitor_pipeline import is_pipeline_running
+    running, running_customer_id = is_pipeline_running()
+    return {"running": running, "is_mine": running and running_customer_id == current_user.id}
+
+
 @router.get("/health")
 def monitor_health():
     return {

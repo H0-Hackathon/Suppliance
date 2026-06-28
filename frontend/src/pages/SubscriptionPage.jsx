@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
-import { Check, Star, ArrowLeft, Clock, Zap, Shield, Globe, Bell, BarChart2, Settings, Users } from 'lucide-react';
+import { Check, Star, ArrowLeft, Clock, Zap, Shield, Globe, Bell, BarChart2, Settings, Users, ChevronDown, Lock, RefreshCw } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -28,6 +28,31 @@ const PRO_EXTRA_FEATURES = [
   { text: 'Priority Support',            icon: Shield,  highlight: false },
 ];
 
+const TRUST_ITEMS = [
+  { icon: Lock,      text: 'Secure payments via Stripe' },
+  { icon: RefreshCw, text: 'Cancel or switch plans anytime' },
+  { icon: Zap,       text: 'Instant activation, no setup' },
+];
+
+const FAQS = [
+  {
+    q: 'Can I cancel anytime?',
+    a: 'Yes. There’s no lock-in contract — cancel from this page whenever you like and you keep access until the end of your current billing period.',
+  },
+  {
+    q: 'What happens when my trial ends?',
+    a: 'Your dashboard stays read-only until you pick a plan. None of your supplier or alert data is deleted, so you can subscribe and pick up right where you left off.',
+  },
+  {
+    q: 'Can I switch between Standard and Pro later?',
+    a: 'Yes, upgrade or downgrade at any time from this page. Changes apply immediately and billing is prorated for the current cycle.',
+  },
+  {
+    q: 'Is my payment information secure?',
+    a: 'Payments are handled entirely by Stripe — we never see or store your card details on our servers.',
+  },
+];
+
 export default function SubscriptionPage() {
   const { getToken } = useAuth();
   const navigate = useNavigate();
@@ -39,6 +64,7 @@ export default function SubscriptionPage() {
   const [loading, setLoading]             = useState(false);
   const [paymentMsg, setPaymentMsg]       = useState('');
   const [confirming, setConfirming]       = useState(false);
+  const [openFaq, setOpenFaq]             = useState(null);
 
   const upgradeIntent = searchParams.get('upgrade') === 'pro';
   const paymentStatus = searchParams.get('payment');
@@ -349,6 +375,54 @@ export default function SubscriptionPage() {
               </span>
             </div>
           ))}
+        </div>
+
+        {/* Trust strip */}
+        <div style={{ display:'flex', justifyContent:'center', gap:36, flexWrap:'wrap', marginBottom:56 }}>
+          {TRUST_ITEMS.map((item, i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:8, color:'rgba(232,226,216,0.4)', fontSize:12.5 }}>
+              <item.icon size={15} color="#548C92" strokeWidth={2} />
+              {item.text}
+            </div>
+          ))}
+        </div>
+
+        {/* FAQ */}
+        <div style={{ marginBottom:24 }}>
+          <h2 style={{ textAlign:'center', fontSize:20, fontWeight:700, color:'#E8E2D8', margin:'0 0 24px', letterSpacing:'-0.3px' }}>
+            Frequently asked questions
+          </h2>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {FAQS.map((faq, i) => {
+              const isOpen = openFaq === i;
+              return (
+                <div key={i} style={{
+                  background:'rgba(232,226,216,0.02)', border:'1px solid rgba(232,226,216,0.07)',
+                  borderRadius:10, overflow:'hidden',
+                }}>
+                  <button
+                    onClick={() => setOpenFaq(isOpen ? null : i)}
+                    style={{
+                      width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
+                      padding:'16px 20px', background:'none', border:'none', cursor:'pointer',
+                      color:'#E8E2D8', fontSize:14, fontWeight:600, fontFamily:'Inter, sans-serif', textAlign:'left',
+                    }}
+                  >
+                    {faq.q}
+                    <ChevronDown size={16} color="rgba(232,226,216,0.4)" style={{
+                      flexShrink:0, marginLeft:12, transition:'transform 0.2s',
+                      transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                    }} />
+                  </button>
+                  {isOpen && (
+                    <p style={{ margin:0, padding:'0 20px 16px', color:'rgba(232,226,216,0.5)', fontSize:13, lineHeight:1.6 }}>
+                      {faq.a}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <p style={{ textAlign:'center', color:'rgba(232,226,216,0.2)', fontSize:11 }}>

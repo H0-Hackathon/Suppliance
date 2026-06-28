@@ -2,17 +2,22 @@
 CoastGuard — 5-Agent Tariff Monitoring Pipeline
 
 Aurora data flow every run:
-  1. Already-seen URLs queried  → excludes articles used by any run in the
-     last RSS_DEDUP_WINDOW_HOURS, so back-to-back runs don't re-cite the same headline
-  2. RssArticle rows written    (rolling de-dup buffer — pruned by age, not by run)
+  1. SeenArticle queried        → every URL ever cited to this customer for this
+     agent_target, permanently — no event ever reuses an article a previous
+     run already showed this customer (see _seen_article_urls / SeenArticle)
+  2. RssArticle rows written    (per-run scratch buffer + prompt context)
   3. HistoricalImpact queried   → enriches ImpactCalculator prompt
   4. SupplierRecommendation queried → enriches AlternativesFinder prompt
   5. AgentRun queried           → enriches Adversarial prompt
   6. AgentRun row written       (permanent run log)
   7. HistoricalImpact row written (permanent, enriched with all signal metadata)
   8. SupplierRecommendation rows written (permanent per alternative)
-  9. RssArticle rows older than RSS_DEDUP_WINDOW_HOURS pruned (this run's rows stay
-     for the next run's de-dup check)
+  9. SeenArticle rows written   → permanently marks this run's articles as used
+     for this customer+agent_target, so no future run re-cites them
+ 10. RssArticle rows for this run linked to the saved TariffAlert
+     (tariff_alert_id) — becomes that alert's permanent "sources used" record
+ 11. Unlinked RssArticle scratch rows older than RSS_DEDUP_WINDOW_HOURS pruned;
+     rows linked to a saved alert are kept forever
 """
 
 import contextvars
@@ -82,11 +87,21 @@ _current_customer_id: contextvars.ContextVar[Optional[int]] = contextvars.Contex
 # Only one pipeline run in flight at a time, app-wide (protects the shared
 # Gemini quota — concurrent runs would burn through the daily request cap fast).
 _run_lock = threading.Lock()
+# Best-effort (not lock-protected) bookkeeping of *which* customer currently
+# holds _run_lock, purely so the /monitor/status endpoint can tell the
+# frontend whether the in-flight run is "yours" or someone else's — slight
+# read staleness here is harmless since it's informational only.
+_running_customer_id: Optional[int] = None
 
 
 class PipelineBusyError(Exception):
     """Raised when a pipeline run is requested while another is already in flight."""
     pass
+
+
+def is_pipeline_running() -> tuple[bool, Optional[int]]:
+    """(running, customer_id_of_running_run_or_None) — for GET /monitor/status."""
+    return (_run_lock.locked(), _running_customer_id)
 
 
 _DISPLAY_EVENTS = {
@@ -154,22 +169,21 @@ def _init_gemini_llm() -> "LLM":
 
 def _seen_article_urls(customer_id: int, agent_target: str, db, hours: int = RSS_DEDUP_WINDOW_HOURS) -> set:
     """
-    URLs already buffered for this customer+agent_target within the last
-    `hours` — i.e. cited by a previous run that hasn't aged out of the
-    rss_articles table yet. Subtract this set from a fresh RSS pull so two
-    runs in a row never cite the same headline.
+    Every URL ever cited to this customer for this agent_target — a
+    permanent ledger (seen_articles), not a rolling window. Once an article
+    has been shown to a customer it is excluded from every future run,
+    forever, so no two events ever cite the same source. Subtract this set
+    from a fresh RSS pull before scoring.
     """
     if not db:
         return set()
     try:
-        from models import RssArticle
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        from models import SeenArticle
         rows = (
-            db.query(RssArticle.url)
+            db.query(SeenArticle.url)
             .filter(
-                RssArticle.customer_id == customer_id,
-                RssArticle.agent_target == agent_target,
-                RssArticle.created_at >= cutoff,
+                SeenArticle.customer_id == customer_id,
+                SeenArticle.agent_target == agent_target,
             )
             .all()
         )
@@ -179,6 +193,58 @@ def _seen_article_urls(customer_id: int, agent_target: str, db, hours: int = RSS
         return set()
 
 
+def _mark_articles_seen(customer_id: int, agent_target: str, urls: list, run_id: str, db) -> None:
+    """
+    Permanently records each URL as "shown to this customer" so no future
+    run for this customer+agent_target ever cites it again. Idempotent —
+    safe to call with URLs already in the ledger (unique constraint on
+    customer_id+agent_target+url; duplicates are skipped per-row).
+    """
+    if not db or not urls:
+        return
+    try:
+        from models import SeenArticle
+        from sqlalchemy.exc import IntegrityError
+        added = 0
+        for url in urls:
+            if not url:
+                continue
+            try:
+                with db.begin_nested():
+                    db.add(SeenArticle(
+                        customer_id=customer_id,
+                        agent_target=agent_target,
+                        url=url,
+                        first_seen_run_id=run_id,
+                    ))
+                added += 1
+            except IntegrityError:
+                pass  # already in the ledger — expected, not an error
+        db.commit()
+        if added:
+            pipeline_emit("seen_articles_marked", f"Permanently marked {added} {agent_target} URLs as seen — will never be re-cited to this customer")
+    except Exception as exc:
+        logger.warning(f"Seen-article ledger write failed for {agent_target}: {exc}")
+        db.rollback()
+
+
+def shorten_for_title(text: str, max_len: int = 100) -> str:
+    """
+    Event descriptions (LLM-written or grounded in a real article headline)
+    can run long — fine for the detail-view paragraph, too long for a list
+    title. Prefer the first sentence if it's short enough, else hard-truncate
+    at a word boundary. Mirrors the frontend's shortTitle() in AlertsPage.tsx.
+    """
+    trimmed = (text or "").strip()
+    if len(trimmed) <= max_len:
+        return trimmed
+    match = re.match(r"^[^.!?]+[.!?]", trimmed)
+    first_sentence = match.group().strip() if match else None
+    if first_sentence and len(first_sentence) <= max_len:
+        return first_sentence
+    return f"{trimmed[:max_len].rsplit(' ', 1)[0]}…"
+
+
 def _fetch_and_buffer_articles(
     rss_keywords: list,
     origin_countries: list,
@@ -186,33 +252,41 @@ def _fetch_and_buffer_articles(
     customer_id: int,
     db: Optional[Session],
     top_n: int = 5,
-) -> tuple[list, dict]:
+) -> tuple[list, dict, Optional[dict]]:
     """
     Fetch RSS articles via fast_run, score them, write matched ones to Aurora
     rss_articles table, then read back from Aurora and return as formatted blocks.
 
     Returns:
-        (article_text_blocks, signal_metadata)
+        (article_text_blocks, signal_metadata, top_article)
+        top_article is the highest-scored matched article (title/url/source),
+        or None if nothing matched — used as a grounded fallback for the
+        alert title/description when the LLM's own "event" field is empty.
     """
     pipeline_emit("rss_start", f"Fetching RSS feeds — keywords: {', '.join(rss_keywords[:5])}")
 
     try:
         from collectors.monitor import fast_run
-        raw_articles = fast_run(max_articles=60, emit_fn=pipeline_emit)
+        # 200 effectively means "everything the current feed set has" — with
+        # only 4 live feeds left (see collectors/monitor.py), the limiting
+        # factor is feed content, not this cap. A high cap maximizes the
+        # pool _seen_article_urls() has to draw fresh (never-before-shown) matches from.
+        raw_articles = fast_run(max_articles=200, emit_fn=pipeline_emit)
         pipeline_emit("rss_fetched", f"{len(raw_articles)} entries from {len(set(a.get('source','') for a in raw_articles))} sources")
     except Exception as exc:
         logger.warning(f"RSS collector failed: {exc}")
         pipeline_emit("rss_error", f"RSS fetch failed: {exc}")
-        return [], {"articles_matched": 0, "source_credibility": "", "signal_age_hours": None, "risk_source": "gemini_knowledge"}
+        return [], {"articles_matched": 0, "source_credibility": "", "signal_age_hours": None, "risk_source": "gemini_knowledge"}, None
 
-    # Drop anything already cited by a run within the last RSS_DEDUP_WINDOW_HOURS
+    # Drop anything ever cited to this customer before (permanent ledger — see SeenArticle)
     seen_urls = _seen_article_urls(customer_id, "tariff_monitor", db)
     if seen_urls:
         before = len(raw_articles)
         raw_articles = [a for a in raw_articles if a.get("url") not in seen_urls]
         pipeline_emit(
             "rss_dedup",
-            f"Excluded {before - len(raw_articles)} articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+            f"Excluded {before - len(raw_articles)} articles already cited to this customer previously "
+            f"({len(raw_articles)} never-before-seen candidates remain)",
         )
 
     # Authoritative sources that boost credibility score
@@ -226,17 +300,19 @@ def _fetch_and_buffer_articles(
             article.get("full_text", "")[:1000],
             " ".join(article.get("keywords", [])),
         ])).lower()
-        s = 0
-        for kw in rss_keywords:
-            if kw.lower() in haystack:
-                s += 2
-        for country in origin_countries:
-            if country.lower() in haystack:
-                s += 3
-        for broad in ["tariff", "import duty", "trade policy", "customs", "sanction", "embargo"]:
-            if broad in haystack:
-                s += 1
-        return s
+        keyword_hits = sum(2 for kw in rss_keywords if kw.lower() in haystack)
+        broad_hits = sum(
+            1 for broad in ["tariff", "import duty", "trade policy", "customs", "sanction", "embargo"]
+            if broad in haystack
+        )
+        country_hits = sum(3 for country in origin_countries if country.lower() in haystack)
+        # A country name appearing by coincidence (e.g. a robotics story that
+        # happens to mention "Canada") is not genuine relevance on its own —
+        # only count geography as a relevance signal once the article has
+        # already shown topical overlap (a keyword or trade/customs term).
+        if keyword_hits + broad_hits == 0:
+            return 0
+        return keyword_hits + broad_hits + country_hits
 
     scored = sorted(raw_articles, key=score, reverse=True)
     matched = [a for a in scored if score(a) > 0][:top_n]
@@ -308,6 +384,9 @@ def _fetch_and_buffer_articles(
             logger.warning(f"RSS Aurora write failed: {exc}")
             db.rollback()
 
+    # Permanently exclude these URLs from every future tariff_monitor run for this customer
+    _mark_articles_seen(customer_id, "tariff_monitor", [a.get("url") for a in matched], run_id, db)
+
     # Read back from Aurora to build prompt context (Aurora is the data source for agents)
     article_blocks = []
     if db:
@@ -336,7 +415,11 @@ def _fetch_and_buffer_articles(
                     f"Source: {a.get('source','')} | Summary: {a.get('summary','')[:400]}"
                 )
 
-    return article_blocks, signal_meta
+    top_article = (
+        {"title": matched[0].get("title", ""), "url": matched[0].get("url", ""), "source": matched[0].get("source", "")}
+        if matched else None
+    )
+    return article_blocks, signal_meta, top_article
 
 
 # ── Historical impact query (ImpactCalculator enrichment) ─────────────────────
@@ -487,7 +570,7 @@ def _fetch_compliance_articles(
             origin_countries=origin_countries,
             hs_codes=hs_codes,
             dest_port=dest_port,
-            max_articles=20,
+            max_articles=60,  # compliance is down to 1 live feed — pull everything it has
             emit_fn=pipeline_emit,
         )
     except Exception as exc:
@@ -501,18 +584,21 @@ def _fetch_compliance_articles(
         articles = [a for a in articles if a.get("url") not in seen_urls]
         pipeline_emit(
             "compliance_rss_dedup",
-            f"Excluded {before - len(articles)} compliance articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+            f"Excluded {before - len(articles)} compliance articles already cited to this customer previously "
+            f"({len(articles)} never-before-seen candidates remain)",
         )
 
     if not articles:
         pipeline_emit("compliance_rss_done", "No compliance articles retrieved")
         return ""
 
-    # Write to Aurora buffer
+    # Write to Aurora buffer — capped at 5: fast_run_compliance already returns
+    # articles sorted by relevance, so the first 5 are the most relevant ones.
+    # Once 5 good matches exist there's no need to keep more around per run.
     if db:
         try:
             from models import RssArticle
-            for a in articles[:10]:
+            for a in articles[:5]:
                 db.add(RssArticle(
                     run_id=run_id,
                     customer_id=customer_id,
@@ -525,10 +611,12 @@ def _fetch_compliance_articles(
                     agent_target="import_compliance",
                 ))
             db.commit()
-            pipeline_emit("compliance_rss_buffered", f"Wrote {min(10, len(articles))} compliance articles to Aurora [import_compliance]")
+            pipeline_emit("compliance_rss_buffered", f"Wrote {min(5, len(articles))} compliance articles to Aurora [import_compliance]")
         except Exception as exc:
             logger.warning(f"Compliance RSS Aurora write failed: {exc}")
             db.rollback()
+
+    _mark_articles_seen(customer_id, "import_compliance", [a.get("url") for a in articles[:5]], run_id, db)
 
     # Read back from Aurora
     blocks = []
@@ -576,8 +664,8 @@ def _fetch_alternatives_articles(
     db,
 ) -> str:
     """
-    Fetch supplier-stability RSS for alternative sourcing regions (MercoPress,
-    Latinvex, SupplyChainBrain, FAO, World Bank, etc.).
+    Fetch supplier-stability RSS for alternative sourcing regions (MercoPress
+    and The Loadstar — see collectors/monitor.py for why the others were removed).
     Scores by stability signals in alternative regions vs. the product category.
     Writes to Aurora rss_articles with agent_target='alternatives_finder'.
     Reads back from Aurora. Deleted at end of pipeline with the rest.
@@ -590,7 +678,7 @@ def _fetch_alternatives_articles(
             alternative_regions=alternative_regions,
             product_categories=product_categories,
             origin_countries=origin_countries,
-            max_articles=20,
+            max_articles=60,  # only 2 live feeds left — pull everything they have
             emit_fn=pipeline_emit,
         )
     except Exception as exc:
@@ -604,18 +692,21 @@ def _fetch_alternatives_articles(
         articles = [a for a in articles if a.get("url") not in seen_urls]
         pipeline_emit(
             "alt_rss_dedup",
-            f"Excluded {before - len(articles)} stability articles already used in the last {RSS_DEDUP_WINDOW_HOURS}h",
+            f"Excluded {before - len(articles)} stability articles already cited to this customer previously "
+            f"({len(articles)} never-before-seen candidates remain)",
         )
 
     if not articles:
         pipeline_emit("alt_rss_done", "No alternatives stability articles retrieved")
         return ""
 
-    # Write to Aurora buffer
+    # Write to Aurora buffer — capped at 5, same reasoning as the compliance
+    # fetcher above: fast_run_alternatives already returns its results sorted
+    # by relevance, so the top 5 are the most relevant available.
     if db:
         try:
             from models import RssArticle
-            for a in articles[:10]:
+            for a in articles[:5]:
                 title_lower = (a.get("title", "") + " " + a.get("summary", "")).lower()
                 country_mentioned = next(
                     (r for r in alternative_regions if r.lower() in title_lower), None
@@ -633,10 +724,12 @@ def _fetch_alternatives_articles(
                     agent_target="alternatives_finder",
                 ))
             db.commit()
-            pipeline_emit("alt_rss_buffered", f"Wrote {min(10, len(articles))} stability articles to Aurora [alternatives_finder]")
+            pipeline_emit("alt_rss_buffered", f"Wrote {min(5, len(articles))} stability articles to Aurora [alternatives_finder]")
         except Exception as exc:
             logger.warning(f"Alternatives RSS Aurora write failed: {exc}")
             db.rollback()
+
+    _mark_articles_seen(customer_id, "alternatives_finder", [a.get("url") for a in articles[:5]], run_id, db)
 
     # Read back from Aurora
     blocks = []
@@ -801,8 +894,10 @@ class MonitorPipeline:
         return self._llm
 
     def run(self, customer_id: int, db: Optional[Session] = None) -> dict:
+        global _running_customer_id
         if not _run_lock.acquire(blocking=False):
             raise PipelineBusyError("A pipeline run is already in progress.")
+        _running_customer_id = customer_id
         token = _current_customer_id.set(customer_id)
         try:
             if settings.use_mock_llm:
@@ -810,6 +905,7 @@ class MonitorPipeline:
             return self._real_run(customer_id, db)
         finally:
             _current_customer_id.reset(token)
+            _running_customer_id = None
             _run_lock.release()
 
     def _load_profile(self, customer_id: int, db: Optional[Session]) -> dict:
@@ -847,6 +943,19 @@ class MonitorPipeline:
                     kw_set.append(f"HS {hs} trade")
                 raw_keywords = kw_set
                 missing_fields.append("rss_keywords (derived from origin countries + HS codes)")
+
+            # Always supplement with concrete product-category nouns. Many
+            # accounts set rss_keywords to generic compliance buzzwords
+            # ("trade restriction", "sanctions") that match almost any
+            # trade-industry article regardless of what the company actually
+            # imports — category words ("Metals", "Construction", "Pharma")
+            # give the relevance scorer something material-specific to anchor on.
+            CATEGORY_STOPWORDS = {"and", "the", "of"}
+            for cat in raw_categories:
+                for word in cat.replace("&", " ").replace(",", " ").split():
+                    w = word.strip()
+                    if len(w) > 3 and w.lower() not in CATEGORY_STOPWORDS and w not in raw_keywords:
+                        raw_keywords.append(w)
 
             # Derive alternative regions/countries from import_region if both missing
             REGION_FALLBACKS = {
@@ -1055,9 +1164,16 @@ class MonitorPipeline:
                 db.rollback()
 
         # ── 3. Fetch RSS → write to Aurora → read back ────────────────────────
-        article_blocks, signal_meta = _fetch_and_buffer_articles(
-            ctx.get("rss_keywords", []),
-            countries,
+        # Score against the customer's origin countries AND their preferred
+        # alternative-sourcing countries — a customer importing from India who
+        # could switch to the Netherlands cares about events affecting either
+        # one, not just the primary origin. Without this, the agent fixates on
+        # whichever single country is in primary_origin_countries every run.
+        geography_countries = list(dict.fromkeys(countries + alt_countries))
+        geography_keywords = list(ctx.get("rss_keywords", [])) + [f"{c} trade" for c in alt_countries]
+        article_blocks, signal_meta, top_article = _fetch_and_buffer_articles(
+            geography_keywords,
+            geography_countries,
             run_id=run_id,
             customer_id=customer_id,
             db=db,
@@ -1117,9 +1233,18 @@ class MonitorPipeline:
             description=(
                 f"Analyze risk for {company}, a {ctx.get('business_type')} "
                 f"importing HS codes {', '.join(hs_codes)} from {', '.join(countries)}.\n\n"
-                f"{hs_lookup_text}\n\n"
+                + (
+                    f"{company} also considers these countries as potential alternative sourcing "
+                    f"locations: {', '.join(alt_countries)}. A risk affecting one of THESE countries "
+                    f"matters too — it changes whether switching there is actually a good idea. If the "
+                    f"news below describes an event in an alternative country rather than the primary "
+                    f"origin, still report it (set affected_countries to that country).\n\n"
+                    if alt_countries else ""
+                )
+                + f"{hs_lookup_text}\n\n"
                 f"Recent relevant news from Aurora RSS buffer:\n{rss_context}\n\n"
-                f"Identify the most significant active risk for THIS customer's specific products above. "
+                f"Identify the most significant active risk for THIS customer's specific products above, "
+                f"considering BOTH the primary origin countries and the alternative sourcing countries. "
                 f"Classify the event_type as one of: "
                 f"tariff | port_disruption | geopolitical | supply_shortage. "
                 f"Identify which HS codes from the HS CODE REFERENCE above are affected — "
@@ -1360,6 +1485,9 @@ class MonitorPipeline:
                 + f"Narrow the list down to exactly ONE best option using the above criteria. "
                   f"If no option is viable (active FDA/APHIS holds, all blocked historically, "
                   f"prohibitive compliance, or unacceptable lead times), set no_viable_option to true.\n"
+                  f"Write 'rationale' for a busy business owner, not a compliance analyst: ONE short "
+                  f"sentence (max ~20 words), plain English, stating the single biggest reason this "
+                  f"supplier was picked. No hedging, no listing every factor you considered.\n"
                   f"Return valid JSON only."
             ),
             agent=import_compliance,
@@ -1373,7 +1501,7 @@ class MonitorPipeline:
                 '"source": "global_suppliers_db", '
                 '"compliance_feasibility": "moderate", '
                 '"required_documents": ["Certificate of Origin", "Commercial Invoice"], '
-                '"rationale": "Selected because lead time fits and no prior blocks", '
+                '"rationale": "Fastest lead time with no compliance blocks.", '
                 '"risk_factors": ["Phytosanitary cert takes 3 weeks to obtain"]'
                 '} OR if no viable option: '
                 '{"no_viable_option": true, "reason": "All alternatives previously blocked"}'
@@ -1401,15 +1529,20 @@ class MonitorPipeline:
                 + (f"Aurora run history for {company}:\n{run_history_context}\n\n" if run_history_context else "")
                 + (f"Previously recommended/blocked suppliers:\n{past_suppliers_context}\n\n" if past_suppliers_context else "")
                 + f"Issue CLEAR (proceed), CAUTION (proceed with caveats), or BLOCK (do not proceed). "
-                  f"This is a recommendation — the user makes the final call. "
-                  f"Be specific. Return valid JSON only."
+                  f"This is a recommendation — the user makes the final call.\n"
+                  f"Write 'recommendation' for a busy business owner: ONE short, concrete sentence "
+                  f"(max ~20 words) telling them exactly what to do next. No internal reasoning, no "
+                  f"listing the things you checked — just the bottom-line action.\n"
+                  f"Write each 'flags' entry the same way: one short plain-English sentence, not a "
+                  f"paragraph. Omit 'challenged_assumptions' unless there's a genuinely important "
+                  f"catch the user must know — most runs don't need it.\n"
+                  f"Return valid JSON only."
             ),
             agent=adversarial,
             expected_output=(
                 'JSON: {"verdict": "CAUTION", '
-                '"flags": ["specific weakness in the recommendation"], '
-                '"challenged_assumptions": ["assumption the compliance agent made that may be wrong"], '
-                '"recommendation": "concrete action ' + company + ' should take", '
+                '"flags": ["Lead time assumes no port delays"], '
+                '"recommendation": "Proceed with ' + company + ', but confirm the lead time in writing first.", '
                 '"confidence": 0.78}'
             ),
         )
@@ -1494,11 +1627,60 @@ class MonitorPipeline:
         event_type = tm.get("event_type") or "tariff"
         # affected_hs_codes already set in Phase 1 (force-corrected to customer's known codes)
 
-        primary_country = countries[0] if countries else "Unknown"
+        # Prefer the country the LLM actually identified for THIS event over
+        # the customer's static primary_origin_countries[0] — a customer
+        # sourcing from 4 countries shouldn't have every disruption pinned to
+        # whichever one happens to be listed first in their profile, and
+        # every one of their suppliers shouldn't light up red just because
+        # *some* country they source from had *some* disruption somewhere.
+        primary_country = (tm.get("affected_countries") or countries or ["Unknown"])[0]
         # Use compliance's chosen lead time; fall back to alternatives list
         best_lead = comp.get("lead_time_weeks") or (
             min((o.get("lead_time_weeks") for o in options if o.get("lead_time_weeks")), default=None)
         )
+
+        # Grounded event description: prefer the LLM's own finding (tm.event).
+        # When TariffMonitor found nothing concrete (the common case — most
+        # cycles don't have a fresh tariff change), fall back to the actual
+        # top-scored RSS article's real headline instead of a generic
+        # "{event_type} event affecting {country}" placeholder — a real
+        # headline is something a user can actually understand, a fabricated
+        # phrase is not. Only fall back to the placeholder if no article was
+        # available at all (e.g. RSS fetch failed).
+        llm_event = tm.get("event")
+        if llm_event:
+            event_description = str(llm_event)
+        elif top_article:
+            event_description = (
+                f"No confirmed {event_type} change detected this cycle for {primary_country} sourcing. "
+                f"Most relevant signal reviewed: \"{top_article['title']}\" ({top_article['source'] or 'unknown source'})."
+            )
+        else:
+            event_description = f"No confirmed {event_type} change detected this cycle for {primary_country} sourcing — no live news signal was available."
+
+        # ── 8b. Backfill tm so persisted/display fields are never blank ──────
+        # When risk_detected is false (the common case — most cycles find no
+        # fresh tariff change), Gemini often omits affected_countries/
+        # confidence/source entirely since "nothing was found." The frontend
+        # reads straight from tm for Country/Product/Confidence/Intelligence
+        # Source, so an empty tm renders as "—" even though we already have
+        # grounded values (countries, affected_product_name, top_article)
+        # computed above for the same purpose — write them into tm itself so
+        # every consumer (UI, AgentRunLog, HistoricalImpact) sees one
+        # consistent, populated record instead of a half-empty one.
+        if not tm.get("affected_countries"):
+            tm["affected_countries"] = countries or [primary_country]
+        if not tm.get("affected_product_name"):
+            tm["affected_product_name"] = affected_product_name
+        if not tm.get("affected_hs_codes"):
+            tm["affected_hs_codes"] = affected_hs_codes
+        if tm.get("confidence") is None:
+            tm["confidence"] = 0.35 if top_article else 0.15
+        if not tm.get("source"):
+            tm["source"] = (top_article["source"] if top_article else None) or "No live signal this cycle"
+        tm["event_type"] = event_type
+        tm["event"] = event_description
+        agent_outputs["tariff_monitor"] = tm
 
         # ── 9. Write DisruptionEvent (feeds globe visualization) ──────────────
         disruption_event_id = None
@@ -1514,13 +1696,16 @@ class MonitorPipeline:
                     de = DisruptionEvent(
                         incident_id=incident_id,
                         event_type=event_type,
-                        title=str(tm.get("event") or f"{event_type} event affecting {primary_country}")[:500],
-                        description=str(tm.get("event", ""))[:2000],
+                        title=shorten_for_title(event_description)[:500],
+                        description=event_description[:2000],
                         location_name=primary_country,
                         latitude=lat,
                         longitude=lon,
                         hs_codes=affected_hs_codes,
-                        countries_affected=countries,
+                        # The countries genuinely tied to THIS event — not the
+                        # customer's full sourcing footprint — so the globe
+                        # only highlights suppliers actually at risk.
+                        countries_affected=tm.get("affected_countries") or countries,
                         severity=severity,
                         confidence=float(tm.get("confidence") or 0.0),
                         source=str(tm.get("risk_source", "gemini_knowledge")),
@@ -1546,12 +1731,63 @@ class MonitorPipeline:
             severity=severity,
             summary=(
                 f"{company}: {affected_product_name} from {primary_country} — "
-                f"{str(tm.get('event') or f'{event_type} event')[:300]}. "
+                f"{event_description[:300]}. "
                 f"(est. impact: ${extra_cost:,.0f})"
             ),
             data_source="gemini",
             disruption_event_id=disruption_event_id,
+            alert_type=event_type,
         )
+
+        # ── 10b. Link this run's TOP 5 most-relevant RSS articles to the alert ──
+        # Once linked, these rows are excluded from the age-based prune below
+        # and become this alert's permanent, queryable "sources used" record
+        # (see api/v2/alert_routes.py — exposed as TariffAlertResponse.sources).
+        # Capped at 5 — the user should see a handful of genuinely relevant
+        # sources, not every article buffered across all three RSS fetchers
+        # (tariff_monitor + import_compliance + alternatives_finder can total
+        # 25+ rows per run). Ordered by relevance_score so the TariffMonitor's
+        # actually-scored matches (the ones that drove the detected event) win
+        # over the compliance/alternatives rows, which are written with
+        # relevance_score=0 and only included as supporting context.
+        if alert_id and db:
+            try:
+                from models import RssArticle
+                # Pull a wider candidate pool, then re-rank against the
+                # SPECIFIC detected event (product name + event type), not
+                # just the company's broad multi-category keyword profile —
+                # a company importing both steel and pharma shouldn't have
+                # a pharma-distribution article linked to a steel-shortage alert.
+                candidates = (
+                    db.query(RssArticle)
+                    .filter(RssArticle.run_id == run_id, RssArticle.relevance_score > 0)
+                    .order_by(RssArticle.relevance_score.desc(), RssArticle.created_at.asc())
+                    .limit(15)
+                    .all()
+                )
+                event_terms = [
+                    w.lower() for w in re.split(r"[^a-zA-Z]+", f"{affected_product_name} {event_type}")
+                    if len(w) > 3
+                ]
+
+                def _event_overlap(article):
+                    haystack = f"{article.title or ''} {article.body or ''}".lower()
+                    return sum(1 for term in event_terms if term in haystack)
+
+                ranked = sorted(candidates, key=lambda a: (_event_overlap(a), a.relevance_score), reverse=True)
+                top_ids = [a.id for a in ranked[:5]]
+                linked = 0
+                if top_ids:
+                    linked = (
+                        db.query(RssArticle)
+                        .filter(RssArticle.id.in_(top_ids))
+                        .update({"tariff_alert_id": alert_id}, synchronize_session=False)
+                    )
+                db.commit()
+                pipeline_emit("db_write", f"Linked {linked} rss_articles rows to alert_id={alert_id} (top 5 most relevant — permanent source record)")
+            except Exception as exc:
+                logger.warning(f"RssArticle->alert link failed: {exc}")
+                db.rollback()
 
         # ── 11. Write per-agent AgentRunLog rows ─────────────────────────────
         if db:
@@ -1591,7 +1827,7 @@ class MonitorPipeline:
                     actual_loss=float(extra_cost) if extra_cost else 0.0,
                     delay_days=None,
                     confidence=float(tm.get("confidence", 0.0)),
-                    event_text=str(tm.get("event", ""))[:2000],
+                    event_text=event_description[:2000],
                     run_id=run_id,
                     customer_id=customer_id,
                     alert_id=alert_id,
@@ -1751,16 +1987,24 @@ class MonitorPipeline:
                 db.rollback()
 
             try:
-                # Prune by age, not by run_id: this run's rows must survive so the
-                # *next* run's _seen_article_urls() lookup can exclude them.
+                # Permanent cross-run dedup now lives in SeenArticle (never pruned),
+                # so this is pure storage cleanup, not load-bearing for dedup
+                # correctness. Rows linked to a saved alert (tariff_alert_id set,
+                # step 10b above) are EXCLUDED — those are now an alert's
+                # permanent "sources used" record and must survive forever.
+                # Only unlinked scratch rows (never matched/used by a saved
+                # alert) are pruned by age.
                 from models import RssArticle
                 cutoff = datetime.utcnow() - timedelta(hours=RSS_DEDUP_WINDOW_HOURS)
-                deleted = db.query(RssArticle).filter(RssArticle.created_at < cutoff).delete()
+                deleted = db.query(RssArticle).filter(
+                    RssArticle.created_at < cutoff,
+                    RssArticle.tariff_alert_id.is_(None),
+                ).delete(synchronize_session=False)
                 db.commit()
                 pipeline_emit(
                     "rss_pruned",
-                    f"Pruned {deleted} rss_articles rows older than {RSS_DEDUP_WINDOW_HOURS}h "
-                    f"(this run's articles kept for the next run's de-dup check)",
+                    f"Pruned {deleted} unlinked rss_articles scratch rows older than {RSS_DEDUP_WINDOW_HOURS}h "
+                    f"(articles linked to a saved alert are kept permanently)",
                 )
             except Exception as exc:
                 logger.warning(f"RSS buffer prune failed: {exc}")
@@ -1786,6 +2030,7 @@ class MonitorPipeline:
         summary: str,
         data_source: str,
         disruption_event_id: Optional[int] = None,
+        alert_type: str = "tariff",
     ) -> Optional[int]:
         """Save TariffAlert and return its id (used as FK by AgentRunLog, HistoricalImpact, SupplierRecommendation)."""
         if db is None:
@@ -1794,7 +2039,7 @@ class MonitorPipeline:
             from models import TariffAlert
             alert = TariffAlert(
                 customer_id=customer_id,
-                alert_type="tariff_change",
+                alert_type=alert_type,
                 severity=severity,
                 summary=summary,
                 agent_output=json.dumps(agent_outputs),

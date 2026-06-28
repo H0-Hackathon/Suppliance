@@ -3,6 +3,7 @@ import {
   TrendingUp, Zap, Search, ShieldCheck, Gavel,
   CheckCircle2, Loader2, ChevronDown, ExternalLink,
 } from 'lucide-react';
+import { ClampText } from '../common/ClampText';
 
 /** Agent 1 (TariffMonitor) — core/monitor_agent.get_latest_event */
 export interface TariffMonitorOutput {
@@ -57,11 +58,11 @@ interface ChainStep {
 // The fixed reasoning chain, in execution order. Colors pull from the brand
 // palette + semantic severity tones — no decorative one-off hues.
 const CHAIN: ChainStep[] = [
-  { key: 'tariff_monitor', label: 'TariffMonitor', icon: TrendingUp, color: '#84D7D8' },
-  { key: 'impact_calculator', label: 'ImpactCalculator', icon: Zap, color: '#E24B4A' },
-  { key: 'alternatives_finder', label: 'AlternativesFinder', icon: Search, color: '#5BA86F' },
-  { key: 'import_compliance', label: 'ImportCompliance', icon: ShieldCheck, color: '#548C92' },
-  { key: 'adversarial', label: 'Adversarial', icon: Gavel, color: '#E0A23B' },
+  { key: 'tariff_monitor', label: 'Searching Agent', icon: TrendingUp, color: '#84D7D8' },
+  { key: 'impact_calculator', label: 'Calculating Agent', icon: Zap, color: '#E24B4A' },
+  { key: 'alternatives_finder', label: 'Solution Agent', icon: Search, color: '#5BA86F' },
+  { key: 'import_compliance', label: 'Compliance Agent', icon: ShieldCheck, color: '#548C92' },
+  { key: 'adversarial', label: 'Decision Agent', icon: Gavel, color: '#E0A23B' },
 ];
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -146,7 +147,9 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
     return (
       <>
         {d.event && (
-          <div style={{ fontSize: 13.5, color: FG, fontWeight: 600, lineHeight: 1.45, marginBottom: 10 }}>{d.event}</div>
+          <div style={{ fontSize: 13.5, color: FG, fontWeight: 600, lineHeight: 1.45, marginBottom: 10 }}>
+            <ClampText text={d.event} maxChars={110} />
+          </div>
         )}
         {country && <Row label="Country">{country}</Row>}
         {supplier && <Row label="Supplier">{supplier}</Row>}
@@ -181,7 +184,9 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
         {d.eta_risk && <Row label="ETA risk">{d.eta_risk}</Row>}
         {d.supplier_dependency != null && <Row label="Supplier dependency">{Math.round(d.supplier_dependency * 100)}%</Row>}
         {d.historical_basis && (
-          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>{d.historical_basis}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+            <ClampText text={d.historical_basis} maxChars={100} />
+          </div>
         )}
         <Reasons items={d.reasons} />
       </>
@@ -218,7 +223,7 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
             </div>
             {(alt.stability_note ?? alt.selection_reasoning) && (
               <div style={{ fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>
-                {alt.stability_note ?? alt.selection_reasoning}
+                <ClampText text={alt.stability_note ?? alt.selection_reasoning} maxChars={90} />
               </div>
             )}
           </div>
@@ -255,22 +260,24 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
           </Row>
         )}
         {d.rationale && (
-          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>{d.rationale}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+            <ClampText text={d.rationale} maxChars={100} />
+          </div>
         )}
         {docs.length > 0 && (
           <div style={{ marginTop: 10 }}>
             <div style={{ fontSize: 11.5, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Required docs</div>
-            {docs.slice(0, 4).map((doc, i) => (
+            {docs.slice(0, 3).map((doc, i) => (
               <div key={i} style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>· {doc}</div>
             ))}
-            {docs.length > 4 && <div style={{ fontSize: 12, color: MUTED }}>+{docs.length - 4} more</div>}
+            {docs.length > 3 && <div style={{ fontSize: 12, color: MUTED }}>+{docs.length - 3} more</div>}
           </div>
         )}
         {risks.length > 0 && (
           <div style={{ marginTop: 10 }}>
             <div style={{ fontSize: 11.5, color: '#E88F8E', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Risk factors</div>
-            {risks.slice(0, 2).map((r, i) => (
-              <div key={i} style={{ fontSize: 12.5, color: '#E88F8E', lineHeight: 1.5 }}>· {r}</div>
+            {risks.slice(0, 1).map((r, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: '#E88F8E', lineHeight: 1.5 }}>· <ClampText text={r} maxChars={90} /></div>
             ))}
           </div>
         )}
@@ -302,18 +309,20 @@ function agentDetail(key: string, agents: AgentResults, supplier?: string | null
             fontSize: 13, color: FG, fontWeight: 500, lineHeight: 1.55, marginBottom: 10,
             background: 'rgba(132,215,216,0.08)', borderLeft: '2px solid var(--seafoam)',
             padding: '8px 12px', borderRadius: 6,
-          }}>{recommendation}</div>
+          }}>
+            <ClampText text={recommendation} maxChars={110} />
+          </div>
         )}
         {flags.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 11.5, color: '#E88F8E', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Flags</div>
-            <Reasons items={flags.map((f: any) => (typeof f === 'string' ? f : f.flag || JSON.stringify(f)))} />
-          </div>
-        )}
-        {challenged.length > 0 && (
-          <div>
-            <div style={{ fontSize: 11.5, color: 'var(--clay)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Challenged assumptions</div>
-            <Reasons items={challenged.map((c: any) => (typeof c === 'string' ? c : JSON.stringify(c)))} />
+            <ul style={{ margin: '8px 0 0', paddingLeft: 16, listStyle: 'disc' }}>
+              {flags.slice(0, 2).map((f: any, i: number) => (
+                <li key={i} style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 4 }}>
+                  <ClampText text={typeof f === 'string' ? f : f.flag || JSON.stringify(f)} maxChars={90} />
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </>
@@ -333,7 +342,7 @@ const StatusCircle: React.FC<{ status: StepStatus; index: number; color: string 
       <div style={{
         width: 22, height: 22, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 0 0 3px ${color}22`, animation: 'pulse-dot 1.4s ease-in-out infinite',
+        boxShadow: `0 0 0 3px ${color}22`, animation: 'pulse-dot var(--pulse-duration, 1.4s) ease-in-out infinite',
       }}>
         <Loader2 size={17} color={color} style={{ animation: 'spin 1s linear infinite' }} />
       </div>
@@ -388,7 +397,7 @@ export const LiveAgentResults: React.FC<LiveAgentResultsProps> = ({
           width: 7, height: 7, borderRadius: '50%',
           background: live ? 'var(--seafoam)' : hasAny ? 'var(--safe)' : 'var(--text-muted)',
           boxShadow: live || hasAny ? `0 0 6px ${live ? 'var(--seafoam)' : 'var(--safe)'}` : 'none',
-          animation: live ? 'pulse-dot 1.4s ease-in-out infinite' : 'none',
+          animation: live ? 'pulse-dot var(--pulse-duration, 1.4s) ease-in-out infinite' : 'none',
         }} />
         <span style={{ fontWeight: 600, letterSpacing: '0.04em', color: live ? 'var(--seafoam)' : hasAny ? '#93CDA3' : MUTED }}>
           {live ? 'LIVE · REASONING CHAIN' : hasAny ? 'REASONING CHAIN' : 'AGENT PIPELINE'}

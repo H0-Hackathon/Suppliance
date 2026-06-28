@@ -2,7 +2,43 @@ import React, { useState } from 'react';
 import { BellRing, Clock } from 'lucide-react';
 import { SectionHeader, SettingsCard, FieldRow, TextInput, ToggleSwitch, SaveButton } from './SettingsShared';
 
-interface Props { onSave: () => void; saving: boolean; }
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
+
+export interface AlertPreferences {
+  minSeverity: Severity;
+  email: boolean;
+  emailAddress: string;
+  browser: boolean;
+  dailyBrief: boolean;
+  briefTime: string;
+  slackWebhook: string;
+  digestMode: boolean;
+  geopoliticAlerts: boolean;
+  tariffAlerts: boolean;
+  supplierAlerts: boolean;
+  weatherAlerts: boolean;
+}
+
+export const DEFAULT_ALERT_PREFERENCES: AlertPreferences = {
+  minSeverity: 'medium',
+  email: true,
+  emailAddress: '',
+  browser: true,
+  dailyBrief: true,
+  briefTime: '07:30',
+  slackWebhook: '',
+  digestMode: false,
+  geopoliticAlerts: true,
+  tariffAlerts: true,
+  supplierAlerts: true,
+  weatherAlerts: false,
+};
+
+interface Props {
+  onSave: (data: AlertPreferences) => void;
+  saving: boolean;
+  initialData?: Partial<AlertPreferences>;
+}
 
 const SEVERITY_LEVELS = [
   { id: 'critical', label: 'Critical', color: '#ef4444', desc: 'Immediate supply chain risk' },
@@ -11,22 +47,27 @@ const SEVERITY_LEVELS = [
   { id: 'low',      label: 'Low',      color: '#B4D7D8', desc: 'Informational signals' },
 ] as const;
 
-type Severity = 'critical' | 'high' | 'medium' | 'low';
 const SEV_ORDER: Severity[] = ['critical', 'high', 'medium', 'low'];
 
-export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => {
-  const [minSeverity, setMinSeverity] = useState<Severity>('medium');
-  const [email, setEmail]               = useState(true);
-  const [emailAddress, setEmailAddress] = useState('');
-  const [browser, setBrowser]           = useState(true);
-  const [dailyBrief, setDailyBrief]     = useState(true);
-  const [briefTime, setBriefTime]       = useState('07:30');
-  const [slackWebhook, setSlackWebhook] = useState('');
-  const [digestMode, setDigestMode]     = useState(false);
-  const [geopoliticAlerts, setGeopoliticAlerts] = useState(true);
-  const [tariffAlerts, setTariffAlerts]         = useState(true);
-  const [supplierAlerts, setSupplierAlerts]     = useState(true);
-  const [weatherAlerts, setWeatherAlerts]       = useState(false);
+export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving, initialData }) => {
+  const merged = { ...DEFAULT_ALERT_PREFERENCES, ...initialData };
+  const [minSeverity, setMinSeverity] = useState<Severity>(merged.minSeverity);
+  const [email, setEmail]               = useState(merged.email);
+  const [emailAddress, setEmailAddress] = useState(merged.emailAddress);
+  const [browser, setBrowser]           = useState(merged.browser);
+  const [dailyBrief, setDailyBrief]     = useState(merged.dailyBrief);
+  const [briefTime, setBriefTime]       = useState(merged.briefTime);
+  const [slackWebhook, setSlackWebhook] = useState(merged.slackWebhook);
+  const [digestMode, setDigestMode]     = useState(merged.digestMode);
+  const [geopoliticAlerts, setGeopoliticAlerts] = useState(merged.geopoliticAlerts);
+  const [tariffAlerts, setTariffAlerts]         = useState(merged.tariffAlerts);
+  const [supplierAlerts, setSupplierAlerts]     = useState(merged.supplierAlerts);
+  const [weatherAlerts, setWeatherAlerts]       = useState(merged.weatherAlerts);
+
+  const handleSave = () => onSave({
+    minSeverity, email, emailAddress, browser, dailyBrief, briefTime,
+    slackWebhook, digestMode, geopoliticAlerts, tariffAlerts, supplierAlerts, weatherAlerts,
+  });
 
   const activeIndex = SEV_ORDER.indexOf(minSeverity);
 
@@ -70,7 +111,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                 >
                   <span style={{
                     position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
-                    fontSize: 10.5, fontWeight: minSeverity === sev ? 700 : 400,
+                    fontSize: 12, fontWeight: minSeverity === sev ? 700 : 400,
                     color: minSeverity === sev ? cfg.color : 'var(--text-secondary)',
                     whiteSpace: 'nowrap', fontFamily: 'var(--font)', transition: 'color 0.15s',
                   }}>
@@ -84,7 +125,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
         <div style={{
           padding: '10px 14px', background: 'rgba(132,215,216,0.05)',
           border: '1px solid rgba(132,215,216,0.12)', borderRadius: 7,
-          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-secondary)',
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: 'var(--text-secondary)',
         }}>
           <BellRing size={13} color="#548C92" />
           Showing <strong style={{ color: 'var(--ocean)' }}>{minSeverity.charAt(0).toUpperCase() + minSeverity.slice(1)}</strong> and above.{' '}
@@ -128,7 +169,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
                   onChange={e => setBriefTime(e.target.value)}
                   style={{
                     background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.09)',
-                    borderRadius: 7, color: 'var(--ocean)', fontSize: 12.5, fontFamily: 'var(--font)',
+                    borderRadius: 7, color: 'var(--ocean)', fontSize: 14, fontFamily: 'var(--font)',
                     padding: '9px 12px', outline: 'none', colorScheme: 'dark',
                   }}
                 />
@@ -147,7 +188,7 @@ export const AlertPreferencesSection: React.FC<Props> = ({ onSave, saving }) => 
         </div>
       </SettingsCard>
 
-      <SaveButton onSave={onSave} saving={saving} label="Save Alert Preferences" />
+      <SaveButton onSave={handleSave} saving={saving} label="Save Alert Preferences" />
     </div>
   );
 };

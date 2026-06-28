@@ -145,7 +145,7 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ lastRunAt }) => {
         background: 'linear-gradient(90deg, rgba(132,215,216,0.12), transparent)',
         borderRight: '1px solid var(--border-soft)',
       }}>
-        <Radio size={13} color="var(--seafoam)" style={{ animation: 'pulse-dot 1.4s ease-in-out infinite' }} />
+        <Radio size={13} color="var(--seafoam)" style={{ animation: 'pulse-dot var(--pulse-duration, 1.4s) ease-in-out infinite' }} />
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--seafoam)' }}>LIVE</span>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>TRADE WIRE</span>
       </div>

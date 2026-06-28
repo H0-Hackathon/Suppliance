@@ -70,7 +70,7 @@ export const AgentStepHeader: React.FC<AgentStepHeaderProps> = ({
               height: 7,
               borderRadius: '50%',
               background: 'var(--seafoam)',
-              animation: 'pulse-dot 1.4s ease-in-out infinite',
+              animation: 'pulse-dot var(--pulse-duration, 1.4s) ease-in-out infinite',
             }}
           />
         ) : Icon ? (

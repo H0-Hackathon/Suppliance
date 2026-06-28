@@ -127,7 +127,7 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
                     border: `1px solid ${isSelected ? 'rgba(132,215,216,0.4)' : 'rgba(232,226,216,0.07)'}`,
                     background: isSelected ? 'rgba(132,215,216,0.1)' : 'rgba(232,226,216,0.02)',
                     color: isSelected ? '#548C92' : 'var(--text-muted)',
-                    fontSize: 11.5, fontWeight: isSelected ? 600 : 400,
+                    fontSize: 13, fontWeight: isSelected ? 600 : 400,
                     fontFamily: 'var(--font)', cursor: 'pointer', textAlign: 'left',
                     transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 7,
                   }}
@@ -162,10 +162,10 @@ export const CompanyProfileSection: React.FC<Props> = ({ onSave, saving, initial
           <Globe size={13} color="#548C92" />
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ocean)', marginBottom: 4 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ocean)', marginBottom: 4 }}>
             How this personalises your monitoring
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             Your industry and revenue range determine which tariff schedules, trade regulations, and supplier risk benchmarks are pre-loaded. Changing these recalibrates alert severity scoring and peer comparison metrics.
           </div>
         </div>

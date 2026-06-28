@@ -19,7 +19,7 @@ Tables:
 from datetime import datetime
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, JSON, String, Text
+    Integer, JSON, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from database import Base
@@ -122,6 +122,7 @@ class TariffAlert(Base):
     customer = relationship("Customer", back_populates="alerts")
     order = relationship("ImportOrder", back_populates="alerts")
     disruption_event = relationship("DisruptionEvent", back_populates="alerts")
+    sources = relationship("RssArticle", back_populates="tariff_alert")
 
 
 class DisruptionEvent(Base):
@@ -212,6 +213,11 @@ class BusinessProfile(Base):
     preferred_alternative_regions = Column(JSON, nullable=True)
     preferred_alternative_countries = Column(JSON, nullable=True)
     min_supplier_rating = Column(Float, nullable=True)
+    # User-configurable Settings-page preferences (Alert Preferences / Appearance
+    # sections) — stored as opaque JSON blobs since their shape is owned by the
+    # frontend, not queried by any agent or backend logic.
+    alert_preferences = Column(JSON, nullable=True)
+    appearance_preferences = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     customer = relationship("Customer", back_populates="business_profile")
@@ -242,17 +248,22 @@ class AgentRun(Base):
 
 class RssArticle(Base):
     """
-    Rolling 12-hour Aurora buffer for scored RSS articles. Written at the
-    start of every pipeline run; a row is excluded from being re-cited by
-    any later run for the same customer+agent_target until it ages past
-    RSS_DEDUP_WINDOW_HOURS (core/crew_monitor_pipeline.py), at which point
-    it's pruned. This keeps back-to-back runs from citing the same headline twice.
+    Rolling Aurora buffer for scored RSS articles, written at the start of
+    every pipeline run and read back to build agent prompt context.
+
+    Rows are pruned by age (RSS_DEDUP_WINDOW_HOURS, core/crew_monitor_pipeline.py)
+    UNLESS they're linked to a saved alert via tariff_alert_id — those become
+    that alert's permanent, queryable "sources used" record and are never
+    pruned. Permanent cross-run dedup (never re-cite the same URL to the same
+    customer) is handled separately by the SeenArticle ledger below; this
+    table's own created_at-based dedup window is just a fallback.
     """
     __tablename__ = "rss_articles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_id = Column(String(64), nullable=False, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    tariff_alert_id = Column(Integer, ForeignKey("tariff_alerts.id"), nullable=True, index=True)
     title = Column(String(500), nullable=True)
     url = Column(String(1000), nullable=True)
     source = Column(String(255), nullable=True)
@@ -262,6 +273,33 @@ class RssArticle(Base):
     country_mentioned = Column(String(100), nullable=True)
     agent_target = Column(String(50), nullable=True)   # tariff_monitor | alternatives_finder | import_compliance
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    tariff_alert = relationship("TariffAlert", back_populates="sources")
+
+
+class SeenArticle(Base):
+    """
+    Permanent per-customer ledger of every RSS article URL ever cited by any
+    pipeline run, keyed by (customer_id, agent_target, url). Never pruned.
+
+    This is what guarantees "no event reuses an article a previous run for
+    this customer already used" — unlike rss_articles (a scratch buffer),
+    this table only ever grows, so the exclusion is permanent, not a rolling
+    window. _seen_article_urls() in crew_monitor_pipeline.py queries this
+    table to build the exclusion set before scoring fresh RSS pulls.
+    """
+    __tablename__ = "seen_articles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    agent_target = Column(String(50), nullable=False, index=True)
+    url = Column(String(1000), nullable=False)
+    first_seen_run_id = Column(String(64), nullable=True)
+    first_seen_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("customer_id", "agent_target", "url", name="uq_seen_article"),
+    )
 
 
 class SupplierRecommendation(Base):

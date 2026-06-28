@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Palette, LayoutGrid } from 'lucide-react';
 import { SectionHeader, SettingsCard, ToggleSwitch, SaveButton } from './SettingsShared';
+import { AppearancePrefs, DEFAULT_APPEARANCE, applyAppearance, cacheAppearance } from '../../lib/appearance';
 
-interface Props { onSave: () => void; saving: boolean; }
+interface Props {
+  onSave: (data: AppearancePrefs) => void;
+  saving: boolean;
+  initialData?: Partial<AppearancePrefs>;
+}
 
 const THEMES = [
   { id: 'suppliance',    label: 'Suppliance',     desc: 'Deep teal-navy with seafoam accents — default', preview: { bg: '#285260', accent: '#84D7D8', border: 'rgba(132,215,216,0.3)' } },
@@ -17,15 +22,28 @@ const DENSITIES = [
   { id: 'ultra',       label: 'Ultra Dense', desc: 'Maximum information density' },
 ] as const;
 
-export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
-  const [theme, setTheme]                 = useState('suppliance');
-  const [density, setDensity]             = useState('comfortable');
-  const [animations, setAnimations]       = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [showDataPulse, setShowDataPulse] = useState(true);
-  const [globeAutoRotate, setGlobeAutoRotate] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [monoNumbers, setMonoNumbers]     = useState(true);
+export const AppearanceSection: React.FC<Props> = ({ onSave, saving, initialData }) => {
+  const merged = { ...DEFAULT_APPEARANCE, ...initialData };
+  const [theme, setTheme]                 = useState(merged.theme);
+  const [density, setDensity]             = useState(merged.density);
+  const [animations, setAnimations]       = useState(merged.animations);
+  const [reducedMotion, setReducedMotion] = useState(merged.reducedMotion);
+  const [showDataPulse, setShowDataPulse] = useState(merged.showDataPulse);
+  const [globeAutoRotate, setGlobeAutoRotate] = useState(merged.globeAutoRotate);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(merged.sidebarCollapsed);
+  const [monoNumbers, setMonoNumbers]     = useState(merged.monoNumbers);
+
+  // Live preview — every toggle takes effect immediately, not just after Save,
+  // so the user sees the real result while configuring (theme swap, motion, etc.)
+  useEffect(() => {
+    applyAppearance({ theme, density, animations, reducedMotion, showDataPulse, globeAutoRotate, sidebarCollapsed, monoNumbers });
+  }, [theme, density, animations, reducedMotion, showDataPulse, globeAutoRotate, sidebarCollapsed, monoNumbers]);
+
+  const handleSave = () => {
+    const data: AppearancePrefs = { theme, density, animations, reducedMotion, showDataPulse, globeAutoRotate, sidebarCollapsed, monoNumbers };
+    cacheAppearance(data);
+    onSave(data);
+  };
 
   return (
     <div>
@@ -69,18 +87,18 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                 </div>
                 <div style={{ padding: '8px 12px', background: 'rgba(232,226,216,0.02)' }}>
                   <div style={{
-                    fontSize: 12, fontWeight: isSelected ? 600 : 400,
+                    fontSize: 13.5, fontWeight: isSelected ? 600 : 400,
                     color: isSelected ? 'var(--ocean)' : 'var(--text-muted)',
                     fontFamily: 'var(--font)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}>
                     {label}
                     {isSelected && (
-                      <span style={{ fontSize: 9, background: preview.accent, color: '#000', padding: '1px 5px', borderRadius: 3, fontWeight: 700, letterSpacing: '0.05em' }}>
+                      <span style={{ fontSize: 10.5, background: preview.accent, color: '#000', padding: '1px 5px', borderRadius: 3, fontWeight: 700, letterSpacing: '0.05em' }}>
                         ACTIVE
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2, fontFamily: 'var(--font)' }}>{desc}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, fontFamily: 'var(--font)' }}>{desc}</div>
                 </div>
               </button>
             );
@@ -104,8 +122,8 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
                 }}
               >
                 <LayoutGrid size={isSelected ? 18 : 16} color={isSelected ? '#548C92' : '#9DAAAD'} style={{ marginBottom: 6 }} />
-                <div style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--ocean)' : 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{desc}</div>
+                <div style={{ fontSize: 13.5, fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--ocean)' : 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{desc}</div>
               </button>
             );
           })}
@@ -124,7 +142,7 @@ export const AppearanceSection: React.FC<Props> = ({ onSave, saving }) => {
         <ToggleSwitch checked={sidebarCollapsed} onChange={setSidebarCollapsed} label="Compact Sidebar by Default" description="Start with icon-only sidebar, expand on hover" />
       </SettingsCard>
 
-      <SaveButton onSave={onSave} saving={saving} label="Save Appearance" />
+      <SaveButton onSave={handleSave} saving={saving} label="Save Appearance" />
     </div>
   );
 };

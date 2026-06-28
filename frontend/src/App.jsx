@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import enUS from 'antd/locale/en_US';
+import { Toaster } from 'sonner';
 import './App.css';
 import SuppliersPage from './pages/SuppliersPage';
 import { CommonHeader } from './components/CommonHeader';
@@ -13,6 +14,7 @@ import SettingsPage from './pages/SettingsPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import OnboardingPage from './pages/OnboardingPage';
 import { Logo } from './components/common/Logo';
+import { applyAppearance, loadCachedAppearance, cacheAppearance, DEFAULT_APPEARANCE } from './lib/appearance';
 
 import {
   ClerkProvider,
@@ -26,6 +28,10 @@ import {
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+// Apply the last-known appearance immediately at module load (before first
+// paint) so there's no flash of the default theme while auth/settings load.
+applyAppearance(loadCachedAppearance());
 
 // ── Branded loading screen ────────────────────────────────────────────────────
 function LoadingScreen() {
@@ -93,6 +99,19 @@ function AuthenticatedApp() {
       if (res.ok) {
         // User exists in DB → go straight to dashboard
         setStatus('ready');
+        // Pull this account's saved appearance from the backend (covers a
+        // fresh browser/device where localStorage has nothing cached yet)
+        // and re-apply/cache it so it's correct everywhere, not just Settings.
+        fetch(`${API_URL}/api/v2/settings`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((settingsData) => {
+            if (settingsData?.appearance_preferences) {
+              const prefs = { ...DEFAULT_APPEARANCE, ...settingsData.appearance_preferences };
+              applyAppearance(prefs);
+              cacheAppearance(prefs);
+            }
+          })
+          .catch(() => {});
       } else if (res.status === 404) {
         // User authenticated with Clerk but no Customer record yet → onboard
         setStatus('onboarding');
@@ -162,6 +181,7 @@ function App() {
   return (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
       <ConfigProvider locale={enUS}>
+        <Toaster richColors position="top-right" />
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>

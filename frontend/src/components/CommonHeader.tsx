@@ -122,7 +122,7 @@ export const CommonHeader: React.FC = () => {
             background: statusColor,
             boxShadow: `0 0 6px ${statusColor}`,
             flexShrink: 0,
-            animation: dbStatus === 'ok' ? 'pulse-dot 2s ease-in-out infinite' : 'none',
+            animation: dbStatus === 'ok' ? 'pulse-dot var(--pulse-duration, 2s) ease-in-out infinite' : 'none',
           }}
         />
         {dbStatus === 'checking' && 'Connecting…'}

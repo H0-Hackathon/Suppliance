@@ -66,10 +66,57 @@ def _migrate_customer_columns():
                 conn.rollback()   # Column already exists — safe to ignore
 
 
+def _migrate_rss_article_columns():
+    """
+    Adds rss_articles.tariff_alert_id — links a buffered RSS article to the
+    specific alert it ended up feeding, so the frontend can show real
+    per-alert sources and the age-based prune can skip rows that belong to
+    a saved alert (see core/crew_monitor_pipeline.py).
+    """
+    from database import engine
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE rss_articles ADD COLUMN tariff_alert_id INTEGER "
+                "REFERENCES tariff_alerts(id)"
+            ))
+            conn.commit()
+            logger.info("Migration: added rss_articles.tariff_alert_id")
+        except Exception:
+            conn.rollback()   # Column already exists — safe to ignore
+
+
+def _migrate_business_profile_columns():
+    """
+    Adds business_profiles.alert_preferences / appearance_preferences — the
+    Settings page's Alert Preferences and Appearance sections persist their
+    toggles here instead of resetting on every page load.
+    """
+    from database import engine
+    from sqlalchemy import text
+
+    new_columns = [
+        ("alert_preferences",      "JSON"),
+        ("appearance_preferences", "JSON"),
+    ]
+    with engine.connect() as conn:
+        for col_name, col_type in new_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE business_profiles ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+                logger.info(f"Migration: added business_profiles.{col_name}")
+            except Exception:
+                conn.rollback()   # Column already exists — safe to ignore
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-migrate new Customer columns (safe: skips if column already exists)
+    # Auto-migrate new/changed columns (safe: skips if column already exists)
     _migrate_customer_columns()
+    _migrate_rss_article_columns()
+    _migrate_business_profile_columns()
     yield
 
 

@@ -109,7 +109,7 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '5px 10px', background: 'rgba(232,226,216,0.03)',
                 border: '1px solid rgba(232,226,216,0.07)', borderRadius: 6,
-                fontSize: 11, color: 'var(--text-secondary)',
+                fontSize: 12.5, color: 'var(--text-secondary)',
               }}>
                 <MapPin size={10} color="rgba(132,215,216,0.5)" />
                 {country}
@@ -132,7 +132,7 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
         <div style={{
           marginTop: 8, padding: '10px 14px', background: 'rgba(239,68,68,0.05)',
           border: '1px solid rgba(239,68,68,0.12)', borderRadius: 7,
-          fontSize: 11.5, color: '#E8A5A5', display: 'flex', alignItems: 'flex-start', gap: 8,
+          fontSize: 13, color: '#E8A5A5', display: 'flex', alignItems: 'flex-start', gap: 8,
         }}>
           <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
           Any event in these regions will generate a <strong style={{ color: '#F0BFBF' }}>Critical</strong> alert regardless of your minimum severity threshold.
@@ -165,10 +165,10 @@ export const SupplyChainSection: React.FC<Props> = ({ onSave, saving, initialDat
                   margin: '0 auto 8px',
                   boxShadow: isSelected ? `0 0 8px ${color}` : 'none', transition: 'all 0.2s',
                 }} />
-                <div style={{ fontSize: 12.5, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : 'var(--text-muted)', marginBottom: 5 }}>
+                <div style={{ fontSize: 14, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : 'var(--text-muted)', marginBottom: 5 }}>
                   {label}
                 </div>
-                <div style={{ fontSize: 10.5, color: isSelected ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
+                <div style={{ fontSize: 12, color: isSelected ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
                   {desc}
                 </div>
               </button>

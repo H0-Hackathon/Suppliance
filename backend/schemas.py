@@ -114,6 +114,18 @@ class ImportOrderResponse(BaseModel):
 
 # ── TariffAlert ───────────────────────────────────────────────────────────────
 
+class AlertSourceResponse(BaseModel):
+    """A real RSS article that fed this specific alert's pipeline run —
+    permanent per-alert record, distinct from the generic news ticker."""
+    model_config = {"from_attributes": True}
+
+    title: Optional[str]
+    url: Optional[str]
+    source: Optional[str]
+    published_at: Optional[str]
+    agent_target: Optional[str]
+
+
 class TariffAlertResponse(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -128,6 +140,7 @@ class TariffAlertResponse(BaseModel):
     status: str
     created_at: datetime
     resolved_at: Optional[datetime]
+    sources: List[AlertSourceResponse] = []
 
 
 # ── DisruptionEvent ───────────────────────────────────────────────────────────

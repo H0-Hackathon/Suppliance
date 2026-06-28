@@ -41,17 +41,36 @@ RSS_FEEDS = [
     "https://www.supplychaindive.com/feeds/news/",
     "https://theloadstar.com/feed/",
 
-    # Agriculture & food trade — directly relevant to food importers
-    "https://www.usda.gov/rss/latest-releases.xml",
-    "https://www.fas.usda.gov/data/rss",
-    "https://www.foodnavigator-usa.com/rss/breaking-news",
-
     # US trade policy / tariffs
     "https://ustr.gov/rss.xml",
     "https://www.trade.gov/rss.xml",
 
-    # Latin America trade news (Colombia, Brazil)
-    "https://rss.app/feeds/latinamerica-trade.xml",
+    # Maritime / shipping / port news — all verified live (200 + real entries,
+    # tested with the pipeline's actual "CoastGuard/1.0" User-Agent)
+    "https://gcaptain.com/feed/",
+    "https://splash247.com/feed/",
+    "https://www.maritime-executive.com/articles.rss",
+    "https://www.freightwaves.com/news/feed",
+    "https://www.dcvelocity.com/rss",
+    "https://container-news.com/feed/",
+
+    # Trade policy / international trade — verified live
+    "http://www.wto.org/library/rss/latest_news_e.xml",
+    "https://www.globaltrademag.com/feed/",
+
+    # Apparel/textile sourcing — relevant to garment/textile-importing customers
+    "https://www.just-style.com/feed/",
+
+    # NOTE (verified live, see backend/core/crew_monitor_pipeline.py history):
+    # the following were removed because they no longer resolve to a real feed —
+    # usda.gov/rss/latest-releases.xml (read-timeout, host hangs),
+    # fas.usda.gov/data/rss (403 Forbidden),
+    # foodnavigator-usa.com/rss/breaking-news (404),
+    # rss.app/feeds/latinamerica-trade.xml (404 — never a real feed).
+    # Also tested and rejected: sourcingjournal.com/feed/ (200 but 0 entries —
+    # blocked), fibre2fashion.com/news/rss/rss.aspx (200 but 0 entries),
+    # cbp.gov/rss/all and /rss/local-ports-entry (404 — moved to COMPLIANCE_RSS_FEEDS
+    # under the real /rss/trade path).
 ]
 
 # Alternative supplier stability feeds — regional trade conditions, political risk,
@@ -59,37 +78,67 @@ RSS_FEEDS = [
 ALTERNATIVES_RSS_FEEDS = [
     # Latin America economy & trade (MercoPress — covers Mercosur + Andean region)
     "https://en.mercopress.com/rss",
-    # Latinvex — Latin America business & investment news
-    "https://latinvex.com/rss.xml",
-    # SupplyChainBrain — global supply chain disruptions and logistics
-    "https://www.supplychainbrain.com/rss",
-    # FAO — global food/agriculture production, crop forecasts, supply conditions
-    "https://www.fao.org/news/rss-feed/en/",
-    # FAS USDA — country-level agricultural trade data and attaché reports
-    "https://www.fas.usda.gov/data/rss",
-    # World Bank development talk — country stability, economic outlooks
-    "https://blogs.worldbank.org/developmenttalk/rss.xml",
-    # UNCTAD — global trade trends and disruptions
-    "https://unctad.org/rss.xml",
     # The Loadstar — shipping/port disruption news globally
     "https://theloadstar.com/feed/",
+    # Africa regional trade/logistics — added to widen the candidate pool once
+    # SeenArticle permanent dedup (see crew_monitor_pipeline.py) started exhausting
+    # the original 2-feed pool after a single run; all verified live (200 + real entries).
+    "https://supplychainafrika.com/feed/",
+    "https://scnafrica.com/feed/",
+    "https://www.logupdateafrica.com/feed",
+    "https://www.freightnews.co.za/rss",
+    # More Africa — dedicated business/trade-only feeds (not general national news)
+    "https://allafrica.com/tools/headlines/rdf/business/headlines.rdf",
+    "https://allafrica.com/tools/headlines/rdf/trade/headlines.rdf",
+    "https://www.theafricareport.com/feed/",
+
+    # Asia — regional sourcing stability (Southeast Asia, South Asia, China), all
+    # business/economy-specific feeds (not general national news), verified live
+    "https://www.bangkokpost.com/rss/data/business.xml",     # Thailand
+    "https://www.philstar.com/rss/business",                  # Philippines
+    "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",  # India
+    "https://asia.nikkei.com/rss/feed/nar",                   # Pan-Asia (Nikkei Asia)
+    "https://www.scmp.com/rss/92/feed",                       # China (SCMP Business)
+    "https://www.eco-business.com/feeds/all/",                # Asia-Pacific sustainability/trade
+
+    # NOTE (verified live): removed dead feeds —
+    # latinvex.com/rss.xml (404), supplychainbrain.com/rss (200 OK but serves
+    # their HTML homepage, not XML — feed was discontinued),
+    # fao.org/news/rss-feed/en/ (404), fas.usda.gov/data/rss (403 Forbidden),
+    # blogs.worldbank.org/developmenttalk/rss.xml (404), unctad.org/rss.xml (404),
+    # joc.com/rss (200 but 0 entries — paywalled/blocked), logisticsnews.co.za/feed/ (404).
+    # Also tested and rejected: batimes.com.ar/feed and buenosairesherald.com/feed/
+    # (real feeds, but general national news dominated by sports/politics, not
+    # business-specific — too noisy relative to the rest of this list),
+    # riotimesonline.com/feed/ (same issue), latinvex.com/latinvex-rss/ and
+    # en.mercopress.com/feeds (200 but 0 entries — HTML index pages, not feeds),
+    # dailymaverick.co.za/feed/ (403), thejakartapost.com/rss and
+    # en.vietnamplus.vn/rss/*.rss (404).
 ]
 
 # Compliance-specific feeds — import regulations, customs rulings, FDA alerts,
 # phytosanitary requirements. Used exclusively by the ImportCompliance agent.
 COMPLIANCE_RSS_FEEDS = [
-    # Federal Register — CBP customs rulings, new import requirements
-    "https://www.federalregister.gov/agencies/customs-and-border-protection.rss",
-    # Federal Register — FDA food import regulations
-    "https://www.federalregister.gov/agencies/food-and-drug-administration.rss",
-    # Federal Register — USDA APHIS phytosanitary & import permits
-    "https://www.federalregister.gov/agencies/animal-and-plant-health-inspection-service.rss",
-    # Federal Register — all import-topic notices
-    "https://www.federalregister.gov/topics/imports.rss",
     # Food Safety News — FDA enforcement actions, import detentions
     "https://www.foodsafetynews.com/feed/",
-    # USDA latest releases (already in main but scored differently here)
-    "https://www.usda.gov/rss/latest-releases.xml",
+    # CBP Trade — customs seizures, enforcement actions, trade rulings (added to
+    # widen the compliance pool once permanent dedup exhausted the single feed above)
+    "https://www.cbp.gov/rss/trade",
+    # FDA Recalls — food/device/cosmetic recalls, directly relevant to import detentions
+    "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml",
+
+    # NOTE (verified live): removed dead feeds — all four federalregister.gov
+    # *.rss and *.rss?conditions[...] routes return 200 but 0 parseable entries
+    # (bot-blocked, serves an HTML access-request page), and
+    # usda.gov/rss/latest-releases.xml read-times-out.
+    # Searched for more (2026-06-28) and came up empty — every other candidate
+    # tested dead: cbp.gov/rss/all, /rss/local-ports-entry, /rss/trade-rulings,
+    # /rss/cargo-systems-messaging-service (all 404); fda.gov rss-feeds/cosmetics,
+    # /warning-letters, /import-alerts (all 404); bis.doc.gov/index.php/all-news/rss
+    # and federalregister.gov/agencies/*.rss (200 but 0 entries — same bot-block
+    # as above); ofac.treasury.gov/rss and trade.gov/press-releases/rss (404);
+    # usda.gov/rss/all.xml and aphis.usda.gov/rss/newsroom.xml (read-timeout).
+    # This pool stays at 3 feeds until a real replacement is found.
 ]
 
 # ==========================================================

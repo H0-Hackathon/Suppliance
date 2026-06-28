@@ -17,9 +17,10 @@ Resolution order:
 """
 
 import hashlib
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -41,15 +42,10 @@ def _deterministic_offset(seed: str) -> tuple[float, float]:
     return lat_off, lng_off
 
 
-@router.get("/supplier-coords")
-def supplier_coords(
-    country: str,
-    name: str = Query(default=""),
-    db: Session = Depends(get_db),
-):
+def _resolve_supplier_coords(db: Session, country: str, name: str) -> Optional[dict]:
     location = get_country_coordinates(country)
     if not location:
-        raise HTTPException(status_code=404, detail=f"No coordinates known for '{country}'")
+        return None
 
     matched_business: Optional[str] = None
     if name.strip():
@@ -73,3 +69,42 @@ def supplier_coords(
         "location_name": matched_business or location["location_name"],
         "matched_global_supplier": matched_business is not None,
     }
+
+
+@router.get("/supplier-coords")
+def supplier_coords(
+    country: str,
+    name: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    result = _resolve_supplier_coords(db, country, name)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"No coordinates known for '{country}'")
+    return result
+
+
+class SupplierCoordsBatchItem(BaseModel):
+    country: str
+    name: str = ""
+
+
+class SupplierCoordsBatchRequest(BaseModel):
+    suppliers: List[SupplierCoordsBatchItem]
+
+
+@router.post("/supplier-coords-batch")
+def supplier_coords_batch(
+    payload: SupplierCoordsBatchRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Same resolution as GET /supplier-coords, but for a whole supplier list in
+    one round trip — the dashboard/suppliers pages were issuing one HTTP
+    request (each opening its own DB query) per supplier, which doesn't scale
+    past a handful of suppliers. Returns results in the same order as the
+    request, with `null` for any supplier whose country has no known coordinates.
+    """
+    return [
+        _resolve_supplier_coords(db, item.country, item.name)
+        for item in payload.suppliers
+    ]

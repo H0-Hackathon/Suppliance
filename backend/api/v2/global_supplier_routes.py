@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import GlobalSupplier, BusinessProfile
 from core.auth import get_current_user_optional
+from services.coordinates import get_country_coordinates, get_country_code
 
 router = APIRouter(prefix="/api/v2/global-suppliers", tags=["Global Supplier Directory"])
 
@@ -224,3 +225,33 @@ def get_globe_data(db: Session = Depends(get_db)):
         .all()
     )
     return [{"country": c, "count": count} for c, count in rows if c]
+
+
+@router.get("/globe-density", response_model=List[dict])
+def get_globe_density(db: Session = Depends(get_db)):
+    """
+    One geocoded point per country (not one per supplier) for the dashboard
+    globe's ambient background layer — ~100-150 rows total instead of the
+    25k individual GlobalSupplier rows, since GlobalSupplier has no per-row
+    lat/lng anyway (country is the only location field it stores).
+    """
+    rows = (
+        db.query(GlobalSupplier.country, func.count(GlobalSupplier.id))
+        .group_by(GlobalSupplier.country)
+        .all()
+    )
+    points = []
+    for country, count in rows:
+        if not country:
+            continue
+        loc = get_country_coordinates(country)
+        if not loc:
+            continue
+        points.append({
+            "country": loc["country_name"],
+            "countryCode": get_country_code(country),
+            "count": count,
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+        })
+    return points

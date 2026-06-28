@@ -1,4 +1,5 @@
 import React from 'react';
+import { toast } from 'sonner';
 import {
   RefreshCw,
   AlertTriangle,
@@ -16,6 +17,7 @@ import { WaveAccent } from '../components/common/WaveAccent';
 import { GlowOrb } from '../components/common/GlowOrb';
 import { ICON_SIZE, ICON_STROKE } from '../components/common/iconDefaults';
 import api from '../services/api';
+import { loadCachedAppearance } from '../lib/appearance';
 
 /**
  * Dashboard — Suppliance command center.
@@ -72,6 +74,9 @@ export const AlertsDashboard: React.FC = () => {
   const [alternateSuppliers, setAlternateSuppliers] = React.useState<TradeGlobeAlternateSupplier[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [progressPct, setProgressPct] = React.useState<number | null>(null);
+  // True while we know a run is in flight (mine or someone else's holding the
+  // shared Gemini-quota slot) but have no real per-step progress to show for it.
+  const [waitingOnSlot, setWaitingOnSlot] = React.useState(false);
   const [lastSync] = React.useState(() => new Date().toISOString());
 
   const [agentResults, setAgentResults] = React.useState<AgentResults>({});
@@ -93,17 +98,20 @@ export const AlertsDashboard: React.FC = () => {
 
   async function fetchSuppliers() {
     const res = await api.get<ApiSupplier[]>('/v2/suppliers');
-    const withGeo = await Promise.all(
-      res.data.map(async (s): Promise<SupplierWithGeo> => {
-        try {
-          const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country: s.country, name: s.name } });
-          return { ...s, latitude: geo.data.latitude, longitude: geo.data.longitude, countryCode: geo.data.code };
-        } catch {
-          return { ...s, latitude: null, longitude: null, countryCode: null };
-        }
-      })
-    );
-    setSuppliers(withGeo);
+    try {
+      // One round trip for every supplier's coordinates instead of N —
+      // each individual lookup also runs its own DB query server-side.
+      const batch = await api.post<Array<GeoCoords | null>>('/v2/geo/supplier-coords-batch', {
+        suppliers: res.data.map((s) => ({ country: s.country, name: s.name })),
+      });
+      const withGeo: SupplierWithGeo[] = res.data.map((s, i) => {
+        const geo = batch.data[i];
+        return { ...s, latitude: geo?.latitude ?? null, longitude: geo?.longitude ?? null, countryCode: geo?.code ?? null };
+      });
+      setSuppliers(withGeo);
+    } catch {
+      setSuppliers(res.data.map((s) => ({ ...s, latitude: null, longitude: null, countryCode: null })));
+    }
   }
 
   async function fetchHQLocation() {
@@ -133,6 +141,33 @@ export const AlertsDashboard: React.FC = () => {
       } catch (err) {
         console.error('Failed to load dashboard data', err);
       }
+
+      // If a run is already in flight when this page loads (a previous tab,
+      // the auto-run-once gate below, or another customer holding the shared
+      // Gemini-quota slot), reflect that immediately instead of showing nothing.
+      try {
+        const status = await api.get<{ running: boolean; is_mine: boolean }>('/v2/monitor/status');
+        if (status.data.running) {
+          setIsRunning(true);
+          if (status.data.is_mine) {
+            setProgressPct(0);
+            await pollMyProgressUntilDone();
+            await Promise.all([fetchAlerts(), fetchDisruptions()]);
+            setLastRunAt(new Date().toISOString());
+          } else {
+            setWaitingOnSlot(true);
+            await waitForFreeSlot();
+          }
+          setIsRunning(false);
+          setWaitingOnSlot(false);
+          setProgressPct(100);
+          setTimeout(() => setProgressPct(null), 1000);
+          return; // skip the auto-run-once check below — we already covered this load
+        }
+      } catch {
+        /* best-effort */
+      }
+
       // Auto-run the pipeline exactly once for accounts that have never run it.
       try {
         const me = await api.get<{ has_run_pipeline: boolean }>('/v2/auth/me');
@@ -157,26 +192,33 @@ export const AlertsDashboard: React.FC = () => {
     }
     let cancelled = false;
     (async () => {
-      const resolved = await Promise.all(
-        options.map(async (opt): Promise<TradeGlobeAlternateSupplier | null> => {
-          const country = opt.country ?? opt.country_full ?? '';
-          if (!country) return null;
-          const name = opt.supplier ?? opt.supplier_name ?? 'Alternative Supplier';
-          try {
-            const geo = await api.get<GeoCoords>('/v2/geo/supplier-coords', { params: { country, name } });
-            return {
-              name,
-              country,
-              latitude: geo.data.latitude,
-              longitude: geo.data.longitude,
-              leadTimeWeeks: opt.lead_time_weeks ?? null,
-              costDeltaPct: opt.cost_delta_pct ?? null,
-            };
-          } catch {
-            return null;
-          }
-        })
-      );
+      const entries = options.map((opt) => ({
+        country: opt.country ?? opt.country_full ?? '',
+        name: opt.supplier ?? opt.supplier_name ?? 'Alternative Supplier',
+        leadTimeWeeks: opt.lead_time_weeks ?? null,
+        costDeltaPct: opt.cost_delta_pct ?? null,
+      }));
+      let geos: Array<GeoCoords | null> = [];
+      try {
+        const batch = await api.post<Array<GeoCoords | null>>('/v2/geo/supplier-coords-batch', {
+          suppliers: entries.map((e) => ({ country: e.country, name: e.name })),
+        });
+        geos = batch.data;
+      } catch {
+        geos = entries.map(() => null);
+      }
+      const resolved: Array<TradeGlobeAlternateSupplier | null> = entries.map((e, i) => {
+        const geo = geos[i];
+        if (!e.country || !geo) return null;
+        return {
+          name: e.name,
+          country: e.country,
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+          leadTimeWeeks: e.leadTimeWeeks,
+          costDeltaPct: e.costDeltaPct,
+        };
+      });
       if (!cancelled) {
         setAlternateSuppliers(resolved.filter((r): r is TradeGlobeAlternateSupplier => r != null));
       }
@@ -204,15 +246,10 @@ export const AlertsDashboard: React.FC = () => {
   }, [alerts, isRunning]);
 
   // ── Monitor run + live progress ───────────────────────────────────────────
-  async function handleRunMonitor() {
-    if (isRunning) return;
-    setIsRunning(true);
-    setProgressPct(0);
-    setAgentResults({});
-    setAgentStatus({});
-    setAgentsUpdatedAt(null);
-    setAgentSupplier(null);
 
+  // Polls this customer's pipeline-log until pipeline_done (or the backend
+  // reports the run has ended), translating events into a monotonic 0–100%.
+  async function pollMyProgressUntilDone() {
     let pollSince = 0;
     let maxPct = 0;
     let agentsDone = 0;
@@ -224,7 +261,9 @@ export const AlertsDashboard: React.FC = () => {
       }
     };
 
-    const poll = async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let sawDone = false;
       try {
         const res = await api.get<{
           events: Array<{ event: string; msg: string; ts: string }>;
@@ -233,7 +272,6 @@ export const AlertsDashboard: React.FC = () => {
         const { events, total } = res.data;
         pollSince = total;
         for (const ev of events) {
-          // progress milestones
           switch (ev.event) {
             case 'pipeline_start': bump(5); break;
             case 'profile_loaded': bump(10); break;
@@ -242,7 +280,7 @@ export const AlertsDashboard: React.FC = () => {
               agentsStarted = Math.min(agentsStarted + 1, AGENT_COUNT);
               bump(Math.min(15 + agentsStarted * 12 - 6, 88));
               break;
-            case 'pipeline_done': bump(100); break;
+            case 'pipeline_done': bump(100); sawDone = true; break;
             default: break;
           }
 
@@ -264,23 +302,84 @@ export const AlertsDashboard: React.FC = () => {
           }
         }
       } catch {
-        /* poll failure — retry next interval */
+        /* poll failure — retry next tick */
       }
-    };
 
-    const pollInterval = setInterval(poll, 1500);
+      if (sawDone) return;
+
+      // Covers the run finishing between our last log read and now.
+      try {
+        const status = await api.get<{ running: boolean }>('/v2/monitor/status');
+        if (!status.data.running && maxPct > 0) return;
+      } catch {
+        /* ignore — keep polling on the log loop */
+      }
+
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  // Polls /monitor/status until the shared run slot frees up (or maxWaitMs elapses).
+  // Returns true if it freed up, false on timeout.
+  async function waitForFreeSlot(maxWaitMs = 120_000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      try {
+        const res = await api.get<{ running: boolean }>('/v2/monitor/status');
+        if (!res.data.running) return true;
+      } catch {
+        return true; // status endpoint unreachable — don't block forever
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
+  }
+
+  async function handleRunMonitor() {
+    if (isRunning) return;
+    setIsRunning(true);
+    setProgressPct(0);
+    setWaitingOnSlot(false);
+    setAgentResults({});
+    setAgentStatus({});
+    setAgentsUpdatedAt(null);
+    setAgentSupplier(null);
 
     try {
-      await api.post('/v2/monitor/run');
-      await poll();
-      bump(100);
+      let posted = false;
+      for (let attempt = 0; attempt < 3 && !posted; attempt++) {
+        try {
+          await api.post('/v2/monitor/run');
+          posted = true;
+        } catch (err: any) {
+          if (err?.response?.status === 429) {
+            setWaitingOnSlot(true);
+            toast.info('Another analysis is already running — yours will start automatically once it finishes.');
+            const freed = await waitForFreeSlot();
+            setWaitingOnSlot(false);
+            if (!freed) {
+              toast.error('Timed out waiting for the current analysis to finish. Please try again.');
+              return;
+            }
+          } else {
+            throw err;
+          }
+        }
+      }
+      if (!posted) {
+        toast.error('Could not start analysis — please try again.');
+        return;
+      }
+
+      await pollMyProgressUntilDone();
       await Promise.all([fetchAlerts(), fetchDisruptions()]);
       setLastRunAt(new Date().toISOString());
     } catch (err) {
       console.error('Run Analysis failed', err);
+      toast.error('Analysis failed to complete — please try again.');
     } finally {
-      clearInterval(pollInterval);
       setIsRunning(false);
+      setWaitingOnSlot(false);
       // Let the bar finish at 100% then fade out.
       setProgressPct(100);
       setTimeout(() => setProgressPct(null), 1000);
@@ -320,7 +419,11 @@ export const AlertsDashboard: React.FC = () => {
       className="page-with-sidebar"
       style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}
     >
-      <TopProgressBar percent={progressPct} label="Generating analysis" />
+      <TopProgressBar
+        percent={progressPct}
+        indeterminate={waitingOnSlot}
+        label={waitingOnSlot ? 'Waiting for current analysis to finish' : 'Generating analysis'}
+      />
 
       {/* ── Header ── */}
       <header
@@ -338,10 +441,10 @@ export const AlertsDashboard: React.FC = () => {
         <WaveAccent style={{ top: -10, right: 0, opacity: 0.9, zIndex: -1 }} />
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-            Trade Risk Intelligence
+            World View
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 13, color: 'var(--text-muted)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--safe)', boxShadow: '0 0 6px var(--safe)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--safe)', boxShadow: '0 0 6px var(--safe)', animation: 'pulse-dot var(--pulse-duration, 2s) ease-in-out infinite' }} />
             Monitoring {suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} across {countryCount} countr{countryCount !== 1 ? 'ies' : 'y'}
             <span style={{ color: 'var(--text-dim)' }}>·</span>
             <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>Updated {syncTime}</span>
@@ -378,7 +481,6 @@ export const AlertsDashboard: React.FC = () => {
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           <MetricCard
-            hero
             label="Trade Exposure"
             value={fmtMoney(totalExposure)}
             sub={`${active.length} active event${active.length !== 1 ? 's' : ''}`}
@@ -439,6 +541,7 @@ export const AlertsDashboard: React.FC = () => {
             disruptions={disruptions}
             hqLocation={hqLocation}
             alternateSuppliers={alternateSuppliers}
+            autoRotateEnabled={loadCachedAppearance().globeAutoRotate}
           />
         </div>
 

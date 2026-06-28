@@ -7,10 +7,11 @@ import {
 import { useAuth } from '@clerk/clerk-react';
 import { CompanyProfileSection, type CompanySaveData } from '../components/settings/CompanyProfileSection';
 import { SupplyChainSection, type SupplyChainSaveData } from '../components/settings/SupplyChainSection';
-import { AlertPreferencesSection } from '../components/settings/AlertPreferencesSection';
+import { AlertPreferencesSection, type AlertPreferences } from '../components/settings/AlertPreferencesSection';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
 import { AccountSection, type AccountSaveData } from '../components/settings/AccountSection';
 import api from '../services/api';
+import { AppearancePrefs, DEFAULT_APPEARANCE, applyAppearance, cacheAppearance } from '../lib/appearance';
 
 interface SettingsData {
   customer_id: number;
@@ -24,6 +25,8 @@ interface SettingsData {
   import_region: string;
   risk_tolerance: string;
   rss_keywords: string[];
+  alert_preferences?: Partial<AlertPreferences> | null;
+  appearance_preferences?: Partial<AppearancePrefs> | null;
 }
 
 const SECTIONS = [
@@ -52,6 +55,9 @@ export const SettingsPage: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` }
         });
         setData(res.data);
+        if (res.data.appearance_preferences) {
+          cacheAppearance({ ...DEFAULT_APPEARANCE, ...res.data.appearance_preferences });
+        }
       } catch (err) {
         console.error('Settings load failed:', err);
         toast.error('Could not load settings');
@@ -87,8 +93,12 @@ export const SettingsPage: React.FC = () => {
     rss_keywords: d.rss_keywords,
   });
   const handleAccountSave  = (d: AccountSaveData)     => patch({ name: d.name });
-  const handleAlertSave    = ()                        => toast.success('Alert preferences saved (local)');
-  const handleAppearSave   = ()                        => toast.success('Appearance saved (local)');
+  const handleAlertSave    = (d: AlertPreferences)    => patch({ alert_preferences: d });
+  const handleAppearSave   = (d: AppearancePrefs)      => {
+    cacheAppearance(d);
+    applyAppearance(d);
+    patch({ appearance_preferences: d });
+  };
 
   return (
     <div style={{
@@ -189,10 +199,10 @@ export const SettingsPage: React.FC = () => {
                 />
               )}
               {active === 'alerts' && (
-                <AlertPreferencesSection onSave={handleAlertSave} saving={saving} />
+                <AlertPreferencesSection onSave={handleAlertSave} saving={saving} initialData={data?.alert_preferences ?? undefined} />
               )}
               {active === 'appear' && (
-                <AppearanceSection onSave={handleAppearSave} saving={saving} />
+                <AppearanceSection onSave={handleAppearSave} saving={saving} initialData={data?.appearance_preferences ?? undefined} />
               )}
               {active === 'account' && (
                 <AccountSection

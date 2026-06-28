@@ -1,9 +1,18 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import './AlertsPage.css';
 import api from '../services/api';
 import { ClampText } from '../components/common/ClampText';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
+
+interface ApiAlertSource {
+  title: string | null;
+  url: string | null;
+  source: string | null;
+  published_at: string | null;
+  agent_target: string | null;
+}
 
 interface ApiAlert {
   id: number;
@@ -13,6 +22,7 @@ interface ApiAlert {
   agent_output: string | null;
   status: string;
   created_at: string;
+  sources: ApiAlertSource[];
 }
 
 interface ApiSupplier {
@@ -22,15 +32,6 @@ interface ApiSupplier {
   product_category: string | null;
   reliability_score: number;
   is_active: boolean;
-}
-
-interface NewsItem {
-  title: string;
-  url: string;
-  source: string;
-  category: string;
-  published: string | null;
-  published_ts: number;
 }
 
 function parseAgentOutput(s: string | null): Record<string, any> {
@@ -78,6 +79,18 @@ const cleanSource = (src?: string | null): string => {
   const lower = src.toLowerCase();
   if (lower === 'rss' || lower === 'gemini_knowledge' || lower === 'gemini') return 'Live Trade Intelligence Feed';
   return src;
+};
+
+// Human-readable event type — the backend stores a machine-friendly snake_case value
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  tariff: 'Tariff change', tariff_change: 'Tariff change',
+  port_disruption: 'Port / shipping disruption',
+  geopolitical: 'Geopolitical event',
+  supply_shortage: 'Supply shortage',
+};
+const humanEventType = (raw?: string | null): string => {
+  if (!raw) return 'Trade risk event';
+  return EVENT_TYPE_LABELS[raw] ?? raw.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 };
 
 // Known HS code → description (for display only — authoritative map is in backend)
@@ -146,8 +159,8 @@ const EVENT_COLOR: Record<string, string> = {
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
-  const [news, setNews] = useState<NewsItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [showTechnical, setShowTechnical] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSeverity, setActiveSeverity] = useState<'all' | Severity>('all');
   const [loading, setLoading] = useState(true);
@@ -170,12 +183,17 @@ export function AlertsPage() {
     }
   }, []);
 
+  // User's saved "Minimum Alert Severity" floor (Settings → Alert Preferences) —
+  // alerts below this are filtered out regardless of the severity chip above.
+  const [minSeverityFloor, setMinSeverityFloor] = useState<Severity | null>(null);
+
   useEffect(() => {
     fetchAlerts();
     api.get<ApiSupplier[]>('/v2/suppliers')
       .then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
-    api.get<{ items: NewsItem[] }>('/v2/news')
-      .then((r) => setNews(r.data.items || [])).catch(() => setNews([]));
+    api.get<{ alert_preferences?: { minSeverity?: Severity } | null }>('/v2/settings')
+      .then((r) => setMinSeverityFloor(r.data.alert_preferences?.minSeverity ?? null))
+      .catch(() => {});
   }, [fetchAlerts]);
 
   // Auto-scroll log to bottom
@@ -210,7 +228,38 @@ export function AlertsPage() {
 
     const interval = setInterval(poll, 1500);
     try {
-      await api.post('/v2/monitor/run');
+      let posted = false;
+      for (let attempt = 0; attempt < 3 && !posted; attempt++) {
+        try {
+          await api.post('/v2/monitor/run');
+          posted = true;
+        } catch (err: any) {
+          if (err?.response?.status === 429) {
+            toast.info('Another analysis is already running — yours will start automatically once it finishes.');
+            const start = Date.now();
+            let freed = false;
+            while (Date.now() - start < 120_000) {
+              try {
+                const status = await api.get<{ running: boolean }>('/v2/monitor/status');
+                if (!status.data.running) { freed = true; break; }
+              } catch { freed = true; break; }
+              await new Promise((r) => setTimeout(r, 2000));
+            }
+            if (!freed) {
+              toast.error('Timed out waiting for the current analysis to finish. Please try again.');
+              setRunPhase('done');
+              return;
+            }
+          } else {
+            throw err;
+          }
+        }
+      }
+      if (!posted) {
+        toast.error('Could not start analysis — please try again.');
+        setRunPhase('done');
+        return;
+      }
       await poll();
       await fetchAlerts();
       setRunPhase('done');
@@ -220,6 +269,7 @@ export function AlertsPage() {
       setAlerts(active);
       if (active.length > 0) setSelectedId(active[0].id);
     } catch {
+      toast.error('Analysis failed to complete — please try again.');
       setRunPhase('done');
     } finally {
       clearInterval(interval);
@@ -228,14 +278,20 @@ export function AlertsPage() {
 
   const views = useMemo(() => alerts.map(toView), [alerts]);
 
+  const SEV_RANK: Record<Severity, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+
   const filtered = useMemo(() => views.filter((a) => {
     const matchSev = activeSeverity === 'all' || a.severity === activeSeverity;
+    const matchFloor = !minSeverityFloor || (SEV_RANK[a.severity] ?? 0) >= SEV_RANK[minSeverityFloor];
     const q = searchTerm.toLowerCase();
     const matchQ = !q || a.title.toLowerCase().includes(q) || a.country.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q);
-    return matchSev && matchQ;
-  }), [views, searchTerm, activeSeverity]);
+    return matchSev && matchFloor && matchQ;
+  }), [views, searchTerm, activeSeverity, minSeverityFloor]);
 
   const selected = useMemo(() => views.find((v) => v.id === selectedId) ?? null, [views, selectedId]);
+
+  // Collapse the technical details whenever the user switches events.
+  useEffect(() => { setShowTechnical(false); }, [selectedId]);
 
   const detail = useMemo(() => {
     if (!selected) return null;
@@ -287,11 +343,20 @@ export function AlertsPage() {
     const affectedOrders = impact.affected_orders ?? null;
     const affectedRoutes = affectedOrders ?? affectedSuppliers.length;
 
+    // Real per-alert sources — the actual RSS articles this alert's pipeline run
+    // cited, permanently linked via rss_articles.tariff_alert_id. Older alerts
+    // (created before this linkage existed) fall back to the legacy fields.
+    // Capped at 5 — only the most relevant sources, not a generic news dump.
+    const realSources = Array.isArray(selected.raw.sources) ? selected.raw.sources : [];
     const tmNews: any[] = Array.isArray(tm.news) ? tm.news : [];
-    const alertSources = [
-      ...(tm.source_url ? [{ title: tm.event || 'Source article', url: tm.source_url, source: tm.source || 'Source', published: null as string | null }] : []),
-      ...tmNews.map((n) => ({ title: n.title, url: n.url, source: n.domain || 'Source', published: n.scraped_at || null })),
-    ];
+    const alertSources = (
+      realSources.length > 0
+        ? realSources.map((s) => ({ title: s.title || 'Source article', url: s.url || '', source: cleanSource(s.source), published: s.published_at }))
+        : [
+            ...(tm.source_url ? [{ title: tm.event || 'Source article', url: tm.source_url, source: tm.source || 'Source', published: null as string | null }] : []),
+            ...tmNews.map((n) => ({ title: n.title, url: n.url, source: n.domain || 'Source', published: n.scraped_at || null })),
+          ]
+    ).slice(0, 5);
 
     // Recommended actions — most important first
     const recs: string[] = [];
@@ -321,27 +386,27 @@ export function AlertsPage() {
 
     const steps = [
       {
-        key: 'tariff_monitor', name: 'TariffMonitor', done: !!ao.tariff_monitor,
+        key: 'tariff_monitor', name: 'Searching Agent', done: !!ao.tariff_monitor,
         finding: tariffMonitorFinding,
       },
       {
-        key: 'impact_calculator', name: 'ImpactCalculator', done: !!ao.impact_calculator,
+        key: 'impact_calculator', name: 'Calculating Agent', done: !!ao.impact_calculator,
         finding: ao.impact_calculator
           ? `Direct cost ${money(directCost)} across ${affectedOrders ?? 0} order(s); severity ${impact.severity}${impact.historical_basis ? ` · ${impact.historical_basis}` : ''}`
           : null,
       },
       {
-        key: 'alternatives_finder', name: 'AlternativesFinder', done: altList.length > 0,
+        key: 'alternatives_finder', name: 'Solution Agent', done: altList.length > 0,
         finding: altList.length
           ? `${altList.length} candidate${altList.length !== 1 ? 's' : ''}: ${altList.map((a) => `${a.supplier_name} (${a.country}${a.cost_delta_pct != null ? `, ${a.cost_delta_pct > 0 ? '+' : ''}${a.cost_delta_pct}%` : ''})`).join(' · ')}`
           : null,
       },
       {
-        key: 'import_compliance', name: 'ImportCompliance', done: !!ao.import_compliance,
+        key: 'import_compliance', name: 'Compliance Agent', done: !!ao.import_compliance,
         finding: compFinding,
       },
       {
-        key: 'final', name: 'Suppliance Final Verdict', done: !!adv.verdict, final: true,
+        key: 'final', name: 'Decision Agent', done: !!adv.verdict, final: true,
         finding: adv.verdict
           ? `${adv.verdict}${adv.confidence != null ? ` (${Math.round(adv.confidence * 100)}% confidence)` : ''} — ${advRecommended || ''}`
           : null,
@@ -353,11 +418,10 @@ export function AlertsPage() {
       country, product, directCost, riskScore, riskLevel,
       affectedSuppliersCount: affectedSuppliers.length,
       affectedRoutes, alertSources,
-      relatedNews: news.slice(0, 4),
       recs, steps,
       summaryText: selected.raw.summary || '',
     };
-  }, [selected, suppliers, news]);
+  }, [selected, suppliers]);
 
   const mutate = useCallback(async (id: number, action: 'dismiss' | 'resolve') => {
     setPendingId(id);
@@ -543,182 +607,81 @@ export function AlertsPage() {
             {/* Header */}
             <div className="ap-inv-header">
               <div className="ap-inv-header-left">
-                <span className="ap-inv-label">Incident Report</span>
+                <span className="ap-inv-label">{humanEventType(detail.tm.event_type || selected.raw.alert_type)}</span>
                 <h1 className="ap-inv-title">{selected.title}</h1>
                 <p className="ap-inv-sub">
-                  {detail.country} · {detail.product} · Detected {absoluteTime(selected.raw.created_at)}
+                  {[detail.country !== '—' ? detail.country : null, detail.product !== '—' ? detail.product : null]
+                    .filter(Boolean)
+                    .join(' · ') || 'Affects your supply chain'}
+                  {' · '}Spotted {selected.timeDetected || relativeTime(selected.raw.created_at)}
                 </p>
               </div>
               <div className="ap-inv-header-right">
-                {selected.confidence != null && (
-                  <div className="ap-inv-confidence">
-                    <span className="ap-inv-confidence-num">{selected.confidence}%</span>
-                    <span className="ap-inv-confidence-label">Confidence</span>
-                  </div>
-                )}
                 <span className={`ap-severity-pill ap-severity-pill--${selected.severity}`}>
-                  {selected.severity.toUpperCase()}
+                  {selected.severity.toUpperCase()} PRIORITY
                 </span>
               </div>
             </div>
 
-            {/* Incident Summary */}
+            {/* What happened */}
             <section className="ap-section">
-              <h2 className="ap-section-title">Incident Summary</h2>
+              <h2 className="ap-section-title">What happened</h2>
               <div className="ap-prose-card">
-                {detail.summaryText && (
-                  <p className="ap-prose">
-                    <ClampText text={detail.summaryText} maxChars={200} />
-                  </p>
-                )}
-                <div className="ap-context-row" style={detail.summaryText ? undefined : { borderTop: 'none', paddingTop: 0 }}>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Country</span>
-                    <span className="ap-context-value">{detail.country}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Product</span>
-                    <span className="ap-context-value">{detail.product}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Confidence</span>
-                    <span className="ap-context-value">{selected.confidence != null ? `${selected.confidence}%` : '—'}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Event Type</span>
-                    <span className="ap-context-value">{detail.tm.event_type || selected.raw.alert_type || '—'}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Detected</span>
-                    <span className="ap-context-value">{absoluteTime(selected.raw.created_at)}</span>
-                  </div>
-                  <div className="ap-context-cell">
-                    <span className="ap-context-label">Intelligence Source</span>
-                    <span className="ap-context-value">{cleanSource(detail.tm.source)}</span>
-                  </div>
-                  {Array.isArray(detail.tm.affected_hs_codes) && detail.tm.affected_hs_codes.length > 0 && (
-                    <div className="ap-context-cell">
-                      <span className="ap-context-label">HS Codes</span>
-                      <span className="ap-context-value">{hsWithDesc(detail.tm.affected_hs_codes)}</span>
-                    </div>
-                  )}
-                </div>
+                <p className="ap-prose">
+                  <ClampText
+                    text={detail.summaryText || `A ${humanEventType(detail.tm.event_type).toLowerCase()} was detected that may affect your sourcing${detail.country !== '—' ? ` from ${detail.country}` : ''}.`}
+                    maxChars={220}
+                  />
+                </p>
               </div>
             </section>
 
-            {/* Impact Assessment */}
+            {/* What it could cost you */}
             <section className="ap-section">
-              <h2 className="ap-section-title">Impact Assessment</h2>
+              <h2 className="ap-section-title">What it could cost you</h2>
               <div className="ap-prose-card">
-                <div className="ap-risk-row">
-                  <span className="ap-risk-label">Risk Level</span>
-                  <div className="ap-risk-track">
-                    <div
-                      className="ap-risk-fill"
-                      style={{ width: `${detail.riskScore ?? (detail.riskLevel === 'high' || detail.riskLevel === 'critical' ? 80 : detail.riskLevel === 'medium' ? 50 : 25)}%` }}
-                      data-level={detail.riskLevel === 'critical' || detail.riskLevel === 'high' ? 'high' : detail.riskLevel === 'medium' ? 'med' : 'low'}
-                    />
-                  </div>
-                  <span className="ap-risk-num">{detail.riskLevel.toUpperCase()}</span>
-                </div>
-                <div className="ap-metric-grid">
+                <div className="ap-metric-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                   <div className="ap-metric ap-metric--danger">
-                    <span className="ap-metric-label">Est. Cost Impact</span>
+                    <span className="ap-metric-label">Estimated Cost Impact</span>
                     <span className="ap-metric-value">{money(detail.directCost)}</span>
-                    <span className="ap-metric-sub">{detail.directCost != null ? 'direct duty cost' : 'no matched orders'}</span>
+                    <span className="ap-metric-sub">{detail.directCost != null ? 'in extra duty cost' : 'no matched orders yet'}</span>
                   </div>
                   <div className="ap-metric">
-                    <span className="ap-metric-label">Risk Score</span>
-                    <span className="ap-metric-value">{detail.riskScore != null ? `${detail.riskScore}` : '—'}<span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{detail.riskScore != null ? '/100' : ''}</span></span>
-                    <span className="ap-metric-sub">{detail.riskLevel} severity</span>
-                  </div>
-                  <div className="ap-metric">
-                    <span className="ap-metric-label">Affected Suppliers</span>
+                    <span className="ap-metric-label">Suppliers Affected</span>
                     <span className="ap-metric-value">{detail.affectedSuppliersCount}</span>
-                    <span className="ap-metric-sub">tracked in {detail.country}</span>
+                    <span className="ap-metric-sub">{detail.country !== '—' ? `in ${detail.country}` : 'tracked suppliers'}</span>
                   </div>
                   <div className="ap-metric">
-                    <span className="ap-metric-label">Affected Routes</span>
+                    <span className="ap-metric-label">Orders at Risk</span>
                     <span className="ap-metric-value">{detail.affectedRoutes}</span>
-                    <span className="ap-metric-sub">orders/shipments at risk</span>
+                    <span className="ap-metric-sub">may be delayed or cost more</span>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Agent Reasoning Timeline */}
+            {/* What you should do */}
             <section className="ap-section">
-              <h2 className="ap-section-title">Agent Reasoning Timeline</h2>
-              <div className="ap-tl">
-                {detail.steps.map((step, i) => (
-                  <div
-                    key={step.key}
-                    className={`ap-tl-step${step.done ? ' ap-tl-step--done' : ''}${(step as any).final ? ' ap-tl-step--final' : ''}`}
-                  >
-                    <div className="ap-tl-rail">
-                      <div className="ap-tl-node">{step.done ? '✓' : i + 1}</div>
-                      {i < detail.steps.length - 1 && <div className="ap-tl-line" />}
-                    </div>
-                    <div className="ap-tl-body">
-                      <div className="ap-tl-head">
-                        <span className="ap-tl-name">{step.name}</span>
-                        {!step.done && <span className="ap-tl-tag ap-tl-tag--pending">Not run</span>}
-                      </div>
-                      <p className={`ap-tl-finding${step.done ? '' : ' ap-tl-finding--muted'}`}>
-                        {step.finding ? <ClampText text={step.finding} maxChars={140} /> : 'Not run for this event.'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Source Intelligence */}
-            <section className="ap-section">
-              <h2 className="ap-section-title">Source Intelligence</h2>
-              <div className="ap-sources">
-                {detail.alertSources.length === 0 && detail.relatedNews.length === 0 && (
-                  <div className="ap-prose-card"><p className="ap-prose" style={{ margin: 0 }}>No linked sources for this event.</p></div>
-                )}
-                {detail.alertSources.map((s, i) => (
-                  <a key={`src-${i}`} className="ap-source" href={s.url} target="_blank" rel="noreferrer">
-                    <div className="ap-source-meta">
-                      <span className="ap-source-name">{s.source}</span>
-                      <span className="ap-source-time">{s.published ? relativeTime(s.published) : 'cited'}</span>
-                    </div>
-                    <span className="ap-source-title">{s.title}</span>
-                  </a>
-                ))}
-                {detail.relatedNews.length > 0 && (
-                  <span className="ap-source-group-label">General Trade Wire · May contain broader market context</span>
-                )}
-                {detail.relatedNews.map((n, i) => (
-                  <a key={`rel-${i}`} className="ap-source" href={n.url} target="_blank" rel="noreferrer">
-                    <div className="ap-source-meta">
-                      <span className="ap-source-name">{n.source}</span>
-                      <span className="ap-source-cat">{n.category}</span>
-                      <span className="ap-source-time">{relativeTime(n.published)}</span>
-                    </div>
-                    <span className="ap-source-title">{n.title}</span>
-                  </a>
-                ))}
-              </div>
-            </section>
-
-            {/* Recommended Actions */}
-            <section className="ap-section">
-              <h2 className="ap-section-title">Recommended Actions</h2>
+              <h2 className="ap-section-title">What you should do</h2>
               <div className="ap-action-card">
-                {detail.topAlt ? (
+                <div className="ap-action-top">
+                  <span className="ap-action-label">Bottom line</span>
+                  <span className="ap-action-supplier" style={{ fontSize: 16, lineHeight: 1.4 }}>
+                    <ClampText text={detail.recs[0] || 'Review exposure and run a full sourcing analysis.'} maxChars={140} />
+                  </span>
+                </div>
+
+                {detail.topAlt && (
                   <>
+                    <div style={{ height: 1, background: 'rgba(232,226,216,0.08)', margin: '14px 0' }} />
                     <div className="ap-action-top">
-                      <span className="ap-action-label">Compliance-Selected Supplier</span>
+                      <span className="ap-action-label">Suggested alternative supplier</span>
                       <span className="ap-action-supplier">{detail.topAlt.supplier_name}</span>
                       {detail.topAlt.country && <span className="ap-action-country">{detail.topAlt.country}</span>}
                     </div>
                     <div className="ap-benefits">
                       <div className="ap-benefit">
-                        <span className="ap-benefit-label">Cost Delta</span>
+                        <span className="ap-benefit-label">Cost vs. current</span>
                         <span className={`ap-benefit-value ap-benefit-value--${(detail.topAlt.cost_delta_pct ?? 0) <= 0 ? 'green' : 'amber'}`}>
                           {detail.topAlt.cost_delta_pct != null ? `${detail.topAlt.cost_delta_pct > 0 ? '+' : ''}${detail.topAlt.cost_delta_pct}%` : '—'}
                         </span>
@@ -728,7 +691,7 @@ export function AlertsPage() {
                         <span className="ap-benefit-value">{detail.topAlt.lead_time_weeks != null ? `${detail.topAlt.lead_time_weeks} wks` : '—'}</span>
                       </div>
                       <div className="ap-benefit">
-                        <span className="ap-benefit-label">Adversarial</span>
+                        <span className="ap-benefit-label">AI Risk Check</span>
                         <span className={`ap-benefit-value ap-benefit-value--${(detail.adv.verdict || '').toUpperCase() === 'CLEAR' ? 'green' : (detail.adv.verdict || '').toUpperCase() === 'BLOCK' ? 'red' : 'amber'}`}>
                           {detail.adv.verdict || 'Review'}
                         </span>
@@ -736,25 +699,22 @@ export function AlertsPage() {
                     </div>
                     {detail.topAlt.stability_note && (
                       <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 10, lineHeight: 1.5 }}>
-                        {detail.topAlt.stability_note}
+                        <ClampText text={detail.topAlt.stability_note} maxChars={130} />
                       </p>
                     )}
                   </>
-                ) : (
-                  <div className="ap-action-top">
-                    <span className="ap-action-label">Recommended</span>
-                    <span className="ap-action-supplier" style={{ fontSize: 16, lineHeight: 1.4 }}>
-                      {detail.recs[0] || 'Review exposure and run full sourcing analysis.'}
-                    </span>
-                  </div>
                 )}
 
-                {detail.recs.length > 0 && (
-                  <ul className="ap-rec-list">
-                    {detail.recs.map((r, i) => (
-                      <li key={i} className="ap-rec-item"><span className="ap-rec-bullet">▸</span><span>{r}</span></li>
-                    ))}
-                  </ul>
+                {detail.recs.length > 1 && (
+                  <>
+                    <div style={{ height: 1, background: 'rgba(232,226,216,0.08)', margin: '14px 0' }} />
+                    <span className="ap-action-label" style={{ display: 'block', marginBottom: 8 }}>Also worth doing</span>
+                    <ul className="ap-rec-list">
+                      {detail.recs.slice(1).map((r, i) => (
+                        <li key={i} className="ap-rec-item"><span className="ap-rec-bullet">▸</span><span><ClampText text={r} maxChars={120} /></span></li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
 
@@ -774,6 +734,104 @@ export function AlertsPage() {
                   Mark Resolved
                 </button>
               </div>
+            </section>
+
+            {/* Technical details — collapsed by default; for anyone who wants the receipts */}
+            <section className="ap-section">
+              <button
+                onClick={() => setShowTechnical((v) => !v)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ transform: showTechnical ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-block' }}>▸</span>
+                {showTechnical ? 'Hide' : 'Show'} technical details &amp; sources
+              </button>
+
+              {showTechnical && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="ap-prose-card" style={{ marginBottom: 16 }}>
+                    <div className="ap-context-row" style={{ borderTop: 'none', paddingTop: 0 }}>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">Country</span>
+                        <span className="ap-context-value">{detail.country}</span>
+                      </div>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">Product</span>
+                        <span className="ap-context-value">{detail.product}</span>
+                      </div>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">AI Confidence</span>
+                        <span className="ap-context-value">{selected.confidence != null ? `${selected.confidence}%` : '—'}</span>
+                      </div>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">Event Type</span>
+                        <span className="ap-context-value">{humanEventType(detail.tm.event_type || selected.raw.alert_type)}</span>
+                      </div>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">Detected</span>
+                        <span className="ap-context-value">{absoluteTime(selected.raw.created_at)}</span>
+                      </div>
+                      <div className="ap-context-cell">
+                        <span className="ap-context-label">Intelligence Source</span>
+                        <span className="ap-context-value">{cleanSource(detail.tm.source)}</span>
+                      </div>
+                      {Array.isArray(detail.tm.affected_hs_codes) && detail.tm.affected_hs_codes.length > 0 && (
+                        <div className="ap-context-cell">
+                          <span className="ap-context-label">HS Codes</span>
+                          <span className="ap-context-value">{hsWithDesc(detail.tm.affected_hs_codes)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>
+                    How the AI reached this
+                  </h3>
+                  <div className="ap-tl" style={{ marginBottom: 16 }}>
+                    {detail.steps.map((step, i) => (
+                      <div
+                        key={step.key}
+                        className={`ap-tl-step${step.done ? ' ap-tl-step--done' : ''}${(step as any).final ? ' ap-tl-step--final' : ''}`}
+                      >
+                        <div className="ap-tl-rail">
+                          <div className="ap-tl-node">{step.done ? '✓' : i + 1}</div>
+                          {i < detail.steps.length - 1 && <div className="ap-tl-line" />}
+                        </div>
+                        <div className="ap-tl-body">
+                          <div className="ap-tl-head">
+                            <span className="ap-tl-name">{step.name}</span>
+                            {!step.done && <span className="ap-tl-tag ap-tl-tag--pending">Not run</span>}
+                          </div>
+                          <p className={`ap-tl-finding${step.done ? '' : ' ap-tl-finding--muted'}`}>
+                            {step.finding ? <ClampText text={step.finding} maxChars={140} /> : 'Not run for this event.'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h3 style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>
+                    Sources
+                  </h3>
+                  <div className="ap-sources">
+                    {detail.alertSources.length === 0 && (
+                      <div className="ap-prose-card"><p className="ap-prose" style={{ margin: 0 }}>No linked sources for this event.</p></div>
+                    )}
+                    {detail.alertSources.map((s, i) => (
+                      <a key={`src-${i}`} className="ap-source" href={s.url} target="_blank" rel="noreferrer">
+                        <div className="ap-source-meta">
+                          <span className="ap-source-name">{s.source}</span>
+                          <span className="ap-source-time">{s.published ? relativeTime(s.published) : 'cited'}</span>
+                        </div>
+                        <span className="ap-source-title">{s.title}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           </div>
         )}

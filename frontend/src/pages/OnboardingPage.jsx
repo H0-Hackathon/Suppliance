@@ -290,7 +290,6 @@ export default function OnboardingPage({ onComplete }) {
     avg_lead_time_days: 45,
     // Supply chain
     suppliers: [{ name: '', country: '' }],  // [{ name, country }] — who you actually buy from
-    primary_origin_countries: [],      // array
     destination_country: 'United States',
     destination_port: 'Port of Los Angeles',
     import_region: 'East Asia',
@@ -322,8 +321,7 @@ export default function OnboardingPage({ onComplete }) {
   const canNext = () => {
     if (step === 0) return form.company_name.trim() && form.industry;
     if (step === 2) {
-      const hasSupplier = form.suppliers.some(sup => sup.name.trim() && sup.country.trim());
-      return form.primary_origin_countries.length > 0 && hasSupplier;
+      return form.suppliers.some(sup => sup.name.trim() && sup.country.trim());
     }
     return true;
   };
@@ -349,7 +347,11 @@ export default function OnboardingPage({ onComplete }) {
         suppliers: form.suppliers
           .filter(sup => sup.name.trim() && sup.country.trim())
           .map(sup => ({ name: sup.name.trim(), country: sup.country.trim() })),
-        primary_origin_countries:    form.primary_origin_countries,
+        // Derived from the suppliers list itself — no separate "select countries"
+        // step needed since every supplier already carries its own country.
+        primary_origin_countries: [...new Set(
+          form.suppliers.filter(sup => sup.country.trim()).map(sup => sup.country.trim())
+        )],
         destination_country:         form.destination_country,
         destination_port:            form.destination_port || null,
         import_region:               form.import_region,
@@ -394,7 +396,7 @@ export default function OnboardingPage({ onComplete }) {
                 display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.3s' }}>
                 {done ? <Check size={15} color="white" strokeWidth={3}/> : <Icon size={15} color={cur ? '#84D7D8' : 'rgba(232,226,216,0.2)'}/>}
               </div>
-              <span style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase',
+              <span style={{ fontSize:11, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase',
                 color: cur ? '#84D7D8' : done ? '#5BA86F' : 'rgba(232,226,216,0.2)' }}>
                 {s.label}
               </span>
@@ -476,10 +478,6 @@ export default function OnboardingPage({ onComplete }) {
       <>
         <Field label="Your Suppliers * (who you actually import from)">
           <SupplierList suppliers={form.suppliers} onChange={v => set('suppliers', v)}/>
-        </Field>
-        <Field label="Primary Supplier Countries * (select all that apply)">
-          <TagPicker options={COUNTRIES} selected={form.primary_origin_countries}
-            onChange={v => set('primary_origin_countries', v)} max={8}/>
         </Field>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
           <Field label="Destination Country">

@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import Globe, { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
-import { useAuth } from '@clerk/clerk-react';
 import { PALETTE } from '../styles/palette';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -90,6 +89,8 @@ export interface TradeGlobeProps {
   hqLocation?: TradeGlobeHQ | null;
   /** AlternativesFinder output from the latest pipeline run — empty until a run completes. */
   alternateSuppliers?: TradeGlobeAlternateSupplier[];
+  /** Settings → Appearance → "Globe Auto-Rotation". Defaults on. */
+  autoRotateEnabled?: boolean;
 }
 
 export const TradeGlobe: React.FC<TradeGlobeProps> = ({
@@ -97,6 +98,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
   disruptions = [],
   hqLocation = null,
   alternateSuppliers = [],
+  autoRotateEnabled = true,
 }) => {
   const globeRef = useRef<GlobeMethods | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,28 +106,25 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
   const [hoveredSupplier, setHoveredSupplier] = useState<Supplier | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const [globalSuppliers, setGlobalSuppliers] = useState<any[]>([]);
-
-  const { getToken } = useAuth();
+  // One aggregated point per country (not per supplier) — ~100-150 rows for
+  // the ambient background layer, since the underlying directory has no
+  // per-supplier lat/lng and geocoding 25k rows individually isn't viable.
+  const [globalDensity, setGlobalDensity] = useState<any[]>([]);
 
   useEffect(() => {
-    const loadGlobalSuppliers = async () => {
+    const loadGlobalDensity = async () => {
       try {
-        const token = await getToken();
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
-        const res = await fetch('/api/v2/suppliers/global', { headers });
+        const res = await fetch('/api/v2/global-suppliers/globe-density');
         if (res.ok) {
           const data = await res.json();
-          setGlobalSuppliers(data);
+          setGlobalDensity(data);
         }
       } catch (e) {
-        console.error('Failed to load global suppliers:', e);
+        console.error('Failed to load global supplier density:', e);
       }
     };
-    loadGlobalSuppliers();
-  }, [getToken]);
+    loadGlobalDensity();
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -150,10 +149,10 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
     const controls = globeRef.current.controls() as any;
     if (controls) {
       const isHovered = !!hoveredSupplier || !!selectedSupplier;
-      controls.autoRotate = !isHovered;
+      controls.autoRotate = autoRotateEnabled && !isHovered;
       controls.autoRotateSpeed = isHovered ? 0 : 0.5;
     }
-  }, [hoveredSupplier, selectedSupplier]);
+  }, [hoveredSupplier, selectedSupplier, autoRotateEnabled]);
 
   useEffect(() => {
     if (!globeRef.current) return;
@@ -221,7 +220,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
     
     const controls = globe.controls() as any;
     if (controls) {
-      controls.autoRotate = true;
+      controls.autoRotate = autoRotateEnabled;
       controls.autoRotateSpeed = 0.5;
       controls.enableZoom = true;
       controls.enablePan = true;
@@ -232,7 +231,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
     setTimeout(() => {
       globe.pointOfView({ lat: 20, lng: -20, altitude: 2.2 }, 1500);
     }, 100);
-  }, []);
+  }, [autoRotateEnabled]);
 
   const affectedCodes = useMemo(
     () => new Set(disruptions.flatMap((d) => (d.countries_affected ?? []).map(c => c.toUpperCase()))),
@@ -289,36 +288,23 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
     return combined;
   }, [suppliers, alternateSuppliers, hqLocation, affectedCodes]);
 
-  // The 22k global background points — coloured green/red based on disruptions
+  // Ambient background layer — one point per exporter-directory country
+  // (already aggregated server-side), coloured green/red based on disruptions.
   const bgPoints = useMemo(() => {
-    const impacted: any[] = [];
-    const healthy: any[] = [];
-    
-    globalSuppliers.forEach((s: any) => {
-      const risk = (s.countryCode && affectedCodes.has(s.countryCode.toUpperCase())) ||
-                   (s.country && affectedCodes.has(s.country.toUpperCase()));
-                   
-      const baseSupplier = {
-        ...s,
-        riskScore: s.reliability_score ? Math.round(100 - s.reliability_score) : 50,
+    return globalDensity.map((d: any) => {
+      const risk = (d.countryCode && affectedCodes.has(d.countryCode.toUpperCase())) ||
+                   (d.country && affectedCodes.has(d.country.toUpperCase()));
+      return {
+        ...d,
+        lat: d.latitude,
+        lng: d.longitude,
+        riskScore: risk ? 80 : 50,
         exposure: '—',
         exposureTier: (risk ? 3 : 1) as Supplier['exposureTier'],
-        status: (risk ? 'impacted' : 'healthy') as Supplier['status']
+        status: (risk ? 'impacted' : 'healthy') as Supplier['status'],
       };
-      
-      if (risk) {
-        impacted.push(baseSupplier);
-      } else {
-        healthy.push(baseSupplier);
-      }
     });
-
-    // Deterministically pick ~100 healthy suppliers to spread around the globe
-    const step = Math.max(1, Math.floor(healthy.length / 100));
-    const sampledHealthy = healthy.filter((_, i) => i % step === 0).slice(0, 100);
-
-    return [...impacted, ...sampledHealthy];
-  }, [globalSuppliers, affectedCodes]);
+  }, [globalDensity, affectedCodes]);
 
   // Baseline: arcs from every main supplier to HQ. After a pipeline run finds
   // alternatives, swap to arcs from the alternate supplier(s) to HQ instead —
@@ -407,14 +393,14 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
           setHoveredSupplier(ring || null);
           if (globeRef.current) {
             const controls = globeRef.current.controls() as any;
-            if (controls) controls.autoRotate = !ring && !selectedSupplier;
+            if (controls) controls.autoRotate = autoRotateEnabled && !ring && !selectedSupplier;
           }
         }}
         onRingClick={(ring: any) => {
           setSelectedSupplier(ring);
           if (globeRef.current) {
             const controls = globeRef.current.controls() as any;
-            if (controls) controls.autoRotate = !ring && !hoveredSupplier;
+            if (controls) controls.autoRotate = autoRotateEnabled && !ring && !hoveredSupplier;
           }
         }}
         // ── Trade exposure arcs (from live suppliers → destination) ──────
@@ -445,14 +431,14 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
           setSelectedSupplier(point);
           if (globeRef.current) {
             const controls = globeRef.current.controls() as any;
-            if (controls) controls.autoRotate = !point && !hoveredSupplier;
+            if (controls) controls.autoRotate = autoRotateEnabled && !point && !hoveredSupplier;
           }
         }}
         onLabelHover={(point: any) => {
           setHoveredSupplier(point || null);
           if (globeRef.current) {
             const controls = globeRef.current.controls() as any;
-            if (controls) controls.autoRotate = !point && !selectedSupplier;
+            if (controls) controls.autoRotate = autoRotateEnabled && !point && !selectedSupplier;
           }
         }}
       />
@@ -467,23 +453,23 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
           background: 'rgba(22,50,58,0.82)',
           backdropFilter: 'blur(14px)',
           border: '1px solid var(--border-soft)',
-          borderRadius: 12,
-          padding: '14px 18px',
+          borderRadius: 10,
+          padding: '10px 14px',
           fontFamily: 'var(--font)',
-          fontSize: 12,
+          fontSize: 10.5,
           color: 'var(--foreground)',
-          minWidth: 210,
+          minWidth: 168,
           zIndex: 10,
         }}
       >
         <div
           style={{
             fontWeight: 600,
-            fontSize: 11,
+            fontSize: 9.5,
             letterSpacing: '0.08em',
             color: 'var(--text-muted)',
             textTransform: 'uppercase',
-            marginBottom: 12,
+            marginBottom: 8,
           }}
         >
           Trade Exposure Globe
@@ -500,25 +486,25 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              marginBottom: 6,
+              gap: 6,
+              marginBottom: 4,
             }}
           >
             <div
               style={{
-                width: 9,
-                height: 9,
+                width: 7,
+                height: 7,
                 borderRadius: '50%',
                 background: color,
-                boxShadow: `0 0 6px ${color}70`,
+                boxShadow: `0 0 5px ${color}70`,
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{label}</span>
+            <span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>{label}</span>
           </div>
         ))}
 
-        <div style={{ borderTop: '1px solid var(--border-soft)', margin: '10px 0' }} />
+        <div style={{ borderTop: '1px solid var(--border-soft)', margin: '7px 0' }} />
 
         {[
           { color: PALETTE.warning, label: 'Exposure route' },
@@ -530,29 +516,29 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              marginBottom: 5,
+              gap: 6,
+              marginBottom: 3,
             }}
           >
             <div
               style={{
-                width: 22,
+                width: 16,
                 height: 2,
                 background: color,
                 borderRadius: 2,
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{label}</span>
+            <span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>{label}</span>
           </div>
         ))}
 
         <div
           style={{
             borderTop: '1px solid var(--border-soft)',
-            marginTop: 10,
-            paddingTop: 10,
-            fontSize: 11,
+            marginTop: 7,
+            paddingTop: 7,
+            fontSize: 9.5,
             color: 'var(--text-muted)',
             letterSpacing: '0.02em',
           }}
@@ -697,7 +683,7 @@ export const TradeGlobe: React.FC<TradeGlobeProps> = ({
                 setSelectedSupplier(null);
                 if (globeRef.current) {
                   const controls = globeRef.current.controls() as any;
-                  if (controls) controls.autoRotate = !hoveredSupplier;
+                  if (controls) controls.autoRotate = autoRotateEnabled && !hoveredSupplier;
                 }
               }}
               style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4, fontSize: 16 }}

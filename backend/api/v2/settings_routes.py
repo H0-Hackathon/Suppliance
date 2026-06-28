@@ -10,7 +10,7 @@ Both routes resolve the customer from the authenticated Clerk session
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from database import get_db
 from models import Customer, BusinessProfile
@@ -41,6 +41,8 @@ class SettingsResponse(BaseModel):
     min_supplier_rating: Optional[float]
     avg_lead_time_days: Optional[int]
     compliance_notes: Optional[str]
+    alert_preferences: Optional[Dict[str, Any]]
+    appearance_preferences: Optional[Dict[str, Any]]
 
     class Config:
         from_attributes = True
@@ -67,6 +69,8 @@ class SettingsPatch(BaseModel):
     min_supplier_rating: Optional[float] = None
     avg_lead_time_days: Optional[int] = None
     compliance_notes: Optional[str] = None
+    alert_preferences: Optional[Dict[str, Any]] = None
+    appearance_preferences: Optional[Dict[str, Any]] = None
 
 
 def _build_response(customer: Customer, db: Session) -> SettingsResponse:
@@ -92,6 +96,8 @@ def _build_response(customer: Customer, db: Session) -> SettingsResponse:
         min_supplier_rating=profile.min_supplier_rating if profile else None,
         avg_lead_time_days=profile.avg_lead_time_days if profile else None,
         compliance_notes=profile.compliance_notes if profile else None,
+        alert_preferences=profile.alert_preferences if profile else None,
+        appearance_preferences=profile.appearance_preferences if profile else None,
     )
 
 
@@ -129,6 +135,7 @@ def patch_settings(
         "primary_hs_codes", "product_categories", "rss_keywords",
         "preferred_alternative_regions", "preferred_alternative_countries",
         "min_supplier_rating", "avg_lead_time_days", "compliance_notes",
+        "alert_preferences", "appearance_preferences",
     ]
     for field in profile_fields:
         value = getattr(payload, field, None)

@@ -122,6 +122,88 @@
   --glow-amber: 0 0 20px rgba(84, 140, 146, 0.20);
 }
 
+/* ── Alternate themes (Settings → Appearance) ──────────────────
+   Override the same semantic slots so every existing var(--token)
+   reference repaints for free — no component needs to know which
+   theme is active. */
+[data-theme='harbor'] {
+  --background: #0F262C;
+  --card: #1A3B42;
+  --surface: #1A3B42;
+  --popover: #1A3B42;
+  --secondary: #234850;
+  --muted: #234850;
+  --accent: #2A555E;
+  --border: rgba(132, 215, 216, 0.12);
+  --border-soft: rgba(132, 215, 216, 0.12);
+  --sidebar: #1A3B42;
+}
+
+[data-theme='sand'] {
+  --background: #E0D7CF;
+  --foreground: #1F3A40;
+  --card: #EDE6DD;
+  --card-foreground: #1F3A40;
+  --surface: #EDE6DD;
+  --popover: #EDE6DD;
+  --secondary: #D8CCBF;
+  --secondary-foreground: #1F3A40;
+  --muted: #D8CCBF;
+  --muted-foreground: #5C6E70;
+  --accent: #CFC2B2;
+  --accent-foreground: #1F3A40;
+  --border: rgba(40, 82, 96, 0.15);
+  --border-soft: rgba(40, 82, 96, 0.15);
+  --text: #1F3A40;
+  --text-secondary: #4A5F61;
+  --text-muted: #6B7B7D;
+  --text-dim: #8C9899;
+  --sidebar: #EDE6DD;
+  --sidebar-foreground: #1F3A40;
+}
+
+[data-theme='high-contrast'] {
+  --background: #0A1A1E;
+  --foreground: #F5F2EC;
+  --card: #0E2025;
+  --card-foreground: #F5F2EC;
+  --surface: #0E2025;
+  --border: rgba(245, 242, 236, 0.28);
+  --border-soft: rgba(245, 242, 236, 0.28);
+  --text: #F5F2EC;
+  --text-secondary: #D8D2C5;
+  --text-muted: #B5AFA3;
+  --seafoam: #9CE8E9;
+  --sidebar: #0E2025;
+  --sidebar-foreground: #F5F2EC;
+}
+
+/* ── Motion preference (Settings → Appearance → Motion & Animations) ── */
+.no-animations *,
+.no-animations *::before,
+.no-animations *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* ── Numeric display preference (Settings → Appearance → Data Display) ── */
+.mono-numbers {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Density preference — scales card padding/gaps (Settings → Appearance) ── */
+:root { --density-scale: 1; }
+[data-density='compact'] { --density-scale: 0.8; }
+[data-density='ultra']   { --density-scale: 0.62; }
+
+/* ── Live data pulse preference (Settings → Appearance → Motion & Animations) ──
+   pulse-dot call sites reference var(--pulse-duration) for their animation
+   duration, so this single toggle silences every pulsing indicator across
+   the app without editing each call site's animation logic. */
+:root { --pulse-duration: 1.4s; }
+.no-data-pulse { --pulse-duration: 0s; }
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

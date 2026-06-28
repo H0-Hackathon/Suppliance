@@ -76,7 +76,7 @@ export const StatusPill: React.FC<StatusPillProps> = ({
             background: DOT_COLOR[tone],
             boxShadow: `0 0 6px ${DOT_COLOR[tone]}`,
             flexShrink: 0,
-            animation: pulse ? 'pulse-dot 1.6s ease-in-out infinite' : 'none',
+            animation: pulse ? 'pulse-dot var(--pulse-duration, 1.6s) ease-in-out infinite' : 'none',
           }}
         />
       )}

@@ -23,12 +23,12 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
       </div>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--ocean)', letterSpacing: '-0.4px', margin: 0 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--ocean)', letterSpacing: '-0.4px', margin: 0 }}>
             {title}
           </h2>
           {badge && (
             <span style={{
-              fontSize: 9.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+              fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
               background: 'var(--border-soft)', border: '1px solid rgba(84,140,146,0.25)',
               color: '#548C92', padding: '2px 7px', borderRadius: 4,
             }}>
@@ -36,7 +36,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ icon: Icon, title,
             </span>
           )}
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.5 }}>
           {subtitle}
         </p>
       </div>
@@ -56,22 +56,24 @@ interface SettingsCardProps {
 export const SettingsCard: React.FC<SettingsCardProps> = ({ title, description, children, impact, index = 0 }) => (
   <DriftCard index={index} hoverLift={false} style={{
     background: 'var(--surface)', border: '1px solid var(--border-soft)',
-    borderRadius: 12, padding: '24px 28px', marginBottom: 20,
+    borderRadius: 12,
+    padding: 'calc(24px * var(--density-scale, 1)) calc(28px * var(--density-scale, 1))',
+    marginBottom: 'calc(20px * var(--density-scale, 1))',
     boxShadow: 'var(--shadow-sm)',
   }}>
     <div style={{ marginBottom: 20 }}>
-      <h3 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ocean)', margin: 0, letterSpacing: '-0.2px' }}>
+      <h3 style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ocean)', margin: 0, letterSpacing: '-0.2px' }}>
         {title}
       </h3>
       {description && (
-        <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: 1.6 }}>
           {description}
         </p>
       )}
       {impact && (
         <div style={{
           marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5,
-          fontSize: 10.5, color: 'rgba(132,215,216,0.65)', background: 'rgba(132,215,216,0.06)',
+          fontSize: 11.5, color: 'rgba(132,215,216,0.65)', background: 'rgba(132,215,216,0.06)',
           border: '1px solid var(--border-soft)', borderRadius: 4, padding: '2px 8px',
         }}>
           <span style={{ fontSize: 8 }}>◆</span>
@@ -98,13 +100,13 @@ export const FieldRow: React.FC<FieldRowProps> = ({ label, hint, children, full 
   }}>
     <div>
       <label style={{
-        fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)',
+        fontSize: 13.5, fontWeight: 500, color: 'var(--text-secondary)',
         display: 'block', paddingTop: full ? 0 : 9,
       }}>
         {label}
       </label>
       {hint && (
-        <span style={{ fontSize: 10.5, color: 'var(--text-muted)', display: 'block', marginTop: 2, lineHeight: 1.4 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 2, lineHeight: 1.4 }}>
           {hint}
         </span>
       )}
@@ -116,7 +118,7 @@ export const FieldRow: React.FC<FieldRowProps> = ({ label, hint, children, full 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '9px 12px',
   background: 'rgba(232,226,216,0.04)', border: '1px solid rgba(232,226,216,0.09)',
-  borderRadius: 7, color: 'var(--ocean)', fontSize: 12.5,
+  borderRadius: 7, color: 'var(--ocean)', fontSize: 14,
   fontFamily: 'var(--font)', outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box',
 };
 
@@ -184,11 +186,11 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, l
     onClick={() => onChange(!checked)}
   >
     <div>
-      <div style={{ fontSize: 12.5, fontWeight: 500, color: checked ? 'var(--ocean)' : 'var(--text-secondary)' }}>
+      <div style={{ fontSize: 14, fontWeight: 500, color: checked ? 'var(--ocean)' : 'var(--text-secondary)' }}>
         {label}
       </div>
       {description && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{description}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{description}</div>
       )}
     </div>
     <div style={{
@@ -231,7 +233,7 @@ export const TagInput: React.FC<TagInputProps> = ({ tags, onChange, placeholder 
           <span key={i} style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             background: 'var(--border-soft)', border: '1px solid rgba(132,215,216,0.25)',
-            color: '#548C92', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4,
+            color: '#548C92', fontSize: 12.5, fontWeight: 500, padding: '2px 8px', borderRadius: 4,
           }}>
             {tag}
             <button
@@ -247,7 +249,7 @@ export const TagInput: React.FC<TagInputProps> = ({ tags, onChange, placeholder 
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); } }}
         onBlur={addTag}
         placeholder={placeholder ?? 'Type and press Enter…'}
-        style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--ocean)', fontSize: 12.5, fontFamily: 'var(--font)', width: '100%', minWidth: 80 }}
+        style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--ocean)', fontSize: 14, fontFamily: 'var(--font)', width: '100%', minWidth: 80 }}
       />
     </div>
   );
@@ -269,7 +271,7 @@ export const SaveButton: React.FC<SaveButtonProps> = ({ onSave, saving, label = 
         background: saving ? 'rgba(132,215,216,0.1)' : 'linear-gradient(135deg, #548C92 0%, #548C92 100%)',
         border: saving ? '1px solid rgba(132,215,216,0.3)' : 'none',
         color: saving ? 'var(--harbor)' : 'white',
-        fontSize: 13, fontWeight: 700, fontFamily: 'var(--font)',
+        fontSize: 14.5, fontWeight: 700, fontFamily: 'var(--font)',
         cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.02em', transition: 'all 0.2s',
         boxShadow: saving ? 'none' : '0 4px 20px rgba(132,215,216,0.3)',
       }}
