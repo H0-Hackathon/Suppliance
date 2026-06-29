@@ -26,10 +26,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_coastguard.db")
 os.environ.setdefault("CLERK_ISSUER_URL", "https://test.clerk.accounts.dev")
 # Real env vars take precedence over .env file values in pydantic-settings, so
-# this blanks out whatever real Gemini key is in backend/.env — onboarding's
-# normalize_business_profile() call already no-ops without a key, keeping
-# tests hermetic instead of burning live LLM quota on every run.
+# this blanks out whatever real credentials are in backend/.env for both
+# supported LLM providers — onboarding's normalize_business_profile() call
+# already no-ops without credentials, keeping tests hermetic instead of
+# burning live LLM quota (Bedrock or Gemini) on every run.
 os.environ["GEMINI_API_KEY"] = ""
+os.environ["AWS_ACCESS_KEY_ID"] = ""
+os.environ["AWS_SECRET_ACCESS_KEY"] = ""
 
 from database import Base, get_db  # noqa: E402
 import models  # noqa: E402,F401 — registers all tables on Base.metadata

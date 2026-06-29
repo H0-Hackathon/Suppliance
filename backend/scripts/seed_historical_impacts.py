@@ -1,9 +1,10 @@
 """
 CoastGuard — Seed historical_impacts with ~100 past disruption outcomes.
 
-The Impact Agent (core/impact_engine.py + services/impact_service.py) uses
-these rows to ground expected/best/worst-case loss estimates in historical
-data (filtered by event_type + country) instead of an LLM guess.
+The Financial Impact Calculator agent (core/crew_monitor_pipeline.py,
+_get_historical_impacts()) reads these rows to ground its dollar-impact
+estimates in historical data (filtered by event_type + country) instead of
+guessing from scratch every run.
 
 Run:
   python scripts/seed_historical_impacts.py

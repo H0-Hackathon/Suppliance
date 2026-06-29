@@ -40,15 +40,10 @@ requests>=2.32.0
 # --- Platform-specific async event loop ---
 uvloop>=0.22.0; platform_system != "Windows"
 
-# --- AI / Agent Pipeline (Phase 2+) ---
-# Uncomment when implementing the 5-agent pipeline with real Gemini calls:
-# crewai>=1.7.0
-# google-generativeai>=0.8.0
-# langchain-google-genai>=2.0.0
-# langchain>=0.3.0
-# langchain-chroma>=0.2.0
-# chromadb>=0.5.0
-# sentence-transformers>=3.3.0
+# --- AI / Agent Pipeline ---
+# Powers the multi-agent monitor, import-compliance, and trade-document
+# pipelines (Gemini calls are made through CrewAI's built-in LLM wrapper).
+crewai>=1.14.0
 
 # --- Auth (Clerk JWT verification) ---
 PyJWT>=2.9.0

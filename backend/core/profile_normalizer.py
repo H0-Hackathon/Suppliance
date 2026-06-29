@@ -1,7 +1,7 @@
 """
 CoastGuard — BusinessProfile Normalizer
 
-One Gemini call that turns raw onboarding input (industry, HQ location, the
+One LLM call (AWS Bedrock Claude by default) that turns raw onboarding input (industry, HQ location, the
 supplier list the user typed in, revenue bracket) into every narrative
 BusinessProfile field the pipeline's agents read from — the same fields
 populated on the five reference companies (customer_id 240-244): HS codes,
@@ -54,11 +54,11 @@ def normalize_business_profile(
     Returns a dict matching every BusinessProfile narrative column, or None if
     the LLM call fails.
     """
-    if not settings.gemini_api_key:
+    from core.llm_factory import llm_configured, build_llm
+    if not llm_configured():
         return None
     try:
-        from crewai import LLM
-        llm = LLM(model=settings.gemini_model, api_key=settings.gemini_api_key)
+        llm = build_llm()
         supplier_lines = "\n".join(
             f"- {s.get('name')} ({s.get('country')})" for s in suppliers if s.get("name")
         ) or "(none provided)"

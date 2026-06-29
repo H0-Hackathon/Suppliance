@@ -154,15 +154,11 @@ def clear_pipeline_log(customer_id: int) -> None:
 
 # ── LLM initializer ───────────────────────────────────────────────────────────
 
-def _init_gemini_llm() -> "LLM":
+def _init_llm() -> "LLM":
     if not HAS_CREWAI:
         raise RuntimeError("CrewAI is not installed.")
-    api_key = settings.gemini_api_key
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not set.")
-    import os
-    os.environ.setdefault("GOOGLE_API_KEY", api_key)
-    return LLM(model=settings.gemini_model, api_key=api_key)
+    from core.llm_factory import build_llm
+    return build_llm()
 
 
 # ── RSS fetch + Aurora buffer ─────────────────────────────────────────────────
@@ -890,7 +886,7 @@ class MonitorPipeline:
     @property
     def llm(self):
         if self._llm is None:
-            self._llm = _init_gemini_llm()
+            self._llm = _init_llm()
         return self._llm
 
     def run(self, customer_id: int, db: Optional[Session] = None) -> dict:
@@ -1154,7 +1150,7 @@ class MonitorPipeline:
                     customer_id=customer_id,
                     started_at=datetime.utcnow(),
                     status="running",
-                    model_used=settings.gemini_model,
+                    model_used=settings.bedrock_model_id if settings.llm_provider != "gemini" else settings.gemini_model,
                 )
                 db.add(agent_run_obj)
                 db.commit()

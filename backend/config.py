@@ -42,7 +42,21 @@ class Settings(BaseSettings):
     aws_session_token: Optional[str] = None
 
     # ── AI / LLM ──────────────────────────────────────────────────────────────
+    # Default provider is Gemini — see core/llm_factory.py. Works locally with
+    # just a free API key (https://aistudio.google.com/app/apikey), no AWS
+    # account or model-access request needed. Set LLM_PROVIDER=bedrock to
+    # switch to AWS Bedrock (Claude) instead.
     llm_provider: str = "gemini"
+
+    # Bedrock model id (only used when LLM_PROVIDER=bedrock). Claude 3 Haiku
+    # is supported for direct on-demand invocation in every Bedrock region;
+    # Claude 3.5 Sonnet requires a cross-region inference profile (the "us."
+    # prefix) in most regions.
+    bedrock_model_id: str = "bedrock/anthropic.claude-3-haiku-20240307-v1:0"
+    # Claude availability on Bedrock is region-specific — kept independent of
+    # aurora_region, which is wherever the database cluster happens to live.
+    bedrock_region: str = "us-east-1"
+
     gemini_api_key: Optional[str] = None
     # gemini-flash-latest is a Google-maintained alias that always points at
     # the current flash-tier model — avoids breakage when Google retires

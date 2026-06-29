@@ -239,13 +239,15 @@ async def health_check():
 async def api_health():
     from database import check_db_connection
     from core import article_cache
+    from core.llm_factory import llm_configured
     db_status = check_db_connection()
     return {
         "status": "ok",
         "mock_llm": settings.use_mock_llm,
         "mock_data": settings.use_mock_data,
         "active_customer_id": settings.active_customer_id,
-        "gemini_key_set": bool(settings.gemini_api_key),
+        "llm_provider": settings.llm_provider,
+        "llm_configured": llm_configured(),
         "database": db_status,
         "article_cache": article_cache.status(),
     }

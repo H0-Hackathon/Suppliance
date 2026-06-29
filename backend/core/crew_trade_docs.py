@@ -90,17 +90,16 @@ class TradeDocsCrew:
 
     @property
     def is_available(self) -> bool:
-        return HAS_CREWAI and bool(settings.gemini_api_key)
+        from core.llm_factory import llm_configured
+        return HAS_CREWAI and llm_configured()
 
     @property
     def llm(self) -> "LLM":
         if self._llm is None:
             if not HAS_CREWAI:
                 raise RuntimeError("CrewAI not installed. Run: pip install crewai>=1.7.0")
-            import os
-            api_key = settings.gemini_api_key
-            os.environ.setdefault("GOOGLE_API_KEY", api_key)
-            self._llm = LLM(model=settings.gemini_model, api_key=api_key)
+            from core.llm_factory import build_llm
+            self._llm = build_llm()
         return self._llm
 
     def analyze(

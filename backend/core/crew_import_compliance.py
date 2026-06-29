@@ -87,25 +87,24 @@ class ImportComplianceCrew:
 
     @property
     def is_available(self) -> bool:
-        """True if CrewAI and a Gemini key are both present."""
-        return HAS_CREWAI and bool(settings.gemini_api_key)
+        """True if CrewAI is installed and the active LLM provider is configured."""
+        from core.llm_factory import llm_configured
+        return HAS_CREWAI and llm_configured()
 
     @property
     def llm(self) -> "LLM":
         if self._llm is None:
             if not HAS_CREWAI:
                 raise RuntimeError("CrewAI not installed. Run: pip install crewai>=1.7.0")
-            import os
-            api_key = settings.gemini_api_key
-            os.environ.setdefault("GOOGLE_API_KEY", api_key)
-            self._llm = LLM(model=settings.gemini_model, api_key=api_key)
+            from core.llm_factory import build_llm
+            self._llm = build_llm()
         return self._llm
 
     def check_compliance(self, hs_code: str, alternatives: list) -> dict:
         """
         Run the 5-agent compliance check for a list of alternative supplier countries.
 
-        Falls back to mock_compliance() if CrewAI or the Gemini key is unavailable.
+        Falls back to mock_compliance() if CrewAI or the LLM provider is unavailable.
         """
         if not self.is_available:
             logger.info("ImportComplianceCrew: falling back to mock response")

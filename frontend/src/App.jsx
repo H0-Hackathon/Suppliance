@@ -24,6 +24,7 @@ import {
   SignedOut,
   useAuth,
   useUser,
+  useSignIn,
 } from '@clerk/clerk-react';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -147,6 +148,99 @@ function AuthenticatedApp() {
   return <DashboardRoutes />;
 }
 
+// ── Demo / judge instant-login ─────────────────────────────────────────────
+// Type "judge_demo" (no password) → instantly authenticated as the pre-seeded
+// demo account. Intended for hackathon judges evaluating the live app.
+function DemoAccess() {
+  const { signIn, isLoaded, setActive } = useSignIn();
+  const [value, setValue] = React.useState('');
+  const [status, setStatus] = React.useState('idle'); // idle | loading | error
+
+  const attempt = async () => {
+    if (!isLoaded || value.trim() !== 'judge_demo') return;
+    setStatus('loading');
+    try {
+      const result = await signIn.create({
+        identifier: 'judge@suppliance.io',
+        password: 'SupplanceH0!',
+      });
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+      } else {
+        setStatus('error');
+      }
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const isMatch = value.trim() === 'judge_demo';
+
+  return (
+    <div style={{
+      width: 360,
+      background: 'rgba(20,50,58,0.7)',
+      border: '1px solid rgba(132,215,216,0.18)',
+      borderRadius: 12,
+      padding: '18px 20px',
+      backdropFilter: 'blur(12px)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: 'var(--seafoam)', textTransform: 'uppercase' }}>
+        Judge / Demo Access
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          value={value}
+          onChange={e => { setValue(e.target.value); setStatus('idle'); }}
+          onKeyDown={e => e.key === 'Enter' && attempt()}
+          placeholder="Type judge_demo and press Enter"
+          autoComplete="off"
+          spellCheck={false}
+          style={{
+            flex: 1,
+            background: 'rgba(255,255,255,0.05)',
+            border: `1px solid ${isMatch ? 'rgba(132,215,216,0.5)' : 'rgba(232,226,216,0.15)'}`,
+            borderRadius: 7,
+            padding: '9px 12px',
+            color: isMatch ? '#84D7D8' : 'var(--foreground)',
+            fontSize: 14,
+            fontFamily: 'var(--font)',
+            outline: 'none',
+            transition: 'border-color 0.15s',
+          }}
+        />
+        <button
+          onClick={attempt}
+          disabled={!isMatch || status === 'loading'}
+          style={{
+            padding: '9px 14px',
+            borderRadius: 7,
+            border: 'none',
+            background: isMatch ? 'rgba(132,215,216,0.15)' : 'rgba(232,226,216,0.05)',
+            color: isMatch ? '#84D7D8' : 'rgba(232,226,216,0.3)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isMatch ? 'pointer' : 'default',
+            fontFamily: 'var(--font)',
+            transition: 'all 0.15s',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {status === 'loading' ? '…' : '→'}
+        </button>
+      </div>
+      {status === 'error' && (
+        <div style={{ fontSize: 12, color: '#E24B4A' }}>
+          Login failed — check that the demo account is seeded.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 function AppRoutes() {
   const navigate = useNavigate();
@@ -163,11 +257,12 @@ function AppRoutes() {
             path="/sign-in/*"
             element={
               <div style={{
-                minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 32,
+                minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 24,
                 alignItems: 'center', justifyContent: 'center',
                 background: 'linear-gradient(160deg,#16323A 0%,#285260 55%,#16323A 100%)',
               }}>
                 <Logo size={56} variant="splash" onClick={() => navigate('/')} />
+                <DemoAccess />
                 <SignIn routing="path" path="/sign-in" afterSignInUrl="/" afterSignUpUrl="/" />
               </div>
             }

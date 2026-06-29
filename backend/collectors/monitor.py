@@ -5,9 +5,12 @@ Pulls recent entries from supply-chain RSS feeds, extracts full article text
 + keywords/summary via newspaper3k, and writes them to
 data/supply_chain_dataset.jsonl.
 
-This is the secondary event source for the Monitor Agent (Agent 1) — see
-core/monitor_agent.py — which normalizes these records into structured
-risk events without any LLM call.
+fast_run() / fast_run_compliance() / fast_run_alternatives() below are what
+the live pipeline (core/crew_monitor_pipeline.py) actually calls — they fetch
+all feeds concurrently and feed the CrewAI Tariff Risk Monitor / Import
+Compliance / Alternative Supplier Finder agents directly. run() (this
+function) and its on-disk jsonl output are used only for the startup/refresh
+article cache (core/article_cache.py).
 
 Run on demand:
     python -m collectors.monitor
